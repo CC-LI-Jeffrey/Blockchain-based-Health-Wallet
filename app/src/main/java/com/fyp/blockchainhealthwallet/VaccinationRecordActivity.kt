@@ -55,7 +55,7 @@ class VaccinationRecordActivity : AppCompatActivity() {
                 provider = "Department of Health COVID-19 Vaccination Programme (On-Site)",
                 location = "Community Vaccination Centre, Hiu Kwong Street Sports Centre",
                 batchNumber = "2A088A",
-                pdfUrl = "https://example.com/vaccination1.pdf"
+                pdfUrl = "https://drive.google.com/file/d/1UXrKDX2Urj8CaOHb674zZDj82naFt7aY/view?usp=drive_link"
             ),
             VaccinationRecord(
                 id = "2",
@@ -68,7 +68,7 @@ class VaccinationRecordActivity : AppCompatActivity() {
                 provider = "Department of Health COVID-19 Vaccination Programme (On-Site)",
                 location = "Community Vaccination Centre, Hiu Kwong Street Sports Centre",
                 batchNumber = "2A088B",
-                pdfUrl = "https://example.com/vaccination2.pdf"
+                pdfUrl = "https://drive.google.com/file/d/1UXrKDX2Urj8CaOHb674zZDj82naFt7aY/view?usp=drive_link"
             ),
             VaccinationRecord(
                 id = "3",
@@ -81,7 +81,7 @@ class VaccinationRecordActivity : AppCompatActivity() {
                 provider = "Department of Health COVID-19 Vaccination Programme (On-Site)",
                 location = "Community Vaccination Centre, Hiu Kwong Street Sports Centre",
                 batchNumber = "2A088C",
-                pdfUrl = "https://example.com/vaccination3.pdf"
+                pdfUrl = "https://drive.google.com/file/d/1UXrKDX2Urj8CaOHb674zZDj82naFt7aY/view?usp=drive_link"
             )
         )
 

@@ -68,53 +68,14 @@
                 <FrameLayout
                     android:id="@+id/pdfContainer"
                     android:layout_width="match_parent"
-                    android:layout_height="400dp"
+                    android:layout_height="600dp"
                     android:background="@android:color/white">
 
-                    <!-- Placeholder for PDF content -->
-                    <LinearLayout
-                        android:id="@+id/placeholderLayout"
+                    <!-- PDF View -->
+                    <com.github.barteksc.pdfviewer.PDFView
+                        android:id="@+id/pdfView"
                         android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:orientation="vertical"
-                        android:gravity="center"
-                        android:padding="32dp">
-
-                        <ImageView
-                            android:layout_width="80dp"
-                            android:layout_height="80dp"
-                            android:src="@android:drawable/ic_menu_gallery"
-                            app:tint="#999999"
-                            android:layout_marginBottom="16dp" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="PDF Viewer"
-                            android:textSize="18sp"
-                            android:textStyle="bold"
-                            android:textColor="#666666"
-                            android:layout_marginBottom="8dp" />
-
-                        <TextView
-                            android:id="@+id/tvPdfUrl"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="PDF will be displayed here"
-                            android:textSize="14sp"
-                            android:textColor="#999999"
-                            android:gravity="center"
-                            android:layout_marginBottom="16dp" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="In a production app, this would display\nthe vaccination certificate PDF using\na PDF rendering library"
-                            android:textSize="12sp"
-                            android:textColor="#CCCCCC"
-                            android:gravity="center" />
-
-                    </LinearLayout>
+                        android:layout_height="match_parent" />
 
                     <!-- Loading indicator -->
                     <ProgressBar
@@ -122,6 +83,19 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
+                        android:visibility="visible" />
+
+                    <!-- Error Text -->
+                    <TextView
+                        android:id="@+id/tvError"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:padding="32dp"
+                        android:text="Error loading PDF"
+                        android:textSize="16sp"
+                        android:textColor="#FF0000"
                         android:visibility="gone" />
 
                 </FrameLayout>
