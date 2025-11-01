@@ -30,7 +30,7 @@ class MainActivity : AppCompatActivity() {
 
         // Setup click listeners for all cards
         findViewById<CardView>(R.id.cardMedication).setOnClickListener {
-            navigateToScreen("Medication Record")
+            startActivity(android.content.Intent(this, MedicationActivity::class.java))
         }
 
         findViewById<CardView>(R.id.cardVaccination).setOnClickListener {
