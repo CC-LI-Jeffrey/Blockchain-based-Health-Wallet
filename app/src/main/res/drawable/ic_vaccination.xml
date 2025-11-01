@@ -1,0 +1,49 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="540"
+    android:viewportHeight="540">
+    
+    <group
+        android:translateX="70"
+        android:translateY="70"
+        android:scaleX="0.7"
+        android:scaleY="0.7">
+        
+        <!-- Needle tip line (top right) -->
+        <path
+            android:fillColor="@color/vaccination"
+            android:pathData="M384.797,127.202c-6.975,-6.975 -6.975,-18.283 0,-25.258L446.25,40.49c6.974,-6.975 18.283,-6.975 25.258,0c6.975,6.975 6.975,18.283 0,25.258l-61.453,61.453C403.082,134.177 391.772,134.178 384.797,127.202z"/>
+        
+        <!-- Needle line (bottom left) -->
+        <path
+            android:fillColor="@color/vaccination"
+            android:pathData="M5.231,506.769c-6.975,-6.975 -6.975,-18.283 0,-25.258L153.02,333.722c6.975,-6.975 18.284,-6.975 25.258,0c6.975,6.975 6.975,18.283 0,25.258L30.49,506.769C23.516,513.743 12.205,513.745 5.231,506.769z"/>
+        
+        <!-- Liquid chamber (small rectangle) -->
+        <path
+            android:fillColor="#80BFFF"
+            android:pathData="M188.277,394.239l-70.518,-70.519c-6.975,-6.975 -6.975,-18.283 0,-25.258l48.801,-48.801c6.974,-6.975 18.283,-6.974 25.258,0l70.518,70.518c6.975,6.975 6.975,18.283 0,25.258l-48.801,48.802C206.566,401.211 195.25,401.213 188.277,394.239z"/>
+        
+        <!-- Main syringe body -->
+        <path
+            android:fillColor="@color/vaccination"
+            android:pathData="M462.585,154.469L357.53,49.413c-6.938,-6.938 -18.259,-6.995 -25.255,0l-52.426,52.426l-25.255,25.255L149.289,232.4c-6.966,6.966 -6.966,18.277 0,25.255L254.344,362.71c6.939,6.938 18.259,6.995 25.255,0l182.986,-182.986C469.582,172.728 469.524,161.407 462.585,154.469z"/>
+        
+        <!-- Measurement lines on barrel -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M320.522,167.768c-6.954,6.954 -18.294,6.985 -25.255,0l-40.673,-40.673l25.255,-25.255l40.673,40.673C327.5,149.49 327.5,160.79 320.522,167.768z"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M267.643,220.646c-6.939,6.939 -18.256,7 -25.255,0l-40.673,-40.673l25.255,-25.255l40.673,40.673C274.621,202.357 274.621,213.669 267.643,220.646z"/>
+        
+        <!-- Plunger handle -->
+        <path
+            android:fillColor="@color/vaccination"
+            android:pathData="M468.123,210.527l-166.65,-166.65c-6.975,-6.975 -6.975,-18.283 0,-25.258c6.974,-6.975 18.283,-6.975 25.258,0l166.65,166.65c6.975,6.975 6.975,18.283 0,25.258C486.408,217.502 475.097,217.503 468.123,210.527z"/>
+        <path
+            android:fillColor="@color/vaccination"
+            android:pathData="M481.51,101.007L410.991,30.49c-6.975,-6.974 -6.975,-18.283 0,-25.258c6.974,-6.975 18.283,-6.975 25.258,0l70.519,70.518c6.975,6.974 6.975,18.283 0,25.258C499.795,107.983 488.484,107.984 481.51,101.007z"/>
+    </group>
+</vector>

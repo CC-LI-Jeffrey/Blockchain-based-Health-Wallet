@@ -2,4 +2,34 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Primary Colors -->
+    <color name="primary">#6C63FF</color>
+    <color name="primary_dark">#5548C8</color>
+    <color name="primary_light">#8B84FF</color>
+    
+    <!-- Accent Colors -->
+    <color name="accent">#FF6584</color>
+    <color name="accent_light">#FF8FA3</color>
+    
+    <!-- Background Colors -->
+    <color name="background">#F8F9FD</color>
+    <color name="surface">#FFFFFF</color>
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#2D3142</color>
+    <color name="text_secondary">#6B7280</color>
+    <color name="text_hint">#9CA3AF</color>
+    
+    <!-- Feature Colors -->
+    <color name="medication">#10B981</color>
+    <color name="vaccination">#3B82F6</color>
+    <color name="profile">#F59E0B</color>
+    <color name="reports">#8B5CF6</color>
+    <color name="share">#06B6D4</color>
+    <color name="access_logs">#EF4444</color>
+    <color name="settings">#6366F1</color>
+    
+    <!-- Card Shadow -->
+    <color name="shadow">#1A000000</color>
 </resources>
