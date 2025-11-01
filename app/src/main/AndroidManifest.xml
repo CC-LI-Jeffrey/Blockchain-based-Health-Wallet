@@ -40,10 +40,6 @@
             android:exported="false"
             android:label="PDF Viewer" />
         <activity
-            android:name=".MedicationActivity"
-            android:exported="false"
-            android:parentActivityName=".MainActivity" />
-        <activity
             android:name=".ProfileActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
@@ -63,6 +59,22 @@
             android:name=".ViewReportActivity"
             android:exported="false"
             android:parentActivityName=".ReportsActivity" />
+        <activity
+            android:name=".AccessLogActivity"
+            android:exported="false"
+            android:label="Access Logs" />
+        <activity
+            android:name=".AccessLogDetailActivity"
+            android:exported="false"
+            android:label="Access Log Details" />
+        <activity
+            android:name=".ShareRecordActivity"
+            android:exported="false"
+            android:label="Share Records" />
+        <activity
+            android:name=".ShareRecordDetailActivity"
+            android:exported="false"
+            android:label="Share Details" />
     </application>
 
 </manifest>
