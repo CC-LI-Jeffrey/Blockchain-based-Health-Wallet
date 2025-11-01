@@ -35,6 +35,14 @@
             android:name=".PdfViewerActivity"
             android:exported="false"
             android:label="PDF Viewer" />
+        <activity
+            android:name=".AccessLogActivity"
+            android:exported="false"
+            android:label="Access Logs" />
+        <activity
+            android:name=".AccessLogDetailActivity"
+            android:exported="false"
+            android:label="Access Log Details" />
     </application>
 
 </manifest>

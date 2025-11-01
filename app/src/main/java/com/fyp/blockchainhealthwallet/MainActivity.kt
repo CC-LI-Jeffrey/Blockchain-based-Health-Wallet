@@ -52,7 +52,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<CardView>(R.id.cardAccessLogs).setOnClickListener {
-            navigateToScreen("Access Logs")
+            val intent = Intent(this, AccessLogActivity::class.java)
+            startActivity(intent)
         }
 
         findViewById<CardView>(R.id.cardSettings).setOnClickListener {
