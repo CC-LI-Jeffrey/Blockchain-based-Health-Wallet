@@ -48,7 +48,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<CardView>(R.id.cardReports).setOnClickListener {
-            navigateToScreen("Reports")
+            val intent = Intent(this, ReportsActivity::class.java)
+            startActivity(intent)
         }
 
         findViewById<CardView>(R.id.cardShare).setOnClickListener {

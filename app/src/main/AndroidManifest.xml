@@ -51,6 +51,18 @@
             android:name=".EditProfileActivity"
             android:exported="false"
             android:parentActivityName=".ProfileActivity" />
+        <activity
+            android:name=".ReportsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".AddReportActivity"
+            android:exported="false"
+            android:parentActivityName=".ReportsActivity" />
+        <activity
+            android:name=".ViewReportActivity"
+            android:exported="false"
+            android:parentActivityName=".ReportsActivity" />
     </application>
 
 </manifest>
