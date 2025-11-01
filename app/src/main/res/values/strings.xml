@@ -1,3 +1,41 @@
 <resources>
     <string name="app_name">BlockchainHealthWallet</string>
+    
+    <!-- Reports Screen -->
+    <string name="reports_title">Medical Reports</string>
+    <string name="reports_subtitle">Store and manage your medical documents securely</string>
+    <string name="no_reports">No Reports Yet</string>
+    <string name="no_reports_message">Tap the + button to add your first medical report</string>
+    <string name="add_report">Add New Report</string>
+    <string name="delete_report">Delete Report</string>
+    <string name="delete_report_confirmation">Are you sure you want to delete this report? This action cannot be undone.</string>
+    <string name="report_deleted">Report deleted</string>
+    <string name="report_added">Report added successfully</string>
+    
+    <!-- Add Report Screen -->
+    <string name="report_title_hint">Report Title</string>
+    <string name="report_type_hint">Report Type</string>
+    <string name="date_hint">Date</string>
+    <string name="doctor_name_hint">Doctor Name</string>
+    <string name="hospital_hint">Hospital/Clinic</string>
+    <string name="description_hint">Description/Notes</string>
+    <string name="attach_file">Attach File (Optional)</string>
+    <string name="save_report">Save Report</string>
+    <string name="cancel">Cancel</string>
+    <string name="file_attachment_coming_soon">File attachment feature coming soon</string>
+    
+    <!-- View Report Screen -->
+    <string name="report_details">Report Details</string>
+    <string name="date_label">Date</string>
+    <string name="doctor_label">Doctor</string>
+    <string name="hospital_label">Hospital/Clinic</string>
+    <string name="description_label">Description</string>
+    <string name="attached_file_label">Attached File</string>
+    
+    <!-- Validation Messages -->
+    <string name="error_report_title">Please enter report title</string>
+    <string name="error_report_type">Please select report type</string>
+    <string name="error_doctor_name">Please enter doctor name</string>
+    <string name="error_hospital">Please enter hospital/clinic name</string>
+    <string name="error_description">Please enter description</string>
 </resources>
