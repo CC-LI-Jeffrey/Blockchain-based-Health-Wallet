@@ -58,8 +58,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<CardView>(R.id.cardSettings).setOnClickListener {
-            navigateToScreen("Settings")
+            navigateToSettings()
         }
+    }
+
+    private fun navigateToSettings() {
+        val intent = android.content.Intent(this, SettingsActivity::class.java)
+        startActivity(intent)
     }
 
     private fun navigateToScreen(screenName: String) {

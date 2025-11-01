@@ -1,3 +1,28 @@
 <resources>
     <string name="app_name">BlockchainHealthWallet</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings">Settings</string>
+    <string name="settings_subtitle">Manage your app preferences</string>
+    
+    <!-- Account Settings -->
+    <string name="account_settings">ACCOUNT SETTINGS</string>
+    <string name="notifications">Notifications</string>
+    <string name="notifications_desc">Enable or disable push notifications</string>
+    <string name="change_password">Change Password</string>
+    <string name="change_password_desc">Update your account password</string>
+    
+    <!-- Security Settings -->
+    <string name="security_settings">SECURITY SETTINGS</string>
+    <string name="biometric_login">Biometric Login</string>
+    <string name="biometric_login_desc">Use fingerprint or face recognition</string>
+    
+    <!-- Privacy Settings -->
+    <string name="privacy_settings">PRIVACY SETTINGS</string>
+    <string name="privacy_policy">Privacy Policy</string>
+    <string name="privacy_policy_desc">View our privacy policy and terms</string>
+    
+    <!-- Actions -->
+    <string name="logout">Logout</string>
+    <string name="version_info">Version 1.0 - Blockchain Health Wallet</string>
 </resources>
