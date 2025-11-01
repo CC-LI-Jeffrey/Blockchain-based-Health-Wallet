@@ -27,7 +27,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupUI() {
         // Set user name (in future, this will be fetched from blockchain/database)
-        findViewById<TextView>(R.id.tvUserName).text = "John Doe"
+        findViewById<TextView>(R.id.tvUserName).text = "Harry Dwa"
 
         // Setup click listeners for all cards
         findViewById<CardView>(R.id.cardMedication).setOnClickListener {
