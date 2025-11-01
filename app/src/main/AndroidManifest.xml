@@ -43,6 +43,14 @@
             android:name=".AccessLogDetailActivity"
             android:exported="false"
             android:label="Access Log Details" />
+        <activity
+            android:name=".ShareRecordActivity"
+            android:exported="false"
+            android:label="Share Records" />
+        <activity
+            android:name=".ShareRecordDetailActivity"
+            android:exported="false"
+            android:label="Share Details" />
     </application>
 
 </manifest>
