@@ -39,6 +39,18 @@
             android:name=".PdfViewerActivity"
             android:exported="false"
             android:label="PDF Viewer" />
+        <activity
+            android:name=".MedicationActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ProfileActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".EditProfileActivity"
+            android:exported="false"
+            android:parentActivityName=".ProfileActivity" />
     </application>
 
 </manifest>

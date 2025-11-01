@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<CardView>(R.id.cardProfile).setOnClickListener {
-            navigateToScreen("Profile")
+            startActivity(android.content.Intent(this, ProfileActivity::class.java))
         }
 
         findViewById<CardView>(R.id.cardReports).setOnClickListener {
