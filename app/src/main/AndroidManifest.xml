@@ -21,6 +21,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".VaccinationRecordActivity"
+            android:exported="false"
+            android:label="疫苗紀錄" />
+        <activity
+            android:name=".VaccinationDetailActivity"
+            android:exported="false"
+            android:label="疫苗紀錄詳情" />
+        <activity
+            android:name=".PdfViewerActivity"
+            android:exported="false"
+            android:label="PDF Viewer" />
     </application>
 
 </manifest>

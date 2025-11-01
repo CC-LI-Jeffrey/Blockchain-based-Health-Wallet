@@ -1,5 +1,6 @@
 package com.fyp.blockchainhealthwallet
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -34,7 +35,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<CardView>(R.id.cardVaccination).setOnClickListener {
-            navigateToScreen("Vaccination Record")
+            val intent = Intent(this, VaccinationRecordActivity::class.java)
+            startActivity(intent)
         }
 
         findViewById<CardView>(R.id.cardProfile).setOnClickListener {
