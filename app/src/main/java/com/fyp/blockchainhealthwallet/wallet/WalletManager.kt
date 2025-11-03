@@ -33,17 +33,54 @@ object WalletManager : AppKit.ModalDelegate {
     fun initialize() {
         Log.d(TAG, "WalletManager initializing - setting delegate")
         AppKit.setDelegate(this)
-        Log.d(TAG, "Delegate set. Waiting for session events from AppKit...")
+        Log.d(TAG, "Delegate set. Waiting for AppKit to notify us of existing sessions...")
+        
+        // Try to get existing session info from AppKit
+        // Note: AppKit manages sessions internally and will trigger delegate callbacks
+        // when a session exists. We can also try to query directly.
+        checkExistingSession()
     }
     
     private fun checkExistingSession() {
         try {
-            // SDK will notify us of existing sessions via delegate callbacks
-            // AppKit automatically manages sessions and will trigger onSessionUpdate
-            // or onSessionEvent callbacks when a session exists
-            Log.d(TAG, "WalletManager ready - waiting for session callbacks")
+            Log.d(TAG, "Attempting to detect existing sessions...")
+            
+            // Try to get account and chain info
+            // If these fail, the delegate callbacks will still fire when a session exists
+            val account = try {
+                AppKit.getAccount()
+            } catch (e: Exception) {
+                Log.d(TAG, "getAccount() not available: ${e.message}")
+                null
+            }
+            
+            val selectedChain = try {
+                AppKit.getSelectedChain()
+            } catch (e: Exception) {
+                Log.d(TAG, "getSelectedChain() not available: ${e.message}")
+                null
+            }
+            
+            if (account != null && selectedChain != null) {
+                Log.d(TAG, "Found existing session via direct query!")
+                Log.d(TAG, "Account: ${account.address}, Chain: ${selectedChain.chainName}")
+                
+                val address = account.address
+                val chainId = "1" // Ethereum mainnet
+                
+                _walletAddress.value = address
+                _chainId.value = chainId
+                _connectionState.value = WalletConnectionState.Connected(address, chainId)
+                
+                Log.d(TAG, "Session restored from direct query")
+            } else {
+                Log.d(TAG, "No session detected via direct query. Waiting for delegate callbacks...")
+                // Don't set to Disconnected yet - wait for delegate callbacks
+                // The session might exist and AppKit will notify us via onConnectionStateChange
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error in checkExistingSession", e)
+            Log.e(TAG, "Error in checkExistingSession: ${e.message}", e)
+            // Don't set to Disconnected - wait for delegate callbacks
         }
     }
     
@@ -190,6 +227,31 @@ object WalletManager : AppKit.ModalDelegate {
     
     override fun onConnectionStateChange(state: Modal.Model.ConnectionState) {
         Log.d(TAG, "Connection state changed: $state")
+        
+        // When connection state changes, try to get session info
+        // This might indicate an existing session has been restored by AppKit
+        if (state.isAvailable) {
+            Log.d(TAG, "Connection is available, attempting to retrieve session info...")
+            
+            try {
+                val account = AppKit.getAccount()
+                val selectedChain = AppKit.getSelectedChain()
+                
+                if (account != null) {
+                    val address = account.address
+                    val chainId = "1" // Ethereum mainnet
+                    
+                    _walletAddress.value = address
+                    _chainId.value = chainId
+                    _connectionState.value = WalletConnectionState.Connected(address, chainId)
+                    
+                    Log.d(TAG, "Session info retrieved from connection state change!")
+                    Log.d(TAG, "Address: $address")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not retrieve session info on connection state change: ${e.message}")
+            }
+        }
     }
     
     override fun onError(error: Modal.Model.Error) {
