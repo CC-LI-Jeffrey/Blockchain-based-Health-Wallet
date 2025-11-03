@@ -2,8 +2,6 @@ package com.fyp.blockchainhealthwallet
 
 import android.content.Intent
 import android.content.SharedPreferences
-import android.hardware.biometrics.BiometricManager
-import android.hardware.biometrics.BiometricPrompt
 import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageButton
