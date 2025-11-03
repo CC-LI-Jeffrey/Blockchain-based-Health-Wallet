@@ -13,16 +13,11 @@ class HealthWalletApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         
-        // Temporarily disable WalletConnect to test if it's causing the crash
-        // TODO: Re-enable after fixing the crash
-        /*
         try {
             initializeWalletConnect()
         } catch (e: Exception) {
             Log.e("HealthWalletApp", "Failed to initialize WalletConnect", e)
         }
-        */
-        Log.d("HealthWalletApp", "Application started (WalletConnect disabled)")
     }
     
     private fun initializeWalletConnect() {

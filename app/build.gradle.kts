@@ -59,8 +59,9 @@ dependencies {
     implementation("com.reown:android-core")
     implementation("com.reown:appkit")
     
-    // Coroutines
-    implementation(libs.kotlinx.coroutines.android)
+    // Navigation
+    implementation(libs.androidx.navigation.fragment.ktx)
+    implementation(libs.androidx.navigation.ui.ktx)
     
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
