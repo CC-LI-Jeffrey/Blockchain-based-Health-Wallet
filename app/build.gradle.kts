@@ -63,7 +63,8 @@ dependencies {
     implementation(libs.androidx.navigation.fragment.ktx)
     implementation(libs.androidx.navigation.ui.ktx)
     
-    // Coroutines
+    // Lifecycle & Coroutines
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation(libs.kotlinx.coroutines.android)
     
     testImplementation(libs.junit)

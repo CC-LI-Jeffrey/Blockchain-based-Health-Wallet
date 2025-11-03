@@ -95,6 +95,11 @@
             android:name=".SettingsActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".WalletInfoActivity"
+            android:exported="false"
+            android:label="Wallet Information"
+            android:parentActivityName=".MainActivity" />
     </application>
 
 </manifest>
