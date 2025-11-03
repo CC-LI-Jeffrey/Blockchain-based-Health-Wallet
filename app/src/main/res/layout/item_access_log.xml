@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="8dp"
-    app:cardCornerRadius="12dp"
-    app:cardElevation="4dp"
-    app:cardBackgroundColor="#FFFFFF"
+    android:layout_marginBottom="16dp"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="6dp"
+    app:cardBackgroundColor="@color/surface"
     android:clickable="true"
     android:focusable="true"
     android:foreground="?attr/selectableItemBackground">
@@ -15,7 +15,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="24dp">
 
         <!-- Header Row -->
         <LinearLayout
@@ -37,7 +37,7 @@
                     android:text="Queen Mary Hospital"
                     android:textSize="18sp"
                     android:textStyle="bold"
-                    android:textColor="#333333" />
+                    android:textColor="@color/text_primary" />
 
                 <TextView
                     android:id="@+id/tvAccessorType"
@@ -45,7 +45,7 @@
                     android:layout_height="wrap_content"
                     android:text="Hospital"
                     android:textSize="14sp"
-                    android:textColor="#666666"
+                    android:textColor="@color/text_secondary"
                     android:layout_marginTop="2dp" />
             </LinearLayout>
 
@@ -94,7 +94,7 @@
                 android:layout_height="wrap_content"
                 android:text="Vaccination Records"
                 android:textSize="14sp"
-                android:textColor="#333333"
+                android:textColor="@color/text_primary"
                 android:layout_marginTop="4dp" />
         </LinearLayout>
 
@@ -124,7 +124,7 @@
                     android:layout_height="wrap_content"
                     android:text="Oct 15, 2025"
                     android:textSize="14sp"
-                    android:textColor="#333333"
+                    android:textColor="@color/text_primary"
                     android:layout_marginTop="4dp" />
             </LinearLayout>
 
@@ -148,7 +148,7 @@
                     android:layout_height="wrap_content"
                     android:text="14:30"
                     android:textSize="14sp"
-                    android:textColor="#333333"
+                    android:textColor="@color/text_primary"
                     android:layout_marginTop="4dp" />
             </LinearLayout>
 
@@ -156,4 +156,4 @@
 
     </LinearLayout>
 
-</com.google.android.material.card.MaterialCardView>
+</androidx.cardview.widget.CardView>

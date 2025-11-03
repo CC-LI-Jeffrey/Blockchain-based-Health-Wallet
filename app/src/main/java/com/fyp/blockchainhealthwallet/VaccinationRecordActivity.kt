@@ -5,11 +5,11 @@ import android.os.Bundle
 import android.widget.ImageButton
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.fyp.blockchainhealthwallet.adapter.VaccinationRecordAdapter
 import com.fyp.blockchainhealthwallet.model.VaccinationRecord
-import com.google.android.material.card.MaterialCardView
 
 class VaccinationRecordActivity : AppCompatActivity() {
 
@@ -35,7 +35,7 @@ class VaccinationRecordActivity : AppCompatActivity() {
         }
 
         // Setup upload button
-        findViewById<MaterialCardView>(R.id.btnUploadRecord).setOnClickListener {
+        findViewById<CardView>(R.id.btnUploadRecord).setOnClickListener {
             // TODO: Implement file picker to upload vaccination record
             Toast.makeText(this, "Upload vaccination record feature coming soon!", Toast.LENGTH_SHORT).show()
         }

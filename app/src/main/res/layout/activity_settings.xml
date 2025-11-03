@@ -12,76 +12,66 @@
         android:orientation="vertical"
         android:paddingBottom="32dp">
 
-        <!-- Header Section -->
-        <LinearLayout
+        <!-- Header Section with Gradient -->
+        <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/gradient_background"
-            android:orientation="vertical"
-            android:padding="24dp">
+            android:padding="24dp"
+            android:paddingBottom="40dp">
 
-            <!-- Back Button and Title -->
-            <LinearLayout
-                android:layout_width="match_parent"
+            <ImageButton
+                android:id="@+id/btnBack"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_back"
+                android:contentDescription="Back"
+                app:tint="@color/white" />
+
+            <TextView
+                android:id="@+id/tvTitle"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <androidx.cardview.widget.CardView
-                    android:id="@+id/btnBack"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    app:cardBackgroundColor="@color/white"
-                    app:cardCornerRadius="20dp"
-                    app:cardElevation="4dp">
-
-                    <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:layout_gravity="center"
-                        android:src="@drawable/ic_back"
-                        app:tint="@color/primary" />
-                </androidx.cardview.widget.CardView>
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:paddingEnd="40dp"
-                    android:text="@string/settings"
-                    android:textColor="@color/white"
-                    android:textSize="24sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                android:layout_below="@id/btnBack"
+                android:layout_marginTop="16dp"
+                android:text="Settings"
+                android:textColor="@color/white"
+                android:textSize="32sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_below="@id/tvTitle"
                 android:layout_marginTop="8dp"
-                android:text="@string/settings_subtitle"
+                android:alpha="0.9"
+                android:text="Manage your app preferences"
                 android:textColor="@color/white"
-                android:textSize="14sp" />
-        </LinearLayout>
+                android:textSize="16sp" />
+        </RelativeLayout>
 
-        <!-- Settings Items Section -->
+        <!-- Main Content Container -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
             android:orientation="vertical"
-            android:paddingHorizontal="20dp">
+            android:layout_marginTop="-20dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="16dp">
 
             <!-- Account Settings Header -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="12dp"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="16dp"
                 android:text="@string/account_settings"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:letterSpacing="0.1" />
 
             <!-- Notifications Setting -->
             <androidx.cardview.widget.CardView
@@ -195,12 +185,13 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="12dp"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="16dp"
                 android:text="@string/security_settings"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:letterSpacing="0.1" />
 
             <!-- Biometric Login -->
             <androidx.cardview.widget.CardView
@@ -260,12 +251,13 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="12dp"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="16dp"
                 android:text="@string/privacy_settings"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:letterSpacing="0.1" />
 
             <!-- Privacy Policy -->
             <androidx.cardview.widget.CardView

@@ -2,8 +2,11 @@ package com.fyp.blockchainhealthwallet
 
 import android.content.Intent
 import android.content.SharedPreferences
+import android.hardware.biometrics.BiometricManager
+import android.hardware.biometrics.BiometricPrompt
 import android.os.Bundle
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.Switch
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -28,8 +31,10 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         
-        // Set status bar color
-        window.statusBarColor = ContextCompat.getColor(this, R.color.primary_dark)
+        // Setup back button
+        findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
+            finish()
+        }
         
         // Initialize SharedPreferences
         sharedPreferences = getSharedPreferences("HealthWalletPrefs", MODE_PRIVATE)
@@ -42,11 +47,6 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     private fun setupUI() {
-        // Back button
-        findViewById<CardView>(R.id.btnBack).setOnClickListener {
-            finish()
-        }
-        
         // Notifications switch
         switchNotifications = findViewById(R.id.switchNotifications)
         switchNotifications.isChecked = sharedPreferences.getBoolean("notifications_enabled", true)

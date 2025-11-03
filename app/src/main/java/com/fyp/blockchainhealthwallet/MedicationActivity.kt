@@ -2,19 +2,18 @@ package com.fyp.blockchainhealthwallet
 
 import android.os.Bundle
 import android.view.View
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 
 class MedicationActivity : AppCompatActivity() {
     
     private lateinit var recyclerView: RecyclerView
     private lateinit var fabAdd: FloatingActionButton
-    private lateinit var toolbar: MaterialToolbar
     private lateinit var emptyState: LinearLayout
     private lateinit var tvActiveCount: TextView
     private lateinit var tvTotalCount: TextView
@@ -32,11 +31,10 @@ class MedicationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_medication)
         
-        // Setup toolbar
-        toolbar = findViewById(R.id.toolbar)
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Medication Records"
+        // Setup back button
+        findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
+            finish()
+        }
         
         // Initialize views
         emptyState = findViewById(R.id.emptyState)
