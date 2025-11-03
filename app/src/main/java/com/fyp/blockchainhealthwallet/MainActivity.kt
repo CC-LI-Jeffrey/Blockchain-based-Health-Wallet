@@ -2,7 +2,6 @@ package com.fyp.blockchainhealthwallet
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import android.widget.TextView
@@ -13,9 +12,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         
-        // Set status bar color using modern API
         setupStatusBar()
-
         setupUI()
     }
 
@@ -25,36 +22,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupUI() {
-        // Set user name (in future, this will be fetched from blockchain/database)
         findViewById<TextView>(R.id.tvUserName).text = "Harry Dwa"
 
-        // Setup click listeners for all cards
         findViewById<CardView>(R.id.cardMedication).setOnClickListener {
-            startActivity(android.content.Intent(this, MedicationActivity::class.java))
+            startActivity(Intent(this, MedicationActivity::class.java))
         }
 
         findViewById<CardView>(R.id.cardVaccination).setOnClickListener {
-            val intent = Intent(this, VaccinationRecordActivity::class.java)
-            startActivity(intent)
+            startActivity(Intent(this, VaccinationRecordActivity::class.java))
         }
 
         findViewById<CardView>(R.id.cardProfile).setOnClickListener {
-            startActivity(android.content.Intent(this, ProfileActivity::class.java))
+            startActivity(Intent(this, ProfileActivity::class.java))
         }
 
         findViewById<CardView>(R.id.cardReports).setOnClickListener {
-            val intent = Intent(this, ReportsActivity::class.java)
-            startActivity(intent)
+            startActivity(Intent(this, ReportsActivity::class.java))
         }
 
         findViewById<CardView>(R.id.cardShare).setOnClickListener {
-            val intent = Intent(this, ShareRecordActivity::class.java)
-            startActivity(intent)
+            startActivity(Intent(this, ShareRecordActivity::class.java))
         }
 
         findViewById<CardView>(R.id.cardAccessLogs).setOnClickListener {
-            val intent = Intent(this, AccessLogActivity::class.java)
-            startActivity(intent)
+            startActivity(Intent(this, AccessLogActivity::class.java))
         }
 
         findViewById<CardView>(R.id.cardSettings).setOnClickListener {
@@ -63,13 +54,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun navigateToSettings() {
-        val intent = android.content.Intent(this, SettingsActivity::class.java)
-        startActivity(intent)
-    }
-
-    private fun navigateToScreen(screenName: String) {
-        // Placeholder for navigation - will be implemented when creating actual screens
-        Toast.makeText(this, "Navigating to $screenName", Toast.LENGTH_SHORT).show()
-        // TODO: Implement actual navigation using Intents or Navigation Component
+        startActivity(Intent(this, SettingsActivity::class.java))
     }
 }

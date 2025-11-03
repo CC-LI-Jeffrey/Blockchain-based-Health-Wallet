@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.fyp.blockchainhealthwallet"
-        minSdk = 21
+        minSdk = 23
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -37,6 +37,11 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    packaging {
+        resources {
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
 }
 
 dependencies {
@@ -49,6 +54,17 @@ dependencies {
     implementation(libs.androidx.recyclerview)
     implementation(libs.androidx.cardview)
     implementation(libs.androidx.biometric)
+
+    implementation(platform("com.reown:android-bom:1.4.12"))
+    implementation("com.reown:android-core")
+    implementation("com.reown:appkit")
+    
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+    
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
