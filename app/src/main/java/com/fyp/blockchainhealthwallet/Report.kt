@@ -13,6 +13,7 @@ data class Report(
     val hospital: String,
     val description: String,
     val filePath: String? = null,
+    val ipfsHash: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 ) : Parcelable
 
