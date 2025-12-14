@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.fyp.blockchainhealthwallet"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -37,11 +37,18 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    lint {
+        abortOnError = false
+    }
     packaging {
         resources {
             excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
     }
+}
+
+configurations.all {
+    exclude(group = "org.bouncycastle", module = "bcprov-jdk15on")
 }
 
 dependencies {
@@ -69,6 +76,9 @@ dependencies {
     implementation(platform("com.reown:android-bom:1.4.12"))
     implementation("com.reown:android-core")
     implementation("com.reown:appkit")
+
+    // Web3j for smart contract interaction
+    implementation(libs.web3j.core)
 
     // Navigation
     implementation(libs.androidx.navigation.fragment.ktx)

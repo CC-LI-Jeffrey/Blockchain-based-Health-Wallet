@@ -12,21 +12,22 @@ import android.widget.AutoCompleteTextView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.fyp.blockchainhealthwallet.network.RetrofitClient
+import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
+import com.fyp.blockchainhealthwallet.network.ApiClient
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
-import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -49,7 +50,7 @@ class AddReportActivity : AppCompatActivity() {
     private var attachedFilePath: String? = null
     private var selectedFileUri: Uri? = null
     private var uploadedIpfsHash: String? = null
-    private var uploadedFileUrl: String? = null
+    private var encryptedKeyForBlockchain: String? = null
     private var progressDialog: ProgressDialog? = null
     
     // File picker launcher
@@ -68,9 +69,32 @@ class AddReportActivity : AppCompatActivity() {
         // Set status bar color
         window.statusBarColor = ContextCompat.getColor(this, R.color.primary_dark)
 
+        // Check wallet connection
+        if (!BlockchainService.isWalletConnected()) {
+            showWalletNotConnectedDialog()
+            return
+        }
+
         setupToolbar()
         setupViews()
         setupReportTypeDropdown()
+    }
+    
+    private fun showWalletNotConnectedDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Wallet Not Connected")
+            .setMessage("You need to connect your wallet to add health records to the blockchain.")
+            .setPositiveButton("Connect Wallet") { _, _ ->
+                // Navigate to wallet connection screen
+                val intent = Intent(this, WalletInfoActivity::class.java)
+                startActivity(intent)
+                finish()
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                finish()
+            }
+            .setCancelable(false)
+            .show()
     }
 
     private fun setupToolbar() {
@@ -154,8 +178,102 @@ class AddReportActivity : AppCompatActivity() {
         tvAttachedFile.text = fileName
         tvAttachedFile.visibility = View.VISIBLE
         
-        // Upload file to IPFS
-        uploadFileToIPFS(uri, fileName)
+        // Start encryption and upload process
+        encryptAndUploadFile(uri, fileName)
+    }
+    
+    private fun encryptAndUploadFile(uri: Uri, fileName: String) {
+        lifecycleScope.launch {
+            try {
+                showProgressDialog("Encrypting file...")
+                
+                // Create temporary file from URI
+                val tempFile = createTempFileFromUri(uri, fileName)
+                
+                // Encrypt file locally
+                updateProgressDialog("Encrypting file locally...")
+                val (encryptedFile, encryptedKey) = withContext(Dispatchers.IO) {
+                    EncryptionHelper.prepareFileForUpload(tempFile, cacheDir)
+                }
+                
+                // Clean up original temp file
+                tempFile.delete()
+                
+                // Save encrypted key for blockchain
+                encryptedKeyForBlockchain = encryptedKey
+                
+                // Upload encrypted file to IPFS
+                uploadEncryptedFileToIPFS(encryptedFile)
+                
+            } catch (e: Exception) {
+                dismissProgressDialog()
+                e.printStackTrace()
+                Toast.makeText(
+                    this@AddReportActivity,
+                    "Encryption error: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+                
+                // Clear file selection
+                selectedFileUri = null
+                tvAttachedFile.visibility = View.GONE
+            }
+        }
+    }
+    
+    private suspend fun uploadEncryptedFileToIPFS(encryptedFile: File) {
+        try {
+            updateProgressDialog("Uploading encrypted file to IPFS...")
+            
+            val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaTypeOrNull())
+            val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
+            
+            val response = withContext(Dispatchers.IO) {
+                ApiClient.api.uploadToIPFS(filePart)
+            }
+            
+            // Clean up encrypted file
+            encryptedFile.delete()
+            
+            dismissProgressDialog()
+            
+            if (response.isSuccessful && response.body()?.success == true) {
+                uploadedIpfsHash = response.body()!!.ipfsHash
+                
+                Toast.makeText(
+                    this,
+                    "File encrypted and uploaded to IPFS successfully",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                val errorMsg = response.body()?.error ?: response.message() ?: "Upload failed"
+                Toast.makeText(
+                    this,
+                    "IPFS upload failed: $errorMsg",
+                    Toast.LENGTH_LONG
+                ).show()
+                
+                // Clear file selection
+                selectedFileUri = null
+                tvAttachedFile.visibility = View.GONE
+                uploadedIpfsHash = null
+                encryptedKeyForBlockchain = null
+            }
+        } catch (e: Exception) {
+            dismissProgressDialog()
+            e.printStackTrace()
+            Toast.makeText(
+                this,
+                "Upload error: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+            
+            // Clear file selection
+            selectedFileUri = null
+            tvAttachedFile.visibility = View.GONE
+            uploadedIpfsHash = null
+            encryptedKeyForBlockchain = null
+        }
     }
     
     private fun getFileName(uri: Uri): String {
@@ -181,78 +299,6 @@ class AddReportActivity : AppCompatActivity() {
         return result
     }
     
-    private fun uploadFileToIPFS(uri: Uri, fileName: String) {
-        lifecycleScope.launch {
-            try {
-                showProgressDialog("Uploading file to IPFS...")
-                
-                // Create temporary file from URI
-                val file = createTempFileFromUri(uri, fileName)
-                
-                // Get file metadata
-                val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-                val fileSize = file.length()
-                
-                // Prepare metadata
-                val metadata = mapOf(
-                    "reportType" to (actvReportType.text.toString().takeIf { it.isNotEmpty() } ?: "Medical Report"),
-                    "uploadDate" to SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-                )
-                val metadataJson = Gson().toJson(metadata)
-                
-                // Create multipart request
-                val requestFile = file.asRequestBody(mimeType.toMediaTypeOrNull())
-                val filePart = MultipartBody.Part.createFormData("file", fileName, requestFile)
-                val metadataBody = metadataJson.toRequestBody("application/json".toMediaTypeOrNull())
-                
-                // Upload file
-                val response = withContext(Dispatchers.IO) {
-                    RetrofitClient.apiService.uploadFile(filePart, metadataBody)
-                }
-                
-                // Clean up temp file
-                file.delete()
-                
-                dismissProgressDialog()
-                
-                if (response.isSuccessful && response.body()?.success == true) {
-                    val data = response.body()?.data
-                    uploadedIpfsHash = data?.ipfsHash
-                    uploadedFileUrl = data?.fileUrl
-                    attachedFilePath = data?.fileUrl
-
-                    Toast.makeText(
-                        this@AddReportActivity,
-                        "File uploaded successfully to IPFS",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else {
-                    val errorMsg = response.body()?.error ?: response.message() ?: "Upload failed"
-                    Toast.makeText(
-                        this@AddReportActivity,
-                        "Upload failed: $errorMsg",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    
-                    // Clear file selection
-                    selectedFileUri = null
-                    tvAttachedFile.visibility = View.GONE
-                }
-            } catch (e: Exception) {
-                dismissProgressDialog()
-                e.printStackTrace()
-                Toast.makeText(
-                    this@AddReportActivity,
-                    "Upload error: ${e.message}",
-                    Toast.LENGTH_LONG
-                ).show()
-                
-                // Clear file selection
-                selectedFileUri = null
-                tvAttachedFile.visibility = View.GONE
-            }
-        }
-    }
     
     private fun createTempFileFromUri(uri: Uri, fileName: String): File {
         val inputStream = contentResolver.openInputStream(uri)
@@ -276,6 +322,10 @@ class AddReportActivity : AppCompatActivity() {
             setCancelable(false)
             show()
         }
+    }
+    
+    private fun updateProgressDialog(message: String) {
+        progressDialog?.setMessage(message)
     }
     
     private fun dismissProgressDialog() {
@@ -321,30 +371,72 @@ class AddReportActivity : AppCompatActivity() {
             etDescription.requestFocus()
             return
         }
-
-        // Find the report type
-        val reportType = ReportType.values().find { it.displayName == typeString } 
-            ?: ReportType.OTHER
-
-        // Create new report
-        val newReport = Report(
-            id = UUID.randomUUID().toString(),
-            title = title,
-            reportType = reportType,
-            date = date,
-            doctorName = doctorName,
-            hospital = hospital,
-            description = description,
-            filePath = attachedFilePath,
-            ipfsHash = uploadedIpfsHash,
-            timestamp = System.currentTimeMillis()
-        )
-
-        // Return result
-        val resultIntent = Intent().apply {
-            putExtra("NEW_REPORT", newReport)
+        
+        // Check if file is uploaded to IPFS
+        if (uploadedIpfsHash == null || encryptedKeyForBlockchain == null) {
+            Toast.makeText(this, "Please attach and upload a file first", Toast.LENGTH_SHORT).show()
+            return
         }
-        setResult(RESULT_OK, resultIntent)
-        finish()
+
+        // Save to blockchain
+        saveToBlockchain(typeString)
+    }
+    
+    private fun saveToBlockchain(typeString: String) {
+        lifecycleScope.launch {
+            try {
+                showProgressDialog("Preparing blockchain transaction...")
+                
+                // Map UI type to blockchain RecordType enum
+                val recordType = when (typeString) {
+                    "Lab Report" -> BlockchainService.RecordType.LAB_REPORT
+                    "Prescription" -> BlockchainService.RecordType.PRESCRIPTION
+                    "Medical Image" -> BlockchainService.RecordType.MEDICAL_IMAGE
+                    "Diagnosis" -> BlockchainService.RecordType.DIAGNOSIS
+                    "Vaccination" -> BlockchainService.RecordType.VACCINATION
+                    else -> BlockchainService.RecordType.VISIT_SUMMARY
+                }
+                
+                updateProgressDialog("Waiting for wallet signature...")
+                
+                // User signs transaction with their wallet
+                val txHash = withContext(Dispatchers.IO) {
+                    BlockchainService.addHealthRecord(
+                        ipfsHash = uploadedIpfsHash!!,
+                        recordType = recordType,
+                        encryptedKey = encryptedKeyForBlockchain!!
+                    )
+                }
+                
+                dismissProgressDialog()
+                
+                // Show success with transaction hash
+                AlertDialog.Builder(this@AddReportActivity)
+                    .setTitle("Success!")
+                    .setMessage("Health record saved on blockchain.\n\nTransaction: ${txHash.take(10)}...")
+                    .setPositiveButton("OK") { _, _ ->
+                        finish()
+                    }
+                    .setCancelable(false)
+                    .show()
+                
+            } catch (e: Exception) {
+                dismissProgressDialog()
+                
+                val errorMessage = when {
+                    e.message?.contains("user rejected", ignoreCase = true) == true -> 
+                        "Transaction cancelled by user"
+                    e.message?.contains("insufficient funds", ignoreCase = true) == true -> 
+                        "Insufficient funds for gas fees"
+                    else -> "Blockchain error: ${e.message}"
+                }
+                
+                AlertDialog.Builder(this@AddReportActivity)
+                    .setTitle("Transaction Failed")
+                    .setMessage(errorMessage)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
     }
 }
