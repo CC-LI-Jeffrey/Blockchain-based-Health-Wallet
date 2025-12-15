@@ -102,10 +102,15 @@ object WalletManager : AppKit.ModalDelegate {
             
             if (matchResult != null) {
                 val address = matchResult.value
+                // Try to get actual chain ID
+                val selectedChain = try { AppKit.getSelectedChain() } catch (e: Exception) { null }
+                val chainId = selectedChain?.chainReference ?: "1"
+                
                 _walletAddress.value = address
-                _chainId.value = "1" // Ethereum mainnet
-                _connectionState.value = WalletConnectionState.Connected(address, "1")
+                _chainId.value = chainId
+                _connectionState.value = WalletConnectionState.Connected(address, chainId)
                 Log.d(TAG, "Extracted address: $address")
+                Log.d(TAG, "Chain ID: $chainId")
             } else {
                 // Fallback: just show as connected
                 _connectionState.value = WalletConnectionState.Connected("Unknown", "1")
@@ -239,14 +244,20 @@ object WalletManager : AppKit.ModalDelegate {
                 
                 if (account != null) {
                     val address = account.address
-                    val chainId = "1" // Ethereum mainnet
+                    val chainId = selectedChain?.chainReference ?: "1"
                     
                     _walletAddress.value = address
                     _chainId.value = chainId
                     _connectionState.value = WalletConnectionState.Connected(address, chainId)
                     
-                    Log.d(TAG, "Session info retrieved from connection state change!")
+                    Log.d(TAG, "========================================")
+                    Log.d(TAG, "CONNECTION STATE CHANGED TO CONNECTED")
+                    Log.d(TAG, "========================================")
                     Log.d(TAG, "Address: $address")
+                    Log.d(TAG, "Chain ID: $chainId")
+                    Log.d(TAG, "Chain Name: ${selectedChain?.chainName}")
+                    Log.d(TAG, "Full Chain Object: $selectedChain")
+                    Log.d(TAG, "========================================")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Could not retrieve session info on connection state change: ${e.message}")
@@ -283,6 +294,18 @@ object WalletManager : AppKit.ModalDelegate {
     }
     
     fun getChainId(): String? {
-        return _chainId.value
+        val chainId = _chainId.value
+        Log.d(TAG, "getChainId() called - returning: $chainId")
+        
+        // Also check what AppKit reports
+        try {
+            val selectedChain = AppKit.getSelectedChain()
+            Log.d(TAG, "  AppKit.getSelectedChain(): ${selectedChain?.chainReference}")
+            Log.d(TAG, "  AppKit chain name: ${selectedChain?.chainName}")
+        } catch (e: Exception) {
+            Log.e(TAG, "  Error getting selected chain: ${e.message}")
+        }
+        
+        return chainId
     }
 }

@@ -397,7 +397,7 @@ class AddReportActivity : AppCompatActivity() {
                     else -> BlockchainService.RecordType.VISIT_SUMMARY
                 }
                 
-                updateProgressDialog("Waiting for wallet signature...")
+                updateProgressDialog("Sending request to wallet...\nPlease open your wallet app to approve")
                 
                 // User signs transaction with their wallet
                 val txHash = withContext(Dispatchers.IO) {
@@ -410,25 +410,53 @@ class AddReportActivity : AppCompatActivity() {
                 
                 dismissProgressDialog()
                 
-                // Show success with transaction hash
-                AlertDialog.Builder(this@AddReportActivity)
-                    .setTitle("Success!")
-                    .setMessage("Health record saved on blockchain.\n\nTransaction: ${txHash.take(10)}...")
-                    .setPositiveButton("OK") { _, _ ->
-                        finish()
-                    }
-                    .setCancelable(false)
-                    .show()
+                // Check if transaction is pending approval
+                if (txHash.startsWith("pending_")) {
+                    AlertDialog.Builder(this@AddReportActivity)
+                        .setTitle("⏳ Waiting for Approval")
+                        .setMessage("Transaction request has been sent!\n\n" +
+                                "📱 IMPORTANT: Open your wallet app now\n" +
+                                "(MetaMask, Trust Wallet, etc.)\n\n" +
+                                "You should see a pending transaction request to approve.\n\n" +
+                                "✓ Approve it to save your health record on the blockchain\n" +
+                                "✗ Reject it to cancel")
+                        .setPositiveButton("I Opened My Wallet") { _, _ ->
+                            // User acknowledged
+                            Toast.makeText(
+                                this@AddReportActivity,
+                                "Check your wallet app for the pending request",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            finish()
+                        }
+                        .setNegativeButton("Cancel") { _, _ ->
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                } else {
+                    // Show success with transaction hash
+                    AlertDialog.Builder(this@AddReportActivity)
+                        .setTitle("Success!")
+                        .setMessage("Health record saved on blockchain.\n\nTransaction: ${txHash.take(10)}...")
+                        .setPositiveButton("OK") { _, _ ->
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
                 
             } catch (e: Exception) {
                 dismissProgressDialog()
                 
                 val errorMessage = when {
+                    e.message?.contains("redirect", ignoreCase = true) == true ->
+                        "Please open your wallet app manually to approve the transaction"
                     e.message?.contains("user rejected", ignoreCase = true) == true -> 
                         "Transaction cancelled by user"
                     e.message?.contains("insufficient funds", ignoreCase = true) == true -> 
                         "Insufficient funds for gas fees"
-                    else -> "Blockchain error: ${e.message}"
+                    else -> "Transaction error: ${e.message}"
                 }
                 
                 AlertDialog.Builder(this@AddReportActivity)

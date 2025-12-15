@@ -3,9 +3,11 @@ package com.fyp.blockchainhealthwallet.blockchain
 import android.util.Log
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.reown.appkit.client.AppKit
+import com.reown.appkit.client.models.request.Request
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.web3j.abi.FunctionEncoder
 import org.web3j.abi.TypeReference
 import org.web3j.abi.datatypes.*
@@ -28,7 +30,12 @@ object BlockchainService {
     
     // Contract configuration
     private const val CONTRACT_ADDRESS = "0xfdD271249a32a626D7B6884a5cbC8C6C79049087"
-    private const val RPC_URL = "http://10.0.2.2:8545" // Android emulator -> localhost
+    
+    // RPC endpoint - change based on your setup:
+    // Android Emulator + Ganache on localhost:8545 -> "http://10.0.2.2:8545"
+    // Real Android Device + Ganache -> "http://YOUR_COMPUTER_IP:8545"
+    // TODO: Replace YOUR_COMPUTER_IP with your actual IP (e.g., 192.168.1.100)
+    private const val RPC_URL = "http://10.0.2.2:8545" // Change if using real device!
     
     // Initialize Web3j for read operations
     private val web3j: Web3j by lazy {
@@ -562,47 +569,108 @@ object BlockchainService {
         to: String,
         data: String,
         value: String = "0x0"
-    ): String = suspendCancellableCoroutine { continuation ->
-        try {
-            // Get current chain ID
-            val chainId = WalletManager.getChainId() ?: "1"
+    ): String = withTimeout(120000) { // 2 minute timeout for user to sign
+        suspendCancellableCoroutine { continuation ->
+            var isResumed = false
             
-            // Estimate gas
-            val gasLimit = "0x${BigInteger.valueOf(500000).toString(16)}"
-            val gasPrice = "0x${BigInteger.valueOf(20000000000).toString(16)}"
-            
-            Log.d(TAG, "Preparing transaction:")
-            Log.d(TAG, "  From: $from")
-            Log.d(TAG, "  To: $to")
-            Log.d(TAG, "  Data: ${data.take(66)}...") // Log first part of data
-            Log.d(TAG, "  Chain ID: $chainId")
-            
-            // Create transaction object for AppKit
-            val transaction = mapOf(
-                "from" to from,
-                "to" to to,
-                "data" to data,
-                "value" to value,
-                "gas" to gasLimit,
-                "gasPrice" to gasPrice
-            )
-            
-            // Send transaction via AppKit using eth_sendTransaction method
-            // This will prompt the user's wallet to sign and send the transaction
-            // Note: AppKit will handle the user's wallet signature
-            
-            // For now, we'll throw NotImplementedError until proper AppKit integration
-            // The correct implementation requires understanding AppKit's exact API
-            continuation.resumeWithException(
-                NotImplementedError(
-                    "Transaction signing via AppKit requires proper integration. " +
-                    "Please connect wallet and implement AppKit.request properly."
+            try {
+                // Get current chain ID
+                val chainId = WalletManager.getChainId() ?: "1"
+                
+                // Estimate gas (500,000 gas units)
+                val gasLimit = "0x${BigInteger.valueOf(500000).toString(16)}"
+                val gasPrice = "0x${BigInteger.valueOf(20000000000).toString(16)}" // 20 Gwei
+                
+                Log.d(TAG, "Preparing transaction:")
+                Log.d(TAG, "  From: $from")
+                Log.d(TAG, "  To: $to")
+                Log.d(TAG, "  Data: ${data.take(66)}...") // Log first part of data
+                Log.d(TAG, "  Chain ID: $chainId")
+                Log.d(TAG, "  Gas Limit: $gasLimit")
+                Log.d(TAG, "  Gas Price: $gasPrice")
+                
+                // Create transaction parameters as JSON array
+                val transactionParams = """
+                    [{
+                        "from": "$from",
+                        "to": "$to",
+                        "data": "$data",
+                        "value": "$value",
+                        "gas": "$gasLimit",
+                        "gasPrice": "$gasPrice"
+                    }]
+                """.trimIndent()
+                
+                Log.d(TAG, "Transaction params: $transactionParams")
+                
+                // Create request for eth_sendTransaction
+                val request = Request(
+                    method = "eth_sendTransaction",
+                    params = transactionParams
                 )
-            )
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sending transaction", e)
-            continuation.resumeWithException(e)
+                
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "SENDING TRANSACTION REQUEST TO WALLET")
+                Log.d(TAG, "========================================")
+                Log.i(TAG, "📱 User must open their wallet app to see this request!")
+                Log.i(TAG, "The transaction will NOT auto-appear - manual action required")
+                
+                // Send transaction via AppKit
+                // This will send the request to the wallet
+                // User needs to open their wallet app manually to approve
+                AppKit.request(
+                    request = request,
+                    onSuccess = {
+                        Log.d(TAG, "✓ Transaction request sent successfully to WalletConnect")
+                        Log.i(TAG, "========================================")
+                        Log.i(TAG, "📱 ACTION REQUIRED: OPEN YOUR WALLET APP NOW!")
+                        Log.i(TAG, "========================================")
+                        Log.i(TAG, "Look for a pending transaction request in your wallet")
+                        Log.i(TAG, "App: MetaMask, Trust Wallet, Rainbow, etc.")
+                        
+                        // Generate a pending transaction identifier
+                        // The actual transaction will be processed when user approves in wallet
+                        val pendingTxId = "pending_${System.currentTimeMillis()}"
+                        
+                        if (!isResumed) {
+                            isResumed = true
+                            Log.d(TAG, "Resuming with pending transaction ID: $pendingTxId")
+                            continuation.resume(pendingTxId)
+                        }
+                    } as () -> Unit,
+                    onError = { error: Throwable ->
+                        if (!isResumed) {
+                            isResumed = true
+                            Log.e(TAG, "Transaction request failed", error)
+                            
+                            // Handle the redirect error specifically
+                            val errorMessage = if (error.message?.contains("redirect") == true) {
+                                "Please open your wallet app manually to approve the transaction"
+                            } else {
+                                error.message ?: "Unknown error"
+                            }
+                            
+                            continuation.resumeWithException(
+                                Exception("Transaction request failed: $errorMessage", error)
+                            )
+                        } else {
+                            Log.w(TAG, "Continuation already resumed, ignoring error: ${error.message}")
+                        }
+                    }
+                )
+                
+                // Handle cancellation
+                continuation.invokeOnCancellation {
+                    Log.w(TAG, "Transaction request cancelled")
+                }
+                
+            } catch (e: Exception) {
+                if (!isResumed) {
+                    isResumed = true
+                    Log.e(TAG, "Error preparing transaction", e)
+                    continuation.resumeWithException(e)
+                }
+            }
         }
     }
     
