@@ -10,6 +10,11 @@
     <!-- Biometric authentication permission -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
+    <!-- Package visibility for wallet apps (Android 11+) -->
+    <queries>
+        <package android:name="io.metamask" />
+    </queries>
+
     <application
         android:name=".HealthWalletApplication"
         android:allowBackup="true"

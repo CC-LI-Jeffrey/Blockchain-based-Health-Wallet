@@ -184,6 +184,18 @@
                 tools:text="File: report.pdf"
                 tools:visibility="visible" />
 
+            <!-- TEST BUTTON: Send Dummy Data -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTestDummyData"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginBottom="16dp"
+                android:text="🧪 TEST: Send Dummy Record"
+                android:textAllCaps="false"
+                android:textSize="16sp"
+                app:backgroundTint="#FF9800"
+                app:cornerRadius="12dp" />
+
             <!-- Save Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSaveReport"

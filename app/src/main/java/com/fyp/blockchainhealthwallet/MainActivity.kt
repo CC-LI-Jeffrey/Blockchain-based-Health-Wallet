@@ -77,6 +77,22 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
+        // Long-press to force disconnect
+        btnConnectWallet.setOnLongClickListener {
+            if (WalletManager.isConnected()) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Disconnect Wallet?")
+                    .setMessage("This will disconnect your wallet from this app.")
+                    .setPositiveButton("Disconnect") { _, _ ->
+                        WalletManager.disconnectWallet()
+                        Toast.makeText(this, "Wallet disconnected", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            true
+        }
+        
         // Make the status text clickable when connected
         tvWalletStatus.setOnClickListener {
             if (WalletManager.isConnected()) {

@@ -6,6 +6,7 @@ import com.reown.appkit.client.Modal
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.coroutines.Continuation
 
 object WalletManager : AppKit.ModalDelegate {
     private const val TAG = "WalletManager"
@@ -22,6 +23,9 @@ object WalletManager : AppKit.ModalDelegate {
     
     private val _chainId = MutableStateFlow<String?>(null)
     val chainId: StateFlow<String?> = _chainId.asStateFlow()
+    
+    // Track pending transaction request continuations
+    private val pendingTransactions = mutableMapOf<Long, Continuation<String>>()
     
     sealed class WalletConnectionState {
         object Disconnected : WalletConnectionState()
@@ -45,42 +49,16 @@ object WalletManager : AppKit.ModalDelegate {
         try {
             Log.d(TAG, "Attempting to detect existing sessions...")
             
-            // Try to get account and chain info
-            // If these fail, the delegate callbacks will still fire when a session exists
-            val account = try {
-                AppKit.getAccount()
-            } catch (e: Exception) {
-                Log.d(TAG, "getAccount() not available: ${e.message}")
-                null
-            }
+            // Don't check for existing session on app startup
+            // Let the onConnectionStateChange callback handle it
+            // This prevents showing stale cached data as "connected"
+            Log.d(TAG, "Waiting for AppKit to notify via onConnectionStateChange callback...")
             
-            val selectedChain = try {
-                AppKit.getSelectedChain()
-            } catch (e: Exception) {
-                Log.d(TAG, "getSelectedChain() not available: ${e.message}")
-                null
-            }
-            
-            if (account != null && selectedChain != null) {
-                Log.d(TAG, "Found existing session via direct query!")
-                Log.d(TAG, "Account: ${account.address}, Chain: ${selectedChain.chainName}")
-                
-                val address = account.address
-                val chainId = "1" // Ethereum mainnet
-                
-                _walletAddress.value = address
-                _chainId.value = chainId
-                _connectionState.value = WalletConnectionState.Connected(address, chainId)
-                
-                Log.d(TAG, "Session restored from direct query")
-            } else {
-                Log.d(TAG, "No session detected via direct query. Waiting for delegate callbacks...")
-                // Don't set to Disconnected yet - wait for delegate callbacks
-                // The session might exist and AppKit will notify us via onConnectionStateChange
-            }
+            // Start in disconnected state - will be updated by callback if session exists
+            _connectionState.value = WalletConnectionState.Disconnected
         } catch (e: Exception) {
             Log.e(TAG, "Error in checkExistingSession: ${e.message}", e)
-            // Don't set to Disconnected - wait for delegate callbacks
+            _connectionState.value = WalletConnectionState.Disconnected
         }
     }
     
@@ -178,7 +156,15 @@ object WalletManager : AppKit.ModalDelegate {
     }
     
     override fun onSessionRequestResponse(response: Modal.Model.SessionRequestResponse) {
-        Log.d(TAG, "Session request response received")
+        Log.d(TAG, "Session request response received: $response")
+        
+        // Extract the transaction hash from the response
+        // Response structure: SessionRequestResponse contains the result
+        Log.d(TAG, "Response type: ${response::class.java.simpleName}")
+        Log.d(TAG, "Full response: $response")
+        
+        // TODO: Extract transaction hash and resume the continuation
+        // This requires understanding the SessionRequestResponse structure
     }
     
     override fun onSessionAuthenticateResponse(response: Modal.Model.SessionAuthenticateResponse) {
@@ -236,32 +222,54 @@ object WalletManager : AppKit.ModalDelegate {
         // When connection state changes, try to get session info
         // This might indicate an existing session has been restored by AppKit
         if (state.isAvailable) {
-            Log.d(TAG, "Connection is available, attempting to retrieve session info...")
+            Log.d(TAG, "Connection is available, validating actual session...")
             
             try {
+                // CRITICAL: Verify the session is actually valid by checking account
                 val account = AppKit.getAccount()
-                val selectedChain = AppKit.getSelectedChain()
                 
-                if (account != null) {
-                    val address = account.address
-                    val chainId = selectedChain?.chainReference ?: "1"
+                if (account == null) {
+                    // Session appears available but account is null = stale session
+                    Log.w(TAG, "⚠️ Session appears available but account is NULL - clearing stale session")
+                    clearSessionData()
                     
-                    _walletAddress.value = address
-                    _chainId.value = chainId
-                    _connectionState.value = WalletConnectionState.Connected(address, chainId)
-                    
-                    Log.d(TAG, "========================================")
-                    Log.d(TAG, "CONNECTION STATE CHANGED TO CONNECTED")
-                    Log.d(TAG, "========================================")
-                    Log.d(TAG, "Address: $address")
-                    Log.d(TAG, "Chain ID: $chainId")
-                    Log.d(TAG, "Chain Name: ${selectedChain?.chainName}")
-                    Log.d(TAG, "Full Chain Object: $selectedChain")
-                    Log.d(TAG, "========================================")
+                    // Try to force disconnect the stale session
+                    try {
+                        AppKit.disconnect(
+                            onSuccess = { Log.d(TAG, "Cleared stale session") },
+                            onError = { Log.w(TAG, "Error clearing stale session: ${it.message}") }
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not disconnect stale session: ${e.message}")
+                    }
+                    return
                 }
+                
+                val selectedChain = AppKit.getSelectedChain()
+                val address = account.address
+                val chainId = selectedChain?.chainReference ?: "1"
+                
+                _walletAddress.value = address
+                _chainId.value = chainId
+                _connectionState.value = WalletConnectionState.Connected(address, chainId)
+                
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "CONNECTION STATE CHANGED TO CONNECTED")
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "Address: $address")
+                Log.d(TAG, "Chain ID: $chainId")
+                Log.d(TAG, "Chain Name: ${selectedChain?.chainName}")
+                Log.d(TAG, "Full Chain Object: $selectedChain")
+                Log.d(TAG, "========================================")
             } catch (e: Exception) {
                 Log.w(TAG, "Could not retrieve session info on connection state change: ${e.message}")
+                Log.w(TAG, "Clearing potentially invalid session")
+                clearSessionData()
             }
+        } else {
+            // Connection is NOT available - clear session data
+            Log.d(TAG, "Connection is NOT available - clearing session data")
+            clearSessionData()
         }
     }
     
@@ -274,6 +282,23 @@ object WalletManager : AppKit.ModalDelegate {
     // Helper methods
     fun isConnected(): Boolean {
         return _connectionState.value is WalletConnectionState.Connected
+    }
+    
+    fun forceRefreshSessionState() {
+        Log.d(TAG, "🔄 FORCE REFRESH: Checking actual session state...")
+        try {
+            val account = AppKit.getAccount()
+            if (account == null) {
+                Log.w(TAG, "🔄 No account found - clearing stale connection state")
+                clearSessionData()
+            } else {
+                Log.d(TAG, "🔄 Account found: ${account.address}")
+                // Session is valid, state should already be correct
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "🔄 Error during force refresh - clearing state", e)
+            clearSessionData()
+        }
     }
     
     fun getActiveSession(): Modal.Model.ApprovedSession? {

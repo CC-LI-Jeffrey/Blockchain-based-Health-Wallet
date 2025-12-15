@@ -1,10 +1,14 @@
 package com.fyp.blockchainhealthwallet.blockchain
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.reown.appkit.client.AppKit
 import com.reown.appkit.client.models.request.Request
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -12,7 +16,6 @@ import org.web3j.abi.FunctionEncoder
 import org.web3j.abi.TypeReference
 import org.web3j.abi.datatypes.*
 import org.web3j.abi.datatypes.generated.Uint256
-import org.web3j.abi.datatypes.generated.Uint8
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.http.HttpService
 import org.web3j.utils.Numeric
@@ -28,14 +31,19 @@ import kotlin.coroutines.resumeWithException
 object BlockchainService {
     private const val TAG = "BlockchainService"
     
-    // Contract configuration
-    private const val CONTRACT_ADDRESS = "0xfdD271249a32a626D7B6884a5cbC8C6C79049087"
+    // Store context for opening wallet
+    private var appContext: Context? = null
     
-    // RPC endpoint - change based on your setup:
-    // Android Emulator + Ganache on localhost:8545 -> "http://10.0.2.2:8545"
-    // Real Android Device + Ganache -> "http://YOUR_COMPUTER_IP:8545"
-    // TODO: Replace YOUR_COMPUTER_IP with your actual IP (e.g., 192.168.1.100)
-    private const val RPC_URL = "http://10.0.2.2:8545" // Change if using real device!
+    fun initialize(context: Context) {
+        appContext = context.applicationContext
+        Log.d(TAG, "BlockchainService initialized with context")
+    }
+    
+    // Contract configuration - SEPOLIA TESTNET
+    private const val CONTRACT_ADDRESS = "0xed41D59378f36b04567DAB79077d8057eA3E70D6"
+    
+    // Sepolia RPC endpoint - public and free
+    private const val RPC_URL = "https://rpc.sepolia.org"
     
     // Initialize Web3j for read operations
     private val web3j: Web3j by lazy {
@@ -107,10 +115,10 @@ object BlockchainService {
         
         // Encode function call
         val function = org.web3j.abi.datatypes.Function(
-            "addHealthRecord",
+            "addRecord",  // Fixed: was "addHealthRecord", should be "addRecord"
             listOf(
                 Utf8String(ipfsHash),
-                Uint8(BigInteger.valueOf(recordType.value.toLong())),
+                Uint256(BigInteger.valueOf(recordType.value.toLong())),  // Solidity enums are uint256
                 Utf8String(encryptedKey)
             ),
             emptyList()
@@ -128,6 +136,119 @@ object BlockchainService {
     }
     
     /**
+     * DUMMY TEST METHOD: Send a test health record with dummy data to verify MetaMask notification
+     */
+    suspend fun sendDummyTestRecord(): String {
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "🧪 TESTING: Sending dummy test record to blockchain...")
+        Log.d(TAG, "========================================")
+        
+        // FORCE WalletManager to refresh its state by checking AppKit directly
+        Log.d(TAG, "🔍 Forcing session state refresh...")
+        WalletManager.forceRefreshSessionState()
+        
+        // Wait a moment for state to update
+        withContext(Dispatchers.Main) {
+            delay(500)
+        }
+        
+        // Now check if actually connected
+        if (!WalletManager.isConnected()) {
+            Log.e(TAG, "❌ NOT CONNECTED! WalletManager reports disconnected state")
+            throw Exception("Wallet not connected. Please connect your wallet first.")
+        }
+        
+        // CRITICAL: Check if WalletConnect session is actually connected
+        val account = try {
+            AppKit.getAccount()
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ CRITICAL: Cannot get account from AppKit", e)
+            throw Exception("WalletConnect session not available. Please reconnect your wallet in the app.")
+        }
+        
+        if (account == null) {
+            Log.e(TAG, "❌ CRITICAL: AppKit.getAccount() returned null!")
+            throw Exception("No wallet account available. Please connect your wallet first.")
+        }
+        
+        val userAddress = account.address
+        Log.d(TAG, "✓ WalletConnect session validated")
+        Log.d(TAG, "✓ Address: $userAddress")
+        
+        // VALIDATION 1: Check selected chain
+        val selectedChain = try {
+            AppKit.getSelectedChain()
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not get selected chain: ${e.message}")
+            null
+        }
+        
+        val chainId = selectedChain?.chainReference ?: WalletManager.getChainId()
+        Log.d(TAG, "Session validation:")
+        Log.d(TAG, "  ✓ Address: $userAddress")
+        Log.d(TAG, "  ✓ Chain ID: $chainId")
+        
+        if (chainId == null) {
+            throw Exception("No chain ID available - WalletConnect session may be broken. Try reconnecting wallet.")
+        }
+        
+        if (chainId != "11155111") {
+            Log.e(TAG, "⚠️ WRONG NETWORK!")
+            Log.e(TAG, "Current: $chainId, Expected: 11155111 (Sepolia)")
+            throw Exception("Wrong network! Please switch MetaMask to Sepolia testnet. Current: $chainId")
+        }
+        
+        Log.d(TAG, "✓ Session valid, on correct network (Sepolia)")
+        
+        // VALIDATION 2: Get nonce from blockchain
+        val nonce = try {
+            withContext(Dispatchers.IO) {
+                val ethGetTransactionCount = web3j.ethGetTransactionCount(
+                    userAddress,
+                    org.web3j.protocol.core.DefaultBlockParameterName.PENDING
+                ).send()
+                
+                val nonceValue = ethGetTransactionCount.transactionCount
+                Log.d(TAG, "✓ Fetched nonce from network: $nonceValue")
+                "0x${nonceValue.toString(16)}"
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not fetch nonce, will let wallet handle it: ${e.message}")
+            null
+        }
+        
+        // Dummy test data
+        val dummyIpfsHash = "QmTest123DummyHashForTesting"
+        val dummyRecordType = RecordType.LAB_REPORT  // Type 0
+        val dummyEncryptedKey = "test-encrypted-key-12345"
+        
+        // Encode the addRecord function call with dummy data
+        val function = org.web3j.abi.datatypes.Function(
+            "addRecord",  
+            listOf(
+                Utf8String(dummyIpfsHash),
+                Uint256(BigInteger.ZERO),  // LAB_REPORT = 0 (Solidity enums are uint256)
+                Utf8String(dummyEncryptedKey)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        Log.d(TAG, "🧪 Dummy data encoded: $encodedFunction")
+        Log.d(TAG, "🧪 Full encoded length: ${encodedFunction.length} chars")
+        
+        // Send transaction via user's wallet and return the result
+        return sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0",
+            nonce = nonce
+        )
+    }
+    
+    /**
      * Update an existing health record.
      * Only the record owner can update.
      */
@@ -140,7 +261,7 @@ object BlockchainService {
             ?: throw IllegalStateException("No wallet connected")
         
         val function = org.web3j.abi.datatypes.Function(
-            "updateHealthRecord",
+            "updateRecord",  // Fixed: was "updateHealthRecord", should be "updateRecord"
             listOf(
                 Uint256(recordId),
                 Utf8String(newIpfsHash),
@@ -168,7 +289,7 @@ object BlockchainService {
             ?: throw IllegalStateException("No wallet connected")
         
         val function = org.web3j.abi.datatypes.Function(
-            "deleteHealthRecord",
+            "deleteRecord",  // Fixed: was "deleteHealthRecord", should be "deleteRecord"
             listOf(Uint256(recordId)),
             emptyList()
         )
@@ -375,7 +496,7 @@ object BlockchainService {
                     object : TypeReference<Uint256>() {},
                     object : TypeReference<Address>() {},
                     object : TypeReference<Utf8String>() {},
-                    object : TypeReference<Uint8>() {},
+                    object : TypeReference<Uint256>() {},  // RecordType enum
                     object : TypeReference<Uint256>() {},
                     object : TypeReference<Address>() {},
                     object : TypeReference<Bool>() {},
@@ -418,7 +539,7 @@ object BlockchainService {
                 recordId = (decodedResult[0] as Uint256).value,
                 patientAddress = (decodedResult[1] as Address).value,
                 ipfsHash = (decodedResult[2] as Utf8String).value,
-                recordType = RecordType.values().getOrNull((decodedResult[3] as Uint8).value.toInt()) 
+                recordType = RecordType.values().getOrNull((decodedResult[3] as Uint256).value.toInt()) 
                     ?: RecordType.LAB_REPORT,
                 timestamp = (decodedResult[4] as Uint256).value,
                 issuedBy = (decodedResult[5] as Address).value,
@@ -568,7 +689,8 @@ object BlockchainService {
         from: String,
         to: String,
         data: String,
-        value: String = "0x0"
+        value: String = "0x0",
+        nonce: String? = null
     ): String = withTimeout(120000) { // 2 minute timeout for user to sign
         suspendCancellableCoroutine { continuation ->
             var isResumed = false
@@ -577,31 +699,61 @@ object BlockchainService {
                 // Get current chain ID
                 val chainId = WalletManager.getChainId() ?: "1"
                 
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "⚠️ TRANSACTION DEBUG INFO")
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "Wallet Address: $from")
+                Log.d(TAG, "Contract Address: $to")
+                Log.d(TAG, "Chain ID: $chainId (Sepolia = 11155111)")
+                Log.d(TAG, "Expected Chain: Sepolia (11155111)")
+                
+                if (chainId != "11155111") {
+                    Log.e(TAG, "⚠️⚠️⚠️ CHAIN MISMATCH! ⚠️⚠️⚠️")
+                    Log.e(TAG, "Current chain: $chainId, Expected: 11155111 (Sepolia)")
+                    Log.e(TAG, "Please switch to Sepolia network in MetaMask!")
+                }
+                
                 // Estimate gas (500,000 gas units)
                 val gasLimit = "0x${BigInteger.valueOf(500000).toString(16)}"
                 val gasPrice = "0x${BigInteger.valueOf(20000000000).toString(16)}" // 20 Gwei
                 
-                Log.d(TAG, "Preparing transaction:")
+                Log.d(TAG, "Transaction details:")
                 Log.d(TAG, "  From: $from")
                 Log.d(TAG, "  To: $to")
                 Log.d(TAG, "  Data: ${data.take(66)}...") // Log first part of data
                 Log.d(TAG, "  Chain ID: $chainId")
-                Log.d(TAG, "  Gas Limit: $gasLimit")
-                Log.d(TAG, "  Gas Price: $gasPrice")
+                Log.d(TAG, "  Gas Limit: $gasLimit (${BigInteger.valueOf(500000)})")
+                Log.d(TAG, "  Gas Price: $gasPrice (20 Gwei)")
+                if (nonce != null) {
+                    Log.d(TAG, "  Nonce: $nonce")
+                }
                 
-                // Create transaction parameters as JSON array
-                val transactionParams = """
-                    [{
-                        "from": "$from",
-                        "to": "$to",
-                        "data": "$data",
-                        "value": "$value",
-                        "gas": "$gasLimit",
-                        "gasPrice": "$gasPrice"
-                    }]
-                """.trimIndent()
+                // Build transaction params with optional nonce
+                val transactionMap = mutableMapOf(
+                    "from" to from,
+                    "to" to to,
+                    "data" to data,
+                    "value" to value,
+                    "gas" to gasLimit,
+                    "gasPrice" to gasPrice,
+                    "chainId" to "0x${BigInteger(chainId).toString(16)}"
+                )
                 
-                Log.d(TAG, "Transaction params: $transactionParams")
+                // Add nonce if provided
+                if (nonce != null) {
+                    transactionMap["nonce"] = nonce
+                    Log.d(TAG, "  ✓ Using explicit nonce: $nonce")
+                }
+                
+                // Convert to PROPER JSON array containing object
+                // Format: [{"from":"0x...","to":"0x..."}]
+                // NOT: ["from":"0x...","to":"0x..."] (invalid JSON!)
+                val transactionObject = transactionMap.entries.joinToString(",", "{", "}") { 
+                    "\"${it.key}\":\"${it.value}\"" 
+                }
+                val transactionParams = "[$transactionObject]"
+                
+                Log.d(TAG, "Transaction params JSON: $transactionParams")
                 
                 // Create request for eth_sendTransaction
                 val request = Request(
@@ -610,44 +762,59 @@ object BlockchainService {
                 )
                 
                 Log.d(TAG, "========================================")
-                Log.d(TAG, "SENDING TRANSACTION REQUEST TO WALLET")
+                Log.d(TAG, "📤 SENDING TO WALLETCONNECT...")
+                Log.d(TAG, "Method: eth_sendTransaction")
                 Log.d(TAG, "========================================")
-                Log.i(TAG, "📱 User must open their wallet app to see this request!")
-                Log.i(TAG, "The transaction will NOT auto-appear - manual action required")
                 
-                // Send transaction via AppKit
-                // This will send the request to the wallet
-                // User needs to open their wallet app manually to approve
+                // Send transaction via AppKit (this queues it in WalletConnect)
                 AppKit.request(
                     request = request,
-                    onSuccess = {
-                        Log.d(TAG, "✓ Transaction request sent successfully to WalletConnect")
-                        Log.i(TAG, "========================================")
-                        Log.i(TAG, "📱 ACTION REQUIRED: OPEN YOUR WALLET APP NOW!")
-                        Log.i(TAG, "========================================")
-                        Log.i(TAG, "Look for a pending transaction request in your wallet")
-                        Log.i(TAG, "App: MetaMask, Trust Wallet, Rainbow, etc.")
+                    onSuccess = { result ->
+                        Log.d(TAG, "========================================")
+                        Log.d(TAG, "✅ SUCCESS - TRANSACTION REQUEST SENT!")
+                        Log.d(TAG, "========================================")
+                        Log.d(TAG, "Raw result type: ${result::class.java.simpleName}")
+                        Log.d(TAG, "Raw result: $result")
                         
-                        // Generate a pending transaction identifier
-                        // The actual transaction will be processed when user approves in wallet
-                        val pendingTxId = "pending_${System.currentTimeMillis()}"
+                        Log.i(TAG, "========================================")
+                        Log.i(TAG, "⏳ Transaction Status: PENDING USER APPROVAL")
+                        Log.i(TAG, "📱 Please open MetaMask to approve transaction")
+                        Log.i(TAG, "========================================")
                         
                         if (!isResumed) {
                             isResumed = true
-                            Log.d(TAG, "Resuming with pending transaction ID: $pendingTxId")
-                            continuation.resume(pendingTxId)
+                            continuation.resume("PENDING_USER_APPROVAL")
                         }
-                    } as () -> Unit,
+                    },
                     onError = { error: Throwable ->
                         if (!isResumed) {
                             isResumed = true
-                            Log.e(TAG, "Transaction request failed", error)
+                            Log.e(TAG, "========================================")
+                            Log.e(TAG, "❌ TRANSACTION FAILED OR REJECTED")
+                            Log.e(TAG, "========================================")
+                            Log.e(TAG, "Error type: ${error.javaClass.simpleName}")
+                            Log.e(TAG, "Error message: ${error.message}")
+                            Log.e(TAG, "Full error: ", error)
                             
                             // Handle the redirect error specifically
-                            val errorMessage = if (error.message?.contains("redirect") == true) {
-                                "Please open your wallet app manually to approve the transaction"
-                            } else {
-                                error.message ?: "Unknown error"
+                            val errorMessage = when {
+                                error.message?.contains("redirect", ignoreCase = true) == true -> {
+                                    Log.w(TAG, "Got redirect error - wallet may need manual opening")
+                                    "Wallet redirect required - please check MetaMask manually"
+                                }
+                                error.message?.contains("rejected", ignoreCase = true) == true || 
+                                error.message?.contains("User rejected", ignoreCase = true) == true -> {
+                                    Log.w(TAG, "User explicitly rejected the transaction")
+                                    "User rejected the transaction in wallet"
+                                }
+                                error.message?.contains("Session", ignoreCase = true) == true -> {
+                                    Log.e(TAG, "Session error - connection may be broken")
+                                    "WalletConnect session error - try reconnecting wallet"
+                                }
+                                else -> {
+                                    Log.e(TAG, "Unknown error during transaction")
+                                    error.message ?: "Unknown transaction error"
+                                }
                             }
                             
                             continuation.resumeWithException(

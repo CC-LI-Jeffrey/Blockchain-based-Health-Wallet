@@ -28,11 +28,11 @@ class HealthWalletApplication : Application() {
             val projectId = "6c3de96f85d19576c9ad76f1143a6d37"
 
             val appMetaData = Core.Model.AppMetaData(
-                name = "Kotlin.AppKit",
-                description = "Kotlin AppKit Implementation",
-                url = "kotlin.reown.com",
+                name = "Health Wallet",
+                description = "Blockchain-based Health Records",
+                url = "https://healthwallet.app",
                 icons = listOf("https://gblobscdn.gitbook.com/spaces%2F-LJJeCjcLrr53DcT1Ml7%2Favatar.png?alt=media"),
-                redirect = "kotlin-modal-wc://request"
+                redirect = "healthwallet://request"  // MUST match AndroidManifest scheme
             )
 
             CoreClient.initialize(
@@ -77,13 +77,64 @@ class HealthWalletApplication : Application() {
     }
     
     private fun setupChains() {
-        // Only set up Ethereum mainnet
-        val ethereumChain = AppKitChainsPresets.ethChains["1"] // Chain ID 1 is Ethereum mainnet
-        if (ethereumChain != null) {
-            AppKit.setChains(listOf(ethereumChain))
-            Log.d("AppKit", "Set up Ethereum mainnet only")
-        } else {
-            Log.e("AppKit", "Ethereum mainnet chain not found")
-        }
+        val chains = mutableListOf<Modal.Model.Chain>()
+        
+        // Create BOTH chains manually with NO required methods
+        // Ethereum Mainnet
+        val ethereumChain = Modal.Model.Chain(
+            chainNamespace = "eip155",
+            chainReference = "1",
+            chainName = "Ethereum",
+            requiredMethods = listOf(),  // NO required methods
+            optionalMethods = listOf(
+                "eth_sendTransaction",
+                "personal_sign",
+                "eth_signTypedData",
+                "eth_signTypedData_v4",
+                "eth_sign"
+            ),
+            events = listOf("chainChanged", "accountsChanged"),
+            token = Modal.Model.Token(
+                name = "Ether",
+                symbol = "ETH",
+                decimal = 18
+            ),
+            rpcUrl = "https://ethereum.publicnode.com",
+            blockExplorerUrl = "https://etherscan.io"
+        )
+        chains.add(ethereumChain)
+        
+        // Sepolia Testnet
+        val sepoliaChain = Modal.Model.Chain(
+            chainNamespace = "eip155",
+            chainReference = "11155111",
+            chainName = "Sepolia",
+            requiredMethods = listOf(),  // NO required methods
+            optionalMethods = listOf(
+                "eth_sendTransaction",
+                "personal_sign",
+                "eth_signTypedData",
+                "eth_signTypedData_v4",
+                "eth_sign"
+            ),
+            events = listOf("chainChanged", "accountsChanged"),
+            token = Modal.Model.Token(
+                name = "Sepolia ETH",
+                symbol = "ETH",
+                decimal = 18
+            ),
+            rpcUrl = "https://rpc.sepolia.org",
+            blockExplorerUrl = "https://sepolia.etherscan.io"
+        )
+        chains.add(sepoliaChain)
+        
+        // Set both chains
+        AppKit.setChains(chains)
+        
+        Log.d("AppKit", "========================================")
+        Log.d("AppKit", "✅ Custom Chains (NO required methods):")
+        Log.d("AppKit", "  1. Ethereum Mainnet (Chain ID: 1)")
+        Log.d("AppKit", "  2. Sepolia Testnet (Chain ID: 11155111)")
+        Log.d("AppKit", "========================================")
     }
 }

@@ -45,6 +45,7 @@ class AddReportActivity : AppCompatActivity() {
     private lateinit var tvAttachedFile: TextView
     private lateinit var btnSaveReport: MaterialButton
     private lateinit var btnCancel: MaterialButton
+    private lateinit var btnTestDummyData: MaterialButton  // Test button
 
     private var selectedDate: Calendar = Calendar.getInstance()
     private var attachedFilePath: String? = null
@@ -68,6 +69,9 @@ class AddReportActivity : AppCompatActivity() {
 
         // Set status bar color
         window.statusBarColor = ContextCompat.getColor(this, R.color.primary_dark)
+        
+        // Initialize BlockchainService with context
+        BlockchainService.initialize(this)
 
         // Check wallet connection
         if (!BlockchainService.isWalletConnected()) {
@@ -118,6 +122,7 @@ class AddReportActivity : AppCompatActivity() {
         tvAttachedFile = findViewById(R.id.tvAttachedFile)
         btnSaveReport = findViewById(R.id.btnSaveReport)
         btnCancel = findViewById(R.id.btnCancel)
+        btnTestDummyData = findViewById(R.id.btnTestDummyData)  // Test button
 
         // Set default date
         updateDateField()
@@ -140,6 +145,11 @@ class AddReportActivity : AppCompatActivity() {
         // Cancel button
         btnCancel.setOnClickListener {
             finish()
+        }
+        
+        // TEST BUTTON: Send dummy data to blockchain
+        btnTestDummyData.setOnClickListener {
+            testSendDummyRecord()
         }
     }
 
@@ -461,6 +471,71 @@ class AddReportActivity : AppCompatActivity() {
                 
                 AlertDialog.Builder(this@AddReportActivity)
                     .setTitle("Transaction Failed")
+                    .setMessage(errorMessage)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
+    }
+    
+    /**
+     * TEST METHOD: Send dummy health record to blockchain
+     * This allows you to test if MetaMask notification appears
+     */
+    private fun testSendDummyRecord() {
+        lifecycleScope.launch {
+            try {
+                showProgressDialog("🧪 Sending test transaction...")
+                
+                android.util.Log.d("AddReportActivity", "🧪 TEST: Starting dummy record test")
+                
+                // Call the dummy test method
+                val txHash = BlockchainService.sendDummyTestRecord()
+                
+                dismissProgressDialog()
+                
+                if (txHash.contains("redirect", ignoreCase = true)) {
+                    // Show redirect message
+                    AlertDialog.Builder(this@AddReportActivity)
+                        .setTitle("⏳ Approval Required")
+                        .setMessage("Please check your MetaMask app to approve the transaction.\n\nIf MetaMask didn't open, please open it manually.")
+                        .setPositiveButton("I Approved") { _, _ ->
+                            Toast.makeText(this@AddReportActivity, "Transaction submitted! Check MetaMask for confirmation.", Toast.LENGTH_LONG).show()
+                        }
+                        .setNegativeButton("Cancel") { _, _ ->
+                            Toast.makeText(this@AddReportActivity, "Transaction cancelled", Toast.LENGTH_SHORT).show()
+                        }
+                        .setCancelable(false)
+                        .show()
+                } else {
+                    // Show success with transaction hash
+                    AlertDialog.Builder(this@AddReportActivity)
+                        .setTitle("✅ Test Success!")
+                        .setMessage("Dummy record sent to blockchain.\n\nTransaction Hash:\n${txHash}\n\nCheck Sepolia Etherscan to verify!")
+                        .setPositiveButton("OK") { _, _ ->
+                            Toast.makeText(this@AddReportActivity, "Test completed!", Toast.LENGTH_SHORT).show()
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
+                
+            } catch (e: Exception) {
+                dismissProgressDialog()
+                
+                android.util.Log.e("AddReportActivity", "🧪 TEST FAILED: ${e.message}", e)
+                
+                val errorMessage = when {
+                    e.message?.contains("redirect", ignoreCase = true) == true ->
+                        "Please open your MetaMask app manually to approve the transaction"
+                    e.message?.contains("user rejected", ignoreCase = true) == true -> 
+                        "Transaction cancelled by user"
+                    e.message?.contains("insufficient funds", ignoreCase = true) == true -> 
+                        "Insufficient Sepolia ETH for gas fees"
+                    else -> "Test failed: ${e.message}"
+                }
+                
+                AlertDialog.Builder(this@AddReportActivity)
+                    .setTitle("❌ Test Failed")
                     .setMessage(errorMessage)
                     .setPositiveButton("OK", null)
                     .show()
