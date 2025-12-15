@@ -16,6 +16,7 @@ import org.web3j.abi.FunctionEncoder
 import org.web3j.abi.TypeReference
 import org.web3j.abi.datatypes.*
 import org.web3j.abi.datatypes.generated.Uint256
+import org.web3j.abi.datatypes.generated.Uint8
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.http.HttpService
 import org.web3j.utils.Numeric
@@ -118,7 +119,7 @@ object BlockchainService {
             "addRecord",  // Fixed: was "addHealthRecord", should be "addRecord"
             listOf(
                 Utf8String(ipfsHash),
-                Uint256(BigInteger.valueOf(recordType.value.toLong())),  // Solidity enums are uint256
+                Uint8(recordType.value.toLong()),  // Solidity enums are encoded as uint8 in ABI!
                 Utf8String(encryptedKey)
             ),
             emptyList()
@@ -227,7 +228,7 @@ object BlockchainService {
             "addRecord",  
             listOf(
                 Utf8String(dummyIpfsHash),
-                Uint256(BigInteger.ZERO),  // LAB_REPORT = 0 (Solidity enums are uint256)
+                Uint8(0L),  // LAB_REPORT = 0 (Solidity enums are encoded as uint8 in ABI!)
                 Utf8String(dummyEncryptedKey)
             ),
             emptyList()
