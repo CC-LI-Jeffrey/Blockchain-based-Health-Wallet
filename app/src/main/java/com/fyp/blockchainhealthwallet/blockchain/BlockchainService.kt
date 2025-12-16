@@ -58,8 +58,6 @@ object BlockchainService {
         .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
         .build()
-    // Sepolia RPC endpoint - using PublicNode (more reliable than rpc.sepolia.org)
-    private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
     
     // Initialize Web3j for read operations with primary endpoint
     private val web3j: Web3j by lazy {
