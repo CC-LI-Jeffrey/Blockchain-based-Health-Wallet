@@ -47,8 +47,8 @@ object BlockchainService {
     // HealthWallet 2 address = 0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B
     private const val CONTRACT_ADDRESS = "0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B"
     
-    // Sepolia RPC endpoint - public and free
-    private const val RPC_URL = "https://rpc.sepolia.org"
+    // Sepolia RPC endpoint - using PublicNode (more reliable than rpc.sepolia.org)
+    private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
     
     // Initialize Web3j for read operations
     private val web3j: Web3j by lazy {
@@ -1417,6 +1417,10 @@ object BlockchainService {
      */
     suspend fun hasPersonalInfo(userAddress: String): Boolean = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "🔍 Checking personal info for address: $userAddress")
+            Log.d(TAG, "🔗 Using RPC: $RPC_URL")
+            Log.d(TAG, "📝 Contract: $CONTRACT_ADDRESS")
+            
             val function = org.web3j.abi.datatypes.Function(
                 "hasPersonalInfo",
                 listOf(Address(userAddress)),
@@ -1424,6 +1428,7 @@ object BlockchainService {
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
+            Log.d(TAG, "📤 Encoded function: ${encodedFunction.take(20)}...")
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
@@ -1434,14 +1439,22 @@ object BlockchainService {
                 org.web3j.protocol.core.DefaultBlockParameterName.LATEST
             ).send()
             
+            Log.d(TAG, "📥 Response received")
+            
             if (response.hasError()) {
-                Log.e(TAG, "Error checking personal info: ${response.error.message}")
-                return@withContext false
+                Log.e(TAG, "❌ RPC Error: ${response.error.message}")
+                Log.e(TAG, "❌ Error code: ${response.error.code}")
+                // RPC error - don't block the user, assume they have personal info
+                Log.w(TAG, "⚠️ RPC failed, allowing user to proceed")
+                return@withContext true  // Allow user to try
             }
             
             val result = response.value
+            Log.d(TAG, "📦 Raw result: $result")
+            
             if (result.isNullOrEmpty() || result == "0x") {
-                return@withContext false
+                Log.w(TAG, "⚠️ Empty result from RPC")
+                return@withContext true  // Allow user to try
             }
             
             val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
@@ -1450,13 +1463,18 @@ object BlockchainService {
             )
             
             if (decodedResult.isEmpty()) {
-                return@withContext false
+                Log.w(TAG, "⚠️ Could not decode result")
+                return@withContext true  // Allow user to try
             }
             
-            (decodedResult[0] as Bool).value
+            val hasInfo = (decodedResult[0] as Bool).value
+            Log.d(TAG, "✅ hasPersonalInfo result: $hasInfo")
+            hasInfo
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking personal info", e)
-            false
+            Log.e(TAG, "❌ Exception checking personal info: ${e.message}", e)
+            // Network error - don't block the user
+            Log.w(TAG, "⚠️ Exception occurred, allowing user to proceed")
+            true  // Allow user to try - blockchain will reject if no personal info
         }
     }
     
