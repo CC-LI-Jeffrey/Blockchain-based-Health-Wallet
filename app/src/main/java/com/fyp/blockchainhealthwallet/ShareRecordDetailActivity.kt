@@ -1,14 +1,28 @@
 package com.fyp.blockchainhealthwallet
 
+import android.app.ProgressDialog
 import android.graphics.Color
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.databinding.ActivityShareRecordDetailBinding
+import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.math.BigInteger
 
 class ShareRecordDetailActivity : AppCompatActivity() {
 
+    companion object {
+        private const val TAG = "ShareRecordDetail"
+    }
+
     private lateinit var binding: ActivityShareRecordDetailBinding
+    private var shareIdBigInt: BigInteger? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,6 +36,16 @@ class ShareRecordDetailActivity : AppCompatActivity() {
     private fun loadShareDetails() {
         // Get data from intent
         val shareId = intent.getStringExtra("SHARE_ID") ?: ""
+        
+        // Try to parse the share ID as BigInteger for blockchain operations
+        // Remove "SH" prefix if present (e.g., "SH1" -> "1")
+        try {
+            val numericId = shareId.removePrefix("SH")
+            shareIdBigInt = BigInteger(numericId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse share ID: $shareId", e)
+        }
+        
         val recipientName = intent.getStringExtra("RECIPIENT_NAME") ?: ""
         val recipientType = intent.getStringExtra("RECIPIENT_TYPE") ?: ""
         val sharedData = intent.getStringExtra("SHARED_DATA") ?: ""
@@ -73,11 +97,7 @@ class ShareRecordDetailActivity : AppCompatActivity() {
         }
 
         binding.btnRevokeAccess.setOnClickListener {
-            Toast.makeText(
-                this,
-                "Revoke Access feature will be implemented",
-                Toast.LENGTH_SHORT
-            ).show()
+            showRevokeConfirmationDialog()
         }
 
         binding.btnExtendAccess.setOnClickListener {
@@ -86,6 +106,70 @@ class ShareRecordDetailActivity : AppCompatActivity() {
                 "Extend Access feature will be implemented",
                 Toast.LENGTH_SHORT
             ).show()
+        }
+    }
+
+    private fun showRevokeConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Revoke Access")
+            .setMessage("Are you sure you want to revoke access for this recipient? This action cannot be undone.")
+            .setPositiveButton("Revoke") { _, _ ->
+                revokeAccess()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun revokeAccess() {
+        val shareId = shareIdBigInt
+        if (shareId == null) {
+            Toast.makeText(this, "Invalid share ID", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Revoking access...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch {
+            try {
+                val txHash = withContext(Dispatchers.IO) {
+                    BlockchainService.revokeShare(shareId)
+                }
+
+                progressDialog.dismiss()
+
+                Log.d(TAG, "Access revoked successfully. TX: $txHash")
+                
+                Toast.makeText(
+                    this@ShareRecordDetailActivity,
+                    "Access revoked successfully",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                // Update UI to show revoked status
+                binding.tvStatus.text = "Revoked"
+                binding.tvStatus.setTextColor(Color.parseColor("#F44336"))
+                binding.tvStatus.setBackgroundColor(Color.parseColor("#FFEBEE"))
+                binding.btnRevokeAccess.isEnabled = false
+                binding.btnExtendAccess.isEnabled = false
+
+                // Finish activity after a short delay
+                binding.root.postDelayed({
+                    setResult(RESULT_OK) // Signal that data changed
+                    finish()
+                }, 1500)
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                Log.e(TAG, "Error revoking access", e)
+                Toast.makeText(
+                    this@ShareRecordDetailActivity,
+                    "Error: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 }

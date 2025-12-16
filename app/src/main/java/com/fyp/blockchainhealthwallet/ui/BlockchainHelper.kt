@@ -2,11 +2,14 @@ package com.fyp.blockchainhealthwallet.ui
 
 import android.app.ProgressDialog
 import android.content.Context
+import android.util.Log
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.LifecycleCoroutineScope
+import com.fyp.blockchainhealthwallet.ShareRecordActivity
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -38,18 +41,18 @@ object BlockchainHelper {
             setPadding(50, 20, 50, 20)
         }
         
-        // Data category selection
+        // Data category selection (using Personal Info for testing until medical records are implemented)
         val categories = arrayOf(
-            "Personal Info",
-            "Medication Records",
-            "Vaccination Records",
-            "Medical Reports",
-            "All Data"
+            "Personal Info (for testing)",
+            "Medication Records (coming soon)",
+            "Vaccination Records (coming soon)",
+            "Medical Reports (coming soon)"
         )
-        var selectedCategory = BlockchainService.DataCategory.MEDICAL_REPORTS
+        var selectedCategory = BlockchainService.DataCategory.PERSONAL_INFO
         val categoryInput = android.widget.Spinner(context).apply {
             adapter = android.widget.ArrayAdapter(context, android.R.layout.simple_spinner_item, categories)
             setPadding(50, 20, 50, 20)
+            setSelection(0) // Default to Personal Info
             onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
                     selectedCategory = when (position) {
@@ -57,7 +60,7 @@ object BlockchainHelper {
                         1 -> BlockchainService.DataCategory.MEDICATION_RECORDS
                         2 -> BlockchainService.DataCategory.VACCINATION_RECORDS
                         3 -> BlockchainService.DataCategory.MEDICAL_REPORTS
-                        else -> BlockchainService.DataCategory.ALL_DATA
+                        else -> BlockchainService.DataCategory.PERSONAL_INFO
                     }
                 }
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
@@ -175,34 +178,61 @@ object BlockchainHelper {
                     show()
                 }
                 
-                // Generate dummy values for HealthWalletV2 (in production, these would be real encrypted data)
+                // Get current user's address
+                val userAddress = WalletManager.getAddress()
+                    ?: throw Exception("Wallet not connected")
+                
+                // Step 1: Fetch the actual personal info from blockchain + IPFS
+                progressDialog?.setMessage("Fetching your personal info from IPFS...")
+                
+                val personalInfoRef = withContext(Dispatchers.IO) {
+                    BlockchainService.getPersonalInfoRef(userAddress)
+                } ?: throw Exception("No personal info found. Please set your personal info first in Profile.")
+                
+                // The personal info is already stored on IPFS, we'll use that hash
+                val personalInfoIpfsHash = personalInfoRef.encryptedDataIpfsHash
+                
+                Log.d("BlockchainHelper", "Using existing personal info IPFS hash: $personalInfoIpfsHash")
+                
+                // Step 2: Generate recipient name hash and category key
                 val recipientNameHash = "0x" + recipientName.hashCode().toString().padStart(64, '0').take(64)
-                val dummyIpfsHash = "QmDummyRecipientData" + System.currentTimeMillis()
-                val dummyCategoryKey = "encrypted-category-key-" + System.currentTimeMillis()
+                
+                // TODO: In production, encrypt the category key with recipient's public key
+                // For now, using a placeholder (recipient won't be able to decrypt without proper key)
+                val categoryKey = "encrypted-category-key-" + System.currentTimeMillis()
                 
                 progressDialog?.setMessage("Sending to wallet...\nPlease approve transaction")
                 
-                // User signs transaction with their wallet
+                // Step 3: Share data on blockchain with REAL IPFS hash
                 val txHash = withContext(Dispatchers.IO) {
                     BlockchainService.shareData(
                         recipientAddress = recipientAddress,
                         recipientNameHash = recipientNameHash,
-                        encryptedRecipientDataIpfsHash = dummyIpfsHash,
+                        encryptedRecipientDataIpfsHash = personalInfoIpfsHash,  // REAL IPFS HASH!
                         recipientType = recipientType,
                         dataCategory = dataCategory,
                         expiryDate = expiryTimestamp,
                         accessLevel = BlockchainService.AccessLevel.VIEW_ONLY,
-                        encryptedCategoryKey = dummyCategoryKey
+                        encryptedCategoryKey = categoryKey
                     )
                 }
                 
                 progressDialog?.dismiss()
                 
+                // Log full transaction hash for verification
+                Log.d("BlockchainHelper", "Share transaction successful: $txHash")
+                Log.d("BlockchainHelper", "Shared ${dataCategory.name} with $recipientAddress")
+                
                 // Show success
                 AlertDialog.Builder(context)
                     .setTitle("Data Shared Successfully!")
-                    .setMessage("Recipient can now access your ${dataCategory.name.lowercase().replace('_', ' ')} until expiry.\n\nTransaction: ${txHash.take(10)}...")
-                    .setPositiveButton("OK", null)
+                    .setMessage("Recipient can now access your ${dataCategory.name.lowercase().replace('_', ' ')} until expiry.\n\nTransaction: ${txHash.take(10)}...\n\nFull TX: $txHash\n\nRefresh share list to see new share.")
+                    .setPositiveButton("OK") { _, _ ->
+                        // Refresh the share list if context is ShareRecordActivity
+                        if (context is ShareRecordActivity) {
+                            context.recreate()
+                        }
+                    }
                     .show()
                 
             } catch (e: Exception) {
@@ -213,6 +243,9 @@ object BlockchainHelper {
                         "Transaction cancelled by user"
                     e.message?.contains("insufficient funds", ignoreCase = true) == true -> 
                         "Insufficient funds for gas fees"
+                    e.message?.contains("No auth", ignoreCase = true) == true ||
+                    e.message?.contains("execution reverted", ignoreCase = true) == true -> 
+                        "Account not set up. You must call setPersonalInfo() in the smart contract first before sharing data.\n\nUse Remix IDE to call setPersonalInfo() manually."
                     else -> "Error: ${e.message}"
                 }
                 

@@ -536,7 +536,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    userAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -576,6 +576,8 @@ object BlockchainService {
      */
     suspend fun getMedicationRef(medicationId: BigInteger): MedicationRecordRef? = withContext(Dispatchers.IO) {
         try {
+            val fromAddress = WalletManager.getAddress()
+            
             val function = org.web3j.abi.datatypes.Function(
                 "getMedicationRef",
                 listOf(Uint256(medicationId)),
@@ -593,7 +595,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    fromAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -822,7 +824,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    userAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -862,6 +864,8 @@ object BlockchainService {
      */
     suspend fun getVaccinationRef(vaccinationId: BigInteger): VaccinationRecordRef? = withContext(Dispatchers.IO) {
         try {
+            val fromAddress = WalletManager.getAddress()
+            
             val function = org.web3j.abi.datatypes.Function(
                 "getVaccinationRef",
                 listOf(Uint256(vaccinationId)),
@@ -878,7 +882,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    fromAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1011,7 +1015,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    userAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1051,6 +1055,8 @@ object BlockchainService {
      */
     suspend fun getReportRef(reportId: BigInteger): MedicalReportRef? = withContext(Dispatchers.IO) {
         try {
+            val fromAddress = WalletManager.getAddress()
+            
             val function = org.web3j.abi.datatypes.Function(
                 "getReportRef",
                 listOf(Uint256(reportId)),
@@ -1069,7 +1075,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    fromAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1194,6 +1200,11 @@ object BlockchainService {
      */
     suspend fun getShareIds(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "=== getShareIds called ===")
+            Log.d(TAG, "User Address: $userAddress")
+            Log.d(TAG, "Contract Address: $CONTRACT_ADDRESS")
+            Log.d(TAG, "RPC URL: $RPC_URL")
+            
             val function = org.web3j.abi.datatypes.Function(
                 "getShareIds",
                 listOf(Address(userAddress)),
@@ -1201,10 +1212,13 @@ object BlockchainService {
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
+            Log.d(TAG, "Encoded function data: $encodedFunction")
             
+            // IMPORTANT: Set 'from' address to match the user being queried
+            // This allows the contract's "msg.sender == _user" check to pass
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    userAddress,  // Set from address to user's address
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1212,12 +1226,17 @@ object BlockchainService {
             ).send()
             
             if (response.hasError()) {
-                Log.e(TAG, "Error getting share IDs: ${response.error.message}")
+                Log.e(TAG, "❌ RPC Error getting share IDs: ${response.error.message}")
+                Log.e(TAG, "Error code: ${response.error.code}")
+                Log.e(TAG, "Error data: ${response.error.data}")
                 return@withContext emptyList()
             }
             
             val result = response.value
+            Log.d(TAG, "Raw response value: $result")
+            
             if (result.isNullOrEmpty() || result == "0x") {
+                Log.w(TAG, "⚠️ Empty response from blockchain - no shares found")
                 return@withContext emptyList()
             }
             
@@ -1226,39 +1245,176 @@ object BlockchainService {
                 function.outputParameters
             )
             
+            Log.d(TAG, "Decoded result size: ${decodedResult.size}")
+            
             if (decodedResult.isEmpty()) {
+                Log.w(TAG, "⚠️ Decoded result is empty")
                 return@withContext emptyList()
             }
             
             @Suppress("UNCHECKED_CAST")
             val ids = (decodedResult[0] as DynamicArray<Uint256>).value
-            ids.map { it.value }
+            val shareIds = ids.map { it.value }
+            
+            Log.d(TAG, "✅ Successfully retrieved ${shareIds.size} share IDs: $shareIds")
+            shareIds
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting share IDs", e)
+            Log.e(TAG, "❌ Exception getting share IDs for $userAddress", e)
+            Log.e(TAG, "Exception type: ${e.javaClass.name}")
+            Log.e(TAG, "Exception message: ${e.message}")
+            e.printStackTrace()
             emptyList()
         }
     }
     
     /**
      * Get share record details (read-only)
+     * @param shareId The share ID to retrieve
+     * @param callerAddress Optional: Address of the caller (for auth check). If null, uses connected wallet.
      */
-    suspend fun getShareRecord(shareId: BigInteger): ShareRecord? = withContext(Dispatchers.IO) {
+    suspend fun getShareRecord(shareId: BigInteger, callerAddress: String? = null): ShareRecord? = withContext(Dispatchers.IO) {
         try {
+            // Use provided address or get from wallet
+            val fromAddress = callerAddress ?: WalletManager.getAddress()
+            
+            Log.d(TAG, "Getting share record $shareId (caller: $fromAddress)")
+            
+            // Minimal function definition for encoding the call
             val function = org.web3j.abi.datatypes.Function(
                 "getShareRecord",
                 listOf(Uint256(shareId)),
+                emptyList()  // We'll manually parse the response
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            // IMPORTANT: Set 'from' address so contract auth check passes
+            // Contract requires: msg.sender == owner || msg.sender == recipient
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    fromAddress,  // Set caller address for auth
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting share record: ${response.error.message}")
+                return@withContext null
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                Log.w(TAG, "Empty response for share record $shareId")
+                return@withContext null
+            }
+            
+            Log.d(TAG, "Raw hex response: $result")
+            Log.d(TAG, "Response length: ${result.length}")
+            
+            // Manual parsing - ShareRecord struct has dynamic strings which Web3j struggles with
+            val cleanHex = result.substring(2) // Remove 0x
+            Log.d(TAG, "Clean hex length: ${cleanHex.length}")
+            
+            // When Solidity returns a struct, it starts with an offset to the actual tuple data
+            // Format: 0-64: offset to tuple (usually 0x20 = 32 bytes)
+            // Then the actual struct fields start at that offset
+            
+            val tupleOffset = BigInteger(cleanHex.substring(0, 64), 16).toInt() * 2
+            Log.d(TAG, "Tuple offset: $tupleOffset")
+            
+            // Struct fields (starting from tupleOffset):
+            // 0-64: id (uint256)
+            // 64-128: recipientAddress (address)
+            // 128-192: recipientNameHash (bytes32)
+            // 192-256: offset to string 1 (encryptedRecipientDataIpfsHash) - relative to tuple start
+            // 256-320: recipientType (uint8)
+            // 320-384: sharedDataCategory (uint8)
+            // 384-448: shareDate (uint256)
+            // 448-512: expiryDate (uint256)
+            // 512-576: accessLevel (uint8)
+            // 576-640: status (uint8)
+            // 640-704: offset to string 2 (encryptedCategoryKey) - relative to tuple start
+            
+            val base = tupleOffset
+            val id = BigInteger(cleanHex.substring(base, base + 64), 16)
+            val recipientAddress = "0x" + cleanHex.substring(base + 64 + 24, base + 128) // Address is last 20 bytes
+            val recipientNameHash = "0x" + cleanHex.substring(base + 128, base + 192)
+            val recipientType = cleanHex.substring(base + 256, base + 320).takeLast(2).toInt(16)
+            val sharedDataCategory = cleanHex.substring(base + 320, base + 384).takeLast(2).toInt(16)
+            val shareDate = BigInteger(cleanHex.substring(base + 384, base + 448), 16)
+            val expiryDate = BigInteger(cleanHex.substring(base + 448, base + 512), 16)
+            val accessLevel = cleanHex.substring(base + 512, base + 576).takeLast(2).toInt(16)
+            val status = cleanHex.substring(base + 576, base + 640).takeLast(2).toInt(16)
+            
+            // Parse first string - offset is relative to tuple start
+            val string1RelativeOffset = BigInteger(cleanHex.substring(base + 192, base + 256), 16).toInt() * 2
+            val string1AbsoluteOffset = base + string1RelativeOffset
+            Log.d(TAG, "String1 relative offset: $string1RelativeOffset, absolute: $string1AbsoluteOffset")
+            
+            val string1LengthHex = cleanHex.substring(string1AbsoluteOffset, string1AbsoluteOffset + 64)
+            val string1Length = BigInteger(string1LengthHex, 16).toInt() * 2
+            Log.d(TAG, "String1 length: $string1Length chars")
+            
+            val string1Data = cleanHex.substring(string1AbsoluteOffset + 64, string1AbsoluteOffset + 64 + string1Length)
+            val encryptedRecipientDataIpfsHash = string1Data.chunked(2)
+                .map { it.toInt(16).toChar() }
+                .joinToString("")
+            
+            // Parse second string - offset is relative to tuple start
+            val string2RelativeOffset = BigInteger(cleanHex.substring(base + 640, base + 704), 16).toInt() * 2
+            val string2AbsoluteOffset = base + string2RelativeOffset
+            Log.d(TAG, "String2 relative offset: $string2RelativeOffset, absolute: $string2AbsoluteOffset")
+            
+            val string2LengthHex = cleanHex.substring(string2AbsoluteOffset, string2AbsoluteOffset + 64)
+            val string2Length = BigInteger(string2LengthHex, 16).toInt() * 2
+            Log.d(TAG, "String2 length: $string2Length chars")
+            
+            val string2Data = cleanHex.substring(string2AbsoluteOffset + 64, string2AbsoluteOffset + 64 + string2Length)
+            val encryptedCategoryKey = string2Data.chunked(2)
+                .map { it.toInt(16).toChar() }
+                .joinToString("")
+            
+            val shareRecord = ShareRecord(
+                id = id,
+                recipientAddress = recipientAddress,
+                recipientNameHash = recipientNameHash,
+                encryptedRecipientDataIpfsHash = encryptedRecipientDataIpfsHash,
+                recipientType = RecipientType.values().getOrNull(recipientType) ?: RecipientType.OTHER,
+                sharedDataCategory = DataCategory.values().getOrNull(sharedDataCategory) ?: DataCategory.ALL_DATA,
+                shareDate = shareDate,
+                expiryDate = expiryDate,
+                accessLevel = AccessLevel.values().getOrNull(accessLevel) ?: AccessLevel.VIEW_ONLY,
+                status = ShareStatus.values().getOrNull(status) ?: ShareStatus.EXPIRED,
+                encryptedCategoryKey = encryptedCategoryKey
+            )
+            
+            Log.d(TAG, "✅ Successfully retrieved share record $shareId")
+            shareRecord
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting share record $shareId", e)
+            null
+        }
+    }
+    
+    /**
+     * Get total number of shares in the contract
+     */
+    suspend fun getTotalShareCount(): BigInteger = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Getting total share count from contract...")
+            
+            val function = org.web3j.abi.datatypes.Function(
+                "getTotalCounts",
+                emptyList(),
                 listOf(
-                    object : TypeReference<Uint256>() {},  // id
-                    object : TypeReference<Address>() {},  // recipientAddress
-                    object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {},  // recipientNameHash
-                    object : TypeReference<Utf8String>() {},  // encryptedRecipientDataIpfsHash
-                    object : TypeReference<Uint8>() {},  // recipientType
-                    object : TypeReference<Uint8>() {},  // sharedDataCategory
-                    object : TypeReference<Uint256>() {},  // shareDate
-                    object : TypeReference<Uint256>() {},  // expiryDate
-                    object : TypeReference<Uint8>() {},  // accessLevel
-                    object : TypeReference<Uint8>() {},  // status
-                    object : TypeReference<Utf8String>() {}  // encryptedCategoryKey
+                    object : TypeReference<Uint256>() {}, // medications
+                    object : TypeReference<Uint256>() {}, // vaccinations
+                    object : TypeReference<Uint256>() {}, // reports
+                    object : TypeReference<Uint256>() {}, // shares
+                    object : TypeReference<Uint256>() {}  // accessLogs
                 )
             )
             
@@ -1274,13 +1430,13 @@ object BlockchainService {
             ).send()
             
             if (response.hasError()) {
-                Log.e(TAG, "Error getting share record: ${response.error.message}")
-                return@withContext null
+                Log.e(TAG, "Error getting total counts: ${response.error.message}")
+                return@withContext BigInteger.ZERO
             }
             
             val result = response.value
             if (result.isNullOrEmpty() || result == "0x") {
-                return@withContext null
+                return@withContext BigInteger.ZERO
             }
             
             val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
@@ -1288,31 +1444,18 @@ object BlockchainService {
                 function.outputParameters
             )
             
-            if (decodedResult.size < 11) {
-                return@withContext null
+            if (decodedResult.size < 4) {
+                return@withContext BigInteger.ZERO
             }
             
-            val recipientTypeValue = (decodedResult[4] as Uint8).value.toInt()
-            val dataCategoryValue = (decodedResult[5] as Uint8).value.toInt()
-            val accessLevelValue = (decodedResult[8] as Uint8).value.toInt()
-            val statusValue = (decodedResult[9] as Uint8).value.toInt()
+            // Return share count (4th value, index 3)
+            val shareCount = (decodedResult[3] as Uint256).value
+            Log.d(TAG, "Total share count: $shareCount")
+            shareCount
             
-            ShareRecord(
-                id = (decodedResult[0] as Uint256).value,
-                recipientAddress = (decodedResult[1] as Address).value,
-                recipientNameHash = Numeric.toHexString((decodedResult[2] as org.web3j.abi.datatypes.generated.Bytes32).value),
-                encryptedRecipientDataIpfsHash = (decodedResult[3] as Utf8String).value,
-                recipientType = RecipientType.values().getOrNull(recipientTypeValue) ?: RecipientType.OTHER,
-                sharedDataCategory = DataCategory.values().getOrNull(dataCategoryValue) ?: DataCategory.ALL_DATA,
-                shareDate = (decodedResult[6] as Uint256).value,
-                expiryDate = (decodedResult[7] as Uint256).value,
-                accessLevel = AccessLevel.values().getOrNull(accessLevelValue) ?: AccessLevel.VIEW_ONLY,
-                status = ShareStatus.values().getOrNull(statusValue) ?: ShareStatus.EXPIRED,
-                encryptedCategoryKey = (decodedResult[10] as Utf8String).value
-            )
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting share record", e)
-            null
+            Log.e(TAG, "Error getting total share count", e)
+            BigInteger.ZERO
         }
     }
     
@@ -1379,7 +1522,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    userAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1419,6 +1562,8 @@ object BlockchainService {
      */
     suspend fun getAccessLog(logId: BigInteger): AccessLog? = withContext(Dispatchers.IO) {
         try {
+            val fromAddress = WalletManager.getAddress()
+            
             val function = org.web3j.abi.datatypes.Function(
                 "getAccessLog",
                 listOf(Uint256(logId)),
@@ -1436,7 +1581,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    fromAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1520,7 +1665,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    userAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1574,7 +1719,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    userAddress,  // Set from address for auth
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1642,7 +1787,7 @@ object BlockchainService {
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
+                    WalletManager.getAddress(),  // Set from address
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1855,4 +2000,108 @@ object BlockchainService {
      * Check if user has a connected wallet.
      */
     fun isWalletConnected(): Boolean = WalletManager.getAddress() != null
+    
+    /**
+     * Get the contract address for debugging
+     */
+    fun getContractAddress(): String = CONTRACT_ADDRESS
+    
+    /**
+     * Get the current RPC URL for debugging
+     */
+    fun getRpcUrl(): String = RPC_URL
+    
+    // ============================================
+    // TEST & VERIFICATION HELPERS
+    // ============================================
+    
+    /**
+     * Verify that a share was created successfully
+     * Returns detailed information about the share for testing
+     */
+    suspend fun verifyShareCreation(
+        expectedRecipient: String,
+        expectedCategory: DataCategory
+    ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        try {
+            val userAddress = WalletManager.getAddress()
+                ?: return@withContext Pair(false, "No wallet connected")
+            
+            Log.d(TAG, "Verifying share for user: $userAddress")
+            
+            // Get all share IDs
+            val shareIds = getShareIds(userAddress)
+            
+            if (shareIds.isEmpty()) {
+                return@withContext Pair(false, "No shares found on blockchain")
+            }
+            
+            // Check the most recent share
+            val latestShareId = shareIds.last()
+            val share = getShareRecord(latestShareId)
+                ?: return@withContext Pair(false, "Could not retrieve share record #$latestShareId")
+            
+            // Verify details
+            val recipientMatches = share.recipientAddress.equals(expectedRecipient, ignoreCase = true)
+            val categoryMatches = share.sharedDataCategory == expectedCategory
+            
+            val result = StringBuilder()
+            result.append("✓ Share Found on Blockchain!\n\n")
+            result.append("Share ID: $latestShareId\n")
+            result.append("Total Shares: ${shareIds.size}\n\n")
+            result.append("Share Details:\n")
+            result.append("• Recipient: ${share.recipientAddress}\n")
+            result.append("  ${if (recipientMatches) "✓" else "✗"} Expected: $expectedRecipient\n\n")
+            result.append("• Category: ${share.sharedDataCategory.name}\n")
+            result.append("  ${if (categoryMatches) "✓" else "✗"} Expected: ${expectedCategory.name}\n\n")
+            result.append("• Status: ${share.status.name}\n")
+            result.append("• Access Level: ${share.accessLevel.name}\n")
+            result.append("• Share Date: ${share.shareDate}\n")
+            result.append("• Expiry Date: ${share.expiryDate}\n")
+            
+            val success = recipientMatches && categoryMatches
+            Pair(success, result.toString())
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error verifying share", e)
+            Pair(false, "Verification error: ${e.message}")
+        }
+    }
+    
+    /**
+     * Get a summary of all shares for testing/debugging
+     */
+    suspend fun getSharesSummary(userAddress: String? = null): String = withContext(Dispatchers.IO) {
+        try {
+            val address = userAddress ?: WalletManager.getAddress()
+                ?: return@withContext "No wallet connected"
+            
+            val shareIds = getShareIds(address)
+            
+            if (shareIds.isEmpty()) {
+                return@withContext "No shares found for address: ${address.take(10)}..."
+            }
+            
+            val summary = StringBuilder()
+            summary.append("=== SHARE SUMMARY ===\n")
+            summary.append("User: ${address.take(10)}...\n")
+            summary.append("Total Shares: ${shareIds.size}\n\n")
+            
+            shareIds.forEachIndexed { index, shareId ->
+                val share = getShareRecord(shareId)
+                if (share != null) {
+                    summary.append("${index + 1}. Share ID: $shareId\n")
+                    summary.append("   Recipient: ${share.recipientAddress.take(10)}...\n")
+                    summary.append("   Category: ${share.sharedDataCategory.name}\n")
+                    summary.append("   Status: ${share.status.name}\n")
+                    summary.append("   Expires: ${share.expiryDate}\n\n")
+                }
+            }
+            
+            summary.toString()
+            
+        } catch (e: Exception) {
+            "Error getting summary: ${e.message}"
+        }
+    }
 }
