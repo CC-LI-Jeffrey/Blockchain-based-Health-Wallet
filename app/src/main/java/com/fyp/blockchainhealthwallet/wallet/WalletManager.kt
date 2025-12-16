@@ -3,6 +3,7 @@ package com.fyp.blockchainhealthwallet.wallet
 import android.util.Log
 import com.reown.appkit.client.AppKit
 import com.reown.appkit.client.Modal
+import com.reown.android.CoreClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,11 +38,9 @@ object WalletManager : AppKit.ModalDelegate {
     fun initialize() {
         Log.d(TAG, "WalletManager initializing - setting delegate")
         AppKit.setDelegate(this)
-        Log.d(TAG, "Delegate set. Waiting for AppKit to notify us of existing sessions...")
+        Log.d(TAG, "Delegate set. Checking for existing session...")
         
-        // Try to get existing session info from AppKit
-        // Note: AppKit manages sessions internally and will trigger delegate callbacks
-        // when a session exists. We can also try to query directly.
+        // Check for existing session from AppKit's storage
         checkExistingSession()
     }
     
@@ -49,13 +48,40 @@ object WalletManager : AppKit.ModalDelegate {
         try {
             Log.d(TAG, "Attempting to detect existing sessions...")
             
-            // Don't check for existing session on app startup
-            // Let the onConnectionStateChange callback handle it
-            // This prevents showing stale cached data as "connected"
-            Log.d(TAG, "Waiting for AppKit to notify via onConnectionStateChange callback...")
+            // CRITICAL FIX: Validate session on app startup
+            // AppKit may have cached session data that is no longer valid
+            val account = try {
+                AppKit.getAccount()
+            } catch (e: Exception) {
+                Log.w(TAG, "Cannot get account: ${e.message}")
+                null
+            }
             
-            // Start in disconnected state - will be updated by callback if session exists
-            _connectionState.value = WalletConnectionState.Disconnected
+            if (account != null) {
+                // Session appears to exist - verify it's actually valid
+                Log.d(TAG, "Found cached account: ${account.address}")
+                
+                try {
+                    val selectedChain = AppKit.getSelectedChain()
+                    // Default to Sepolia testnet (11155111) instead of mainnet
+                    val chainId = selectedChain?.chainReference ?: "11155111"
+                    
+                    _walletAddress.value = account.address
+                    _chainId.value = chainId
+                    _connectionState.value = WalletConnectionState.Connected(account.address, chainId)
+                    
+                    Log.d(TAG, "✅ Session restored successfully")
+                    Log.d(TAG, "   Address: ${account.address}")
+                    Log.d(TAG, "   Chain: $chainId")
+                } catch (e: Exception) {
+                    Log.w(TAG, "⚠️ Session appears stale, clearing: ${e.message}")
+                    clearAndDisconnectStaleSession()
+                }
+            } else {
+                // No account = no valid session
+                Log.d(TAG, "No existing session found")
+                _connectionState.value = WalletConnectionState.Disconnected
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error in checkExistingSession: ${e.message}", e)
             _connectionState.value = WalletConnectionState.Disconnected
@@ -82,7 +108,8 @@ object WalletManager : AppKit.ModalDelegate {
                 val address = matchResult.value
                 // Try to get actual chain ID
                 val selectedChain = try { AppKit.getSelectedChain() } catch (e: Exception) { null }
-                val chainId = selectedChain?.chainReference ?: "1"
+                // Default to Sepolia testnet (11155111) instead of mainnet
+                val chainId = selectedChain?.chainReference ?: "11155111"
                 
                 _walletAddress.value = address
                 _chainId.value = chainId
@@ -90,37 +117,113 @@ object WalletManager : AppKit.ModalDelegate {
                 Log.d(TAG, "Extracted address: $address")
                 Log.d(TAG, "Chain ID: $chainId")
             } else {
-                // Fallback: just show as connected
-                _connectionState.value = WalletConnectionState.Connected("Unknown", "1")
+                // Fallback: just show as connected with Sepolia
+                _connectionState.value = WalletConnectionState.Connected("Unknown", "11155111")
                 Log.w(TAG, "Could not extract address from session")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error extracting session info: ${e.message}")
-            _connectionState.value = WalletConnectionState.Connected("Error", "1")
+            _connectionState.value = WalletConnectionState.Connected("Error", "11155111")
         }
     }
     
     fun disconnectWallet() {
         try {
-            val session = _currentSession.value
-            if (session != null) {
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "🔌 DISCONNECTING WALLET")
+            Log.d(TAG, "========================================")
+            
+            // CRITICAL: Clear session data FIRST to update UI immediately
+            // This prevents race conditions where UI shows disconnected but session persists
+            clearSessionData()
+            
+            // Then disconnect from AppKit and all pairings
+            try {
                 AppKit.disconnect(
                     onSuccess = {
-                        Log.d(TAG, "Successfully disconnected")
-                        clearSessionData()
+                        Log.d(TAG, "✅ AppKit.disconnect() successful")
+                        disconnectAllPairings()
+                        Log.d(TAG, "Session fully disconnected")
                     },
                     onError = { error ->
-                        Log.e(TAG, "Error disconnecting: ${error.message}")
-                        clearSessionData()
+                        Log.e(TAG, "❌ Error disconnecting: ${error.message}")
+                        // Still try to clear pairings
+                        disconnectAllPairings()
                     }
                 )
-            } else {
-                clearSessionData()
+            } catch (e: Exception) {
+                Log.w(TAG, "Exception calling AppKit.disconnect(): ${e.message}")
+                // Still try to disconnect pairings
+                disconnectAllPairings()
             }
+            
         } catch (e: Exception) {
             Log.e(TAG, "Error during disconnect", e)
+            
+            // Force cleanup even on error
             clearSessionData()
+            disconnectAllPairings()
         }
+    }
+    
+    /**
+     * CRITICAL: Disconnect all pairings to fully terminate WalletConnect sessions
+     * This ensures MetaMask also sees the disconnection
+     */
+    private fun disconnectAllPairings() {
+        try {
+            Log.d(TAG, "🧹 Cleaning up all pairings...")
+            
+            // Access the Core API to get and disconnect all pairings
+            val pairings = CoreClient.Pairing.getPairings()
+            
+            Log.d(TAG, "Found ${pairings.size} pairing(s) to disconnect")
+            
+            pairings.forEach { pairing ->
+                try {
+                    Log.d(TAG, "  Disconnecting pairing: ${pairing.topic.take(10)}...")
+                    CoreClient.Pairing.disconnect(pairing.topic) { error ->
+                        if (error != null) {
+                            Log.w(TAG, "    ⚠️ Error disconnecting pairing: ${error.throwable.message}")
+                        } else {
+                            Log.d(TAG, "    ✅ Pairing disconnected")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "    ⚠️ Exception disconnecting pairing: ${e.message}")
+                }
+            }
+            
+            Log.d(TAG, "✅ Pairing cleanup complete")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error accessing pairings: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Clear stale session that appears connected but isn't valid
+     */
+    private fun clearAndDisconnectStaleSession() {
+        Log.w(TAG, "🧹 Clearing stale session...")
+        
+        try {
+            // Force disconnect
+            AppKit.disconnect(
+                onSuccess = {
+                    Log.d(TAG, "Stale session disconnected")
+                    disconnectAllPairings()
+                },
+                onError = { 
+                    Log.w(TAG, "Error disconnecting stale session: ${it.message}")
+                    disconnectAllPairings()
+                }
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Exception clearing stale session: ${e.message}")
+            disconnectAllPairings()
+        }
+        
+        clearSessionData()
     }
     
     private fun clearSessionData() {
@@ -151,36 +254,13 @@ object WalletManager : AppKit.ModalDelegate {
     }
     
     override fun onSessionDelete(deletedSession: Modal.Model.DeletedSession) {
-        Log.d(TAG, "Session deleted")
+        Log.d(TAG, "Session deleted: $deletedSession")
         clearSessionData()
     }
     
     override fun onSessionRequestResponse(response: Modal.Model.SessionRequestResponse) {
-        Log.d(TAG, "Session request response received: $response")
-        
-        // Extract the transaction hash from the response
-        // Response structure: SessionRequestResponse contains the result
-        Log.d(TAG, "Response type: ${response::class.java.simpleName}")
-        Log.d(TAG, "Full response: $response")
-        
-        // TODO: Extract transaction hash and resume the continuation
-        // This requires understanding the SessionRequestResponse structure
-    }
-    
-    override fun onSessionAuthenticateResponse(response: Modal.Model.SessionAuthenticateResponse) {
-        Log.d(TAG, "Authentication response received")
-        when (response) {
-            is Modal.Model.SessionAuthenticateResponse.Result -> {
-                // Log the session info
-                Log.d(TAG, "Session authenticated: ${response.session}")
-                // Note: response.session is Modal.Model.Session, not ApprovedSession
-                _connectionState.value = WalletConnectionState.Connected("Unknown", "Unknown")
-            }
-            is Modal.Model.SessionAuthenticateResponse.Error -> {
-                Log.e(TAG, "Authentication error: $response")
-                _connectionState.value = WalletConnectionState.Error("Authentication failed")
-            }
-        }
+        Log.d(TAG, "Session request response: $response")
+        // Handle transaction responses or other session requests
     }
     
     override fun onSIWEAuthenticationResponse(response: Modal.Model.SIWEAuthenticateResponse) {
@@ -247,7 +327,8 @@ object WalletManager : AppKit.ModalDelegate {
                 
                 val selectedChain = AppKit.getSelectedChain()
                 val address = account.address
-                val chainId = selectedChain?.chainReference ?: "1"
+                // Default to Sepolia testnet (11155111) instead of mainnet
+                val chainId = selectedChain?.chainReference ?: "11155111"
                 
                 _walletAddress.value = address
                 _chainId.value = chainId
