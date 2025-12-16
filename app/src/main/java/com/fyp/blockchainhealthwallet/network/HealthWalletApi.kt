@@ -25,6 +25,16 @@ interface HealthWalletApi {
     ): Response<IPFSUploadResponse>
     
     /**
+     * Get file from IPFS via backend gateway.
+     * @param ipfsHash The IPFS hash to retrieve
+     * @return Raw file content
+     */
+    @GET("/api/ipfs/file/{ipfsHash}")
+    suspend fun getFromIPFS(
+        @Path("ipfsHash") ipfsHash: String
+    ): Response<okhttp3.ResponseBody>
+    
+    /**
      * Get total number of records (view function).
      */
     @GET("/api/records/total")
@@ -96,7 +106,11 @@ interface HealthWalletApi {
 
 data class IPFSUploadResponse(
     val success: Boolean,
+    val message: String?,
     val ipfsHash: String?,
+    val fileUrl: String?,
+    val pinSize: String?,
+    val timestamp: String?,
     val error: String?
 )
 

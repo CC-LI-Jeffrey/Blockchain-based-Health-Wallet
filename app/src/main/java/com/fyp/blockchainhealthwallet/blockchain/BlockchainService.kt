@@ -44,15 +44,33 @@ object BlockchainService {
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
     // HealthWallet V1 address = 0xed41D59378f36b04567DAB79077d8057eA3E70D6
-    // HealthWallet 2 address = 0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B
+    // HealthWallet V2 address = 0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B
     private const val CONTRACT_ADDRESS = "0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B"
     
-    // Sepolia RPC endpoint - public and free
-    private const val RPC_URL = "https://rpc.sepolia.org"
+    // Sepolia RPC endpoints - using multiple public endpoints for reliability
+    private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
+    private const val RPC_URL_FALLBACK = "https://rpc.sepolia.org"
+    private const val RPC_URL_FALLBACK2 = "https://rpc2.sepolia.org"
     
-    // Initialize Web3j for read operations
+    // Create OkHttpClient with timeout settings
+    private val okHttpClient = okhttp3.OkHttpClient.Builder()
+        .connectTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+    
+    // Initialize Web3j for read operations with primary endpoint
     private val web3j: Web3j by lazy {
-        Web3j.build(HttpService(RPC_URL))
+        Web3j.build(HttpService(RPC_URL, okHttpClient))
+    }
+    
+    // Fallback Web3j instances
+    private val web3jFallback: Web3j by lazy {
+        Web3j.build(HttpService(RPC_URL_FALLBACK, okHttpClient))
+    }
+    
+    private val web3jFallback2: Web3j by lazy {
+        Web3j.build(HttpService(RPC_URL_FALLBACK2, okHttpClient))
     }
     
     // ============================================
@@ -195,6 +213,57 @@ object BlockchainService {
         val dataIntegrityHash: String  // bytes32 as hex string
     )
     
+    /**
+     * Helper function to execute eth_call with automatic fallback to alternative RPCs
+     */
+    private suspend fun executeEthCallWithFallback(
+        encodedFunction: String,
+        contractAddress: String,
+        fromAddress: String? = null  // Optional: set msg.sender for the call
+    ): org.web3j.protocol.core.methods.response.EthCall = withContext(Dispatchers.IO) {
+        val endpoints = listOf(
+            Triple(web3j, RPC_URL, "Primary"),
+            Triple(web3jFallback, RPC_URL_FALLBACK, "Fallback 1"),
+            Triple(web3jFallback2, RPC_URL_FALLBACK2, "Fallback 2")
+        )
+        
+        var lastException: Exception? = null
+        
+        for ((client, url, name) in endpoints) {
+            try {
+                Log.d(TAG, "Trying $name RPC: $url")
+                if (fromAddress != null) {
+                    Log.d(TAG, "Using from address (msg.sender): $fromAddress")
+                } else {
+                    Log.d(TAG, "Using from address (msg.sender): 0x0000000000000000000000000000000000000000")
+                }
+                val startTime = System.currentTimeMillis()
+                
+                val response = client.ethCall(
+                    org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                        fromAddress,  // This sets msg.sender in the contract
+                        contractAddress,
+                        encodedFunction
+                    ),
+                    org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+                ).send()
+                
+                val elapsed = System.currentTimeMillis() - startTime
+                Log.d(TAG, "✅ $name RPC responded in ${elapsed}ms")
+                
+                return@withContext response
+            } catch (e: Exception) {
+                val errorMsg = e.message ?: "Unknown error"
+                Log.w(TAG, "❌ $name RPC failed: $errorMsg")
+                lastException = e
+                // Continue to next endpoint
+            }
+        }
+        
+        // All endpoints failed
+        throw lastException ?: Exception("All RPC endpoints failed")
+    }
+    
     // ============================================
     // PERSONAL INFO FUNCTIONS - HealthWalletV2
     // ============================================
@@ -244,6 +313,13 @@ object BlockchainService {
      */
     suspend fun getPersonalInfoRef(userAddress: String): PersonalInfoRef? = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "BLOCKCHAIN: getPersonalInfoRef")
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "Contract: $CONTRACT_ADDRESS")
+            Log.d(TAG, "User: $userAddress")
+            Log.d(TAG, "RPC: $RPC_URL")
+            
             val function = org.web3j.abi.datatypes.Function(
                 "getPersonalInfoRef",
                 listOf(Address(userAddress)),
@@ -257,45 +333,111 @@ object BlockchainService {
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
+            Log.d(TAG, "Encoded function: $encodedFunction")
             
-            val response = web3j.ethCall(
-                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
-                    CONTRACT_ADDRESS,
-                    encodedFunction
-                ),
-                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
-            ).send()
+            Log.d(TAG, "Calling blockchain with automatic fallback...")
+            Log.d(TAG, "Using msg.sender = $userAddress (to pass access control)")
+            
+            val response = executeEthCallWithFallback(
+                encodedFunction = encodedFunction,
+                contractAddress = CONTRACT_ADDRESS,
+                fromAddress = userAddress  // Set msg.sender to user's address
+            )
             
             if (response.hasError()) {
-                Log.e(TAG, "Error getting personal info: ${response.error.message}")
+                Log.e(TAG, "❌ RPC Error: ${response.error.message}")
+                Log.e(TAG, "Error code: ${response.error.code}")
+                Log.e(TAG, "Error data: ${response.error.data}")
                 return@withContext null
             }
             
             val result = response.value
+            Log.d(TAG, "RPC Response value: $result")
+            Log.d(TAG, "Response is null or empty: ${result.isNullOrEmpty()}")
+            
             if (result.isNullOrEmpty() || result == "0x") {
+                Log.w(TAG, "⚠️ Empty response from blockchain")
                 return@withContext null
             }
             
+            Log.d(TAG, "Decoding response (manual parsing due to tuple wrapper)...")
+            
+            // Manually decode the tuple fields from the hex response
+            // Response format: 
+            // 0-64: offset to tuple (32 bytes)
+            // 64-128: offset to string (32 bytes)
+            // 128-192: bytes32 publicKeyHash (32 bytes)
+            // 192-256: uint256 createdAt (32 bytes)
+            // 256-320: uint256 lastUpdated (32 bytes)
+            // 320-384: bool exists (32 bytes) <-- HERE!
+            // 384+: string length + data
+            
+            val cleanHex = result.substring(2) // Remove 0x prefix
+            
+            // Parse exists flag at position 320-384
+            val existsHex = cleanHex.substring(320, 384)
+            val exists = existsHex.trim('0') == "1"
+            
+            Log.d(TAG, "exists hex: $existsHex")
+            Log.d(TAG, "exists flag: $exists")
+            
+            Log.d(TAG, "exists flag: $exists")
+            
+            if (!exists) {
+                Log.w(TAG, "⚠️ exists=false, no data stored")
+                return@withContext null
+            }
+            
+            // Manually parse the IPFS hash string from hex
+            // String starts at position 384 (after the 5 fixed fields)
+            // 384-448: string length (32 bytes)
+            // 448+: string content in hex
+            
+            val stringLengthHex = cleanHex.substring(384, 448)
+            val stringLength = stringLengthHex.toLong(16).toInt() * 2 // Convert to hex char count
+            val stringDataStart = 448
+            val stringDataEnd = stringDataStart + stringLength
+            
+            if (stringDataEnd > cleanHex.length) {
+                Log.e(TAG, "❌ String data out of bounds")
+                return@withContext null
+            }
+            
+            val stringHex = cleanHex.substring(stringDataStart, stringDataEnd)
+            val ipfsHash = stringHex.chunked(2)
+                .map { it.toInt(16).toChar() }
+                .joinToString("")
+            
+            Log.d(TAG, "Parsed IPFS hash: $ipfsHash")
+            
+            // Now decode using Web3j for the numeric fields only
             val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
                 result,
                 function.outputParameters
             )
             
             if (decodedResult.size < 5) {
+                Log.e(TAG, "❌ Invalid decoded result size: ${decodedResult.size}")
                 return@withContext null
             }
             
-            val exists = (decodedResult[4] as Bool).value
-            if (!exists) {
-                return@withContext null
-            }
+            // Extract numeric fields (skip string at index 0)
+            val publicKeyHash = Numeric.toHexString((decodedResult[1] as org.web3j.abi.datatypes.generated.Bytes32).value)
+            val createdAt = (decodedResult[2] as Uint256).value
+            val lastUpdated = (decodedResult[3] as Uint256).value
+            
+            Log.d(TAG, "✅ Successfully decoded PersonalInfoRef:")
+            Log.d(TAG, "  - IPFS Hash: $ipfsHash")
+            Log.d(TAG, "  - Public Key Hash: $publicKeyHash")
+            Log.d(TAG, "  - Created At: $createdAt")
+            Log.d(TAG, "  - Last Updated: $lastUpdated")
+            Log.d(TAG, "========================================")
             
             PersonalInfoRef(
-                encryptedDataIpfsHash = (decodedResult[0] as Utf8String).value,
-                publicKeyHash = Numeric.toHexString((decodedResult[1] as org.web3j.abi.datatypes.generated.Bytes32).value),
-                createdAt = (decodedResult[2] as Uint256).value,
-                lastUpdated = (decodedResult[3] as Uint256).value,
+                encryptedDataIpfsHash = ipfsHash,
+                publicKeyHash = publicKeyHash,
+                createdAt = createdAt,
+                lastUpdated = lastUpdated,
                 exists = exists
             )
         } catch (e: Exception) {
