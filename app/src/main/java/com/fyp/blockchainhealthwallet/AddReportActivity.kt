@@ -50,7 +50,8 @@ class AddReportActivity : AppCompatActivity() {
     private var selectedDate: Calendar = Calendar.getInstance()
     private var attachedFilePath: String? = null
     private var selectedFileUri: Uri? = null
-    private var uploadedIpfsHash: String? = null
+    private var uploadedFileIpfsHash: String? = null  // For the actual file (PDF, image, etc.)
+    private var uploadedMetadataIpfsHash: String? = null  // For report metadata (title, description, etc.)
     private var encryptedKeyForBlockchain: String? = null
     private var progressDialog: ProgressDialog? = null
     
@@ -248,7 +249,7 @@ class AddReportActivity : AppCompatActivity() {
             dismissProgressDialog()
             
             if (response.isSuccessful && response.body()?.success == true) {
-                uploadedIpfsHash = response.body()!!.ipfsHash
+                uploadedFileIpfsHash = response.body()!!.ipfsHash
                 
                 Toast.makeText(
                     this,
@@ -266,7 +267,7 @@ class AddReportActivity : AppCompatActivity() {
                 // Clear file selection
                 selectedFileUri = null
                 tvAttachedFile.visibility = View.GONE
-                uploadedIpfsHash = null
+                uploadedFileIpfsHash = null
                 encryptedKeyForBlockchain = null
             }
         } catch (e: Exception) {
@@ -281,7 +282,7 @@ class AddReportActivity : AppCompatActivity() {
             // Clear file selection
             selectedFileUri = null
             tvAttachedFile.visibility = View.GONE
-            uploadedIpfsHash = null
+            uploadedFileIpfsHash = null
             encryptedKeyForBlockchain = null
         }
     }
@@ -382,11 +383,9 @@ class AddReportActivity : AppCompatActivity() {
             return
         }
         
-        // Check if file is uploaded to IPFS
-        if (uploadedIpfsHash == null || encryptedKeyForBlockchain == null) {
-            Toast.makeText(this, "Please attach and upload a file first", Toast.LENGTH_SHORT).show()
-            return
-        }
+        // Note: File attachment is now optional for reports
+        // Metadata will be uploaded separately during saveToBlockchain()
+        // This check is removed to allow reports without file attachments
 
         // Save to blockchain
         saveToBlockchain(typeString)
@@ -397,25 +396,87 @@ class AddReportActivity : AppCompatActivity() {
             try {
                 showProgressDialog("Preparing blockchain transaction...")
                 
+                // CRITICAL: Check if user has set personal info first
+                // HealthWalletV2 requires setPersonalInfo() before adding reports
+                val userAddress = BlockchainService.getUserAddress()
+                if (userAddress == null) {
+                    dismissProgressDialog()
+                    showError("Wallet not connected")
+                    return@launch
+                }
+                
+                android.util.Log.d("AddReportActivity", "🔍 Checking personal info for address: $userAddress")
+                
+                updateProgressDialog("Checking personal info...")
+                val hasPersonalInfo = withContext(Dispatchers.IO) {
+                    BlockchainService.hasPersonalInfo(userAddress)
+                }
+                
+                android.util.Log.d("AddReportActivity", "📋 Personal info exists: $hasPersonalInfo")
+                
+                if (!hasPersonalInfo) {
+                    dismissProgressDialog()
+                    
+                    // Show detailed error with wallet address for debugging
+                    AlertDialog.Builder(this@AddReportActivity)
+                        .setTitle("⚠️ Personal Info Required")
+                        .setMessage("Before adding medical reports, you must set your personal information first.\n\n" +
+                                "This is required by the HealthWalletV2 smart contract.\n\n" +
+                                "Your wallet address:\n$userAddress\n\n" +
+                                "Please ensure you've called setPersonalInfo() with THIS address on the blockchain.\n\n" +
+                                "Go to Profile to complete your personal information.")
+                        .setPositiveButton("Go to Profile") { _, _ ->
+                            startActivity(Intent(this@AddReportActivity, ProfileActivity::class.java))
+                            finish()
+                        }
+                        .setNegativeButton("Skip Check & Try Anyway") { _, _ ->
+                            // Allow user to try anyway (for testing)
+                            android.util.Log.w("AddReportActivity", "⚠️ User chose to skip personal info check")
+                        }
+                        .setNeutralButton("Cancel") { _, _ ->
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                    return@launch
+                }
+                
+                // Prepare metadata JSON for upload
+                updateProgressDialog("Encrypting report metadata...")
+                val metadataJson = createReportMetadataJson(typeString)
+                val metadataIpfsHash = withContext(Dispatchers.IO) {
+                    uploadEncryptedMetadata(metadataJson)
+                }
+                
+                if (metadataIpfsHash == null) {
+                    dismissProgressDialog()
+                    showError("Failed to upload metadata to IPFS")
+                    return@launch
+                }
+                
+                uploadedMetadataIpfsHash = metadataIpfsHash
+                
                 // Map UI type to blockchain ReportType enum (HealthWalletV2)
                 val reportType = when (typeString) {
-                    "Lab Report" -> BlockchainService.ReportType.LAB_RESULT
+                    "Lab Result" -> BlockchainService.ReportType.LAB_RESULT
+                    "Doctor's Note" -> BlockchainService.ReportType.DOCTOR_NOTE
                     "Prescription" -> BlockchainService.ReportType.PRESCRIPTION
-                    "Medical Image" -> BlockchainService.ReportType.IMAGING
-                    "Diagnosis" -> BlockchainService.ReportType.DOCTOR_NOTE
-                    "Vaccination" -> BlockchainService.ReportType.OTHER  // Vaccinations have their own function
+                    "Imaging/Scan" -> BlockchainService.ReportType.IMAGING
+                    "Pathology Report" -> BlockchainService.ReportType.PATHOLOGY
+                    "Consultation Note" -> BlockchainService.ReportType.CONSULTATION
+                    "Discharge Summary" -> BlockchainService.ReportType.DISCHARGE_SUMMARY
                     else -> BlockchainService.ReportType.OTHER
                 }
                 
                 updateProgressDialog("Sending request to wallet...\nPlease open your wallet app to approve")
                 
-                // Use HealthWalletV2 addReport function
+                // Use HealthWalletV2 addReport function with separate hashes
                 val txHash = withContext(Dispatchers.IO) {
                     BlockchainService.addReport(
-                        encryptedDataIpfsHash = uploadedIpfsHash!!,
-                        encryptedFileIpfsHash = uploadedIpfsHash!!,  // Same hash for both (can be different if needed)
+                        encryptedDataIpfsHash = uploadedMetadataIpfsHash!!,  // Metadata (title, description, etc.)
+                        encryptedFileIpfsHash = uploadedFileIpfsHash ?: "",  // Actual file (PDF, image) or empty if no file
                         reportType = reportType,
-                        hasFile = true,  // This report has an attached file
+                        hasFile = uploadedFileIpfsHash != null,  // True only if file was uploaded
                         reportDate = java.math.BigInteger.valueOf(System.currentTimeMillis() / 1000)  // Current timestamp
                     )
                 }
@@ -543,5 +604,100 @@ class AddReportActivity : AppCompatActivity() {
                     .show()
             }
         }
+    }
+    
+    /**
+     * Create JSON metadata for the report (to be encrypted and uploaded separately)
+     */
+    private fun createReportMetadataJson(typeString: String): String {
+        val title = etReportTitle.text.toString()
+        val date = etDate.text.toString()
+        val doctorName = etDoctorName.text.toString()
+        val hospital = etHospital.text.toString()
+        val description = etDescription.text.toString()
+        
+        // Create JSON object with all report metadata
+        val metadata = mapOf(
+            "title" to title,
+            "type" to typeString,
+            "date" to date,
+            "doctorName" to doctorName,
+            "hospital" to hospital,
+            "description" to description,
+            "createdAt" to System.currentTimeMillis()
+        )
+        
+        // Convert to JSON string
+        return org.json.JSONObject(metadata).toString()
+    }
+    
+    /**
+     * Encrypt and upload metadata JSON to IPFS
+     */
+    private suspend fun uploadEncryptedMetadata(jsonString: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Create temporary file for metadata
+                val metadataFile = File(cacheDir, "metadata_${System.currentTimeMillis()}.json")
+                metadataFile.writeText(jsonString)
+                
+                // Encrypt the metadata file
+                val (encryptedFile, _) = EncryptionHelper.prepareFileForUpload(metadataFile, cacheDir)
+                
+                // Clean up original metadata file
+                metadataFile.delete()
+                
+                // Upload encrypted metadata to IPFS
+                val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaTypeOrNull())
+                val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
+                
+                val response = ApiClient.api.uploadToIPFS(filePart)
+                
+                // Clean up encrypted file
+                encryptedFile.delete()
+                
+                if (response.isSuccessful && response.body()?.success == true) {
+                    response.body()!!.ipfsHash
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AddReportActivity", "Failed to upload metadata", e)
+                null
+            }
+        }
+    }
+    
+    /**
+     * Show dialog when personal info is not set
+     */
+    private fun showPersonalInfoRequiredDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("⚠️ Personal Info Required")
+            .setMessage("Before adding medical reports, you must set your personal information first.\\n\\n" +
+                    "This is required by the HealthWalletV2 smart contract for data organization.\\n\\n" +
+                    "Please go to Profile and complete your personal information.")
+            .setPositiveButton("Go to Profile") { _, _ ->
+                startActivity(Intent(this, ProfileActivity::class.java))
+                finish()
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                finish()
+            }
+            .setCancelable(false)
+            .show()
+    }
+    
+    /**
+     * Show error message
+     */
+    private fun showError(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Error")
+            .setMessage(message)
+            .setPositiveButton("OK") { _, _ ->
+                finish()
+            }
+            .show()
     }
 }
