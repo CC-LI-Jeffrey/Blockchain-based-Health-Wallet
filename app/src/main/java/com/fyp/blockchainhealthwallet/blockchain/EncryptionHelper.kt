@@ -22,7 +22,7 @@ import javax.crypto.spec.SecretKeySpec
  * 4. Upload encrypted file to backend IPFS service
  * 5. Backend returns IPFS hash (cannot decrypt file)
  * 6. Encrypt AES key with user's public key (future: use wallet's encryption)
- * 7. Store encrypted key on blockchain via addHealthRecord()
+ * 7. Store encrypted key on blockchain via addReport() (HealthWalletV2)
  * 
  * Security: Only the user can decrypt their files because only they have the decryption key.
  * Backend cannot read medical data even though it stores the encrypted files on IPFS.

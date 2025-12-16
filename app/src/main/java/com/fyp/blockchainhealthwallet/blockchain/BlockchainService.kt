@@ -40,8 +40,12 @@ object BlockchainService {
         Log.d(TAG, "BlockchainService initialized with context")
     }
     
-    // Contract configuration - SEPOLIA TESTNET
-    private const val CONTRACT_ADDRESS = "0xed41D59378f36b04567DAB79077d8057eA3E70D6"
+    // ============================================
+    // CONTRACT CONFIGURATION - SEPOLIA TESTNET
+    // ============================================
+    // HealthWallet V1 address = 0xed41D59378f36b04567DAB79077d8057eA3E70D6
+    // HealthWallet 2 address = 0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B
+    private const val CONTRACT_ADDRESS = "0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B"
     
     // Sepolia RPC endpoint - public and free
     private const val RPC_URL = "https://rpc.sepolia.org"
@@ -51,83 +55,180 @@ object BlockchainService {
         Web3j.build(HttpService(RPC_URL))
     }
     
-    // RecordType enum matching Solidity contract
+    // ============================================
+    // ENUMS - Matching HealthWalletV2 Contract
+    // ============================================
+    
+    // RecordType enum (for categorizing health data)
     enum class RecordType(val value: Int) {
-        LAB_REPORT(0),
-        PRESCRIPTION(1),
-        MEDICAL_IMAGE(2),
-        DIAGNOSIS(3),
-        VACCINATION(4),
-        VISIT_SUMMARY(5)
+        PERSONAL_INFO(0),
+        MEDICATION(1),
+        VACCINATION(2),
+        MEDICAL_REPORT(3)
     }
     
-    // AuditAction enum matching Solidity contract
-    enum class AuditAction(val value: Int) {
-        VIEW(0),
-        DOWNLOAD(1),
-        SHARE(2),
-        UPDATE(3),
-        DELETE(4)
+    // ReportType enum (for medical report subcategories)
+    enum class ReportType(val value: Int) {
+        LAB_RESULT(0),
+        DOCTOR_NOTE(1),
+        PRESCRIPTION(2),
+        IMAGING(3),
+        PATHOLOGY(4),
+        CONSULTATION(5),
+        DISCHARGE_SUMMARY(6),
+        OTHER(7)
     }
+    
+    // RecipientType enum (for data sharing recipients)
+    enum class RecipientType(val value: Int) {
+        DOCTOR(0),
+        HOSPITAL(1),
+        CLINIC(2),
+        INSURANCE_COMPANY(3),
+        PHARMACY(4),
+        LABORATORY(5),
+        OTHER(6)
+    }
+    
+    // AccessLevel enum (for share permissions)
+    enum class AccessLevel(val value: Int) {
+        VIEW_ONLY(0),
+        FULL_ACCESS(1),
+        EMERGENCY_ONLY(2)
+    }
+    
+    // ShareStatus enum (for share record status)
+    enum class ShareStatus(val value: Int) {
+        ACTIVE(0),
+        EXPIRED(1),
+        REVOKED(2)
+    }
+    
+    // DataCategory enum (for specifying which data to share)
+    enum class DataCategory(val value: Int) {
+        PERSONAL_INFO(0),
+        MEDICATION_RECORDS(1),
+        VACCINATION_RECORDS(2),
+        MEDICAL_REPORTS(3),
+        ALL_DATA(4)
+    }
+    
+    // ============================================
+    // DATA CLASSES - Matching HealthWalletV2 Contract Structs
+    // ============================================
+    // All sensitive data is encrypted and stored on IPFS
+    // Only metadata and IPFS hashes stored on-chain
     
     /**
-     * HealthRecord data class matching Solidity struct
+     * PersonalInfoRef - Reference to encrypted personal information on IPFS
      */
-    data class HealthRecord(
-        val recordId: BigInteger,
-        val patientAddress: String,
-        val ipfsHash: String,
-        val recordType: RecordType,
-        val timestamp: BigInteger,
-        val issuedBy: String,
+    data class PersonalInfoRef(
+        val encryptedDataIpfsHash: String,
+        val publicKeyHash: String,  // bytes32 as hex string
+        val createdAt: BigInteger,
+        val lastUpdated: BigInteger,
+        val exists: Boolean
+    )
+    
+    /**
+     * MedicationRecordRef - Reference to encrypted medication data on IPFS
+     */
+    data class MedicationRecordRef(
+        val id: BigInteger,
+        val encryptedDataIpfsHash: String,
         val isActive: Boolean,
-        val encryptedKey: String,
-        val version: BigInteger
+        val startDate: BigInteger,
+        val endDate: BigInteger,
+        val createdAt: BigInteger
     )
     
     /**
-     * AccessGrant data class matching Solidity struct
+     * VaccinationRecordRef - Reference to encrypted vaccination data on IPFS
      */
-    data class AccessGrant(
-        val grantee: String,
-        val recordIds: List<BigInteger>,
-        val expiryTime: BigInteger,
-        val isActive: Boolean
+    data class VaccinationRecordRef(
+        val id: BigInteger,
+        val encryptedDataIpfsHash: String,
+        val encryptedCertificateIpfsHash: String,
+        val vaccinationDate: BigInteger,
+        val createdAt: BigInteger
     )
     
     /**
-     * Add a new health record to the blockchain.
-     * User signs this transaction with their wallet.
-     * 
-     * @param ipfsHash The IPFS hash of the encrypted medical file
-     * @param recordType Type of medical record
-     * @param encryptedKey Encrypted symmetric key (encrypted with user's public key)
+     * MedicalReportRef - Reference to encrypted medical report on IPFS
+     */
+    data class MedicalReportRef(
+        val id: BigInteger,
+        val encryptedDataIpfsHash: String,
+        val encryptedFileIpfsHash: String,
+        val reportType: ReportType,
+        val hasFile: Boolean,
+        val reportDate: BigInteger,
+        val createdAt: BigInteger
+    )
+    
+    /**
+     * ShareRecord - Data sharing record with cryptographic isolation per category
+     */
+    data class ShareRecord(
+        val id: BigInteger,
+        val recipientAddress: String,
+        val recipientNameHash: String,  // bytes32 as hex string
+        val encryptedRecipientDataIpfsHash: String,
+        val recipientType: RecipientType,
+        val sharedDataCategory: DataCategory,
+        val shareDate: BigInteger,
+        val expiryDate: BigInteger,
+        val accessLevel: AccessLevel,
+        val status: ShareStatus,
+        val encryptedCategoryKey: String
+    )
+    
+    /**
+     * AccessLog - Immutable audit trail of data access
+     */
+    data class AccessLog(
+        val id: BigInteger,
+        val accessorAddress: String,
+        val encryptedDetailsIpfsHash: String,
+        val accessedCategory: DataCategory,
+        val accessTime: BigInteger,
+        val dataIntegrityHash: String  // bytes32 as hex string
+    )
+    
+    // ============================================
+    // PERSONAL INFO FUNCTIONS - HealthWalletV2
+    // ============================================
+    
+    /**
+     * Set or update personal information (encrypted and stored on IPFS)
+     * @param encryptedDataIpfsHash IPFS hash of encrypted personal data JSON
+     * @param publicKeyHash Hash of user's public encryption key (bytes32)
      * @return Transaction hash
      */
-    suspend fun addHealthRecord(
-        ipfsHash: String,
-        recordType: RecordType,
-        encryptedKey: String
+    suspend fun setPersonalInfo(
+        encryptedDataIpfsHash: String,
+        publicKeyHash: String  // Must be 32 bytes hex string (0x + 64 chars)
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
         
-        Log.d(TAG, "Adding health record for user: $userAddress")
+        Log.d(TAG, "Setting personal info for user: $userAddress")
         
-        // Encode function call
+        // Convert hex string to bytes32
+        val keyHashBytes = Numeric.hexStringToByteArray(publicKeyHash)
+        require(keyHashBytes.size == 32) { "publicKeyHash must be 32 bytes" }
+        
         val function = org.web3j.abi.datatypes.Function(
-            "addRecord",  // Fixed: was "addHealthRecord", should be "addRecord"
+            "setPersonalInfo",
             listOf(
-                Utf8String(ipfsHash),
-                Uint8(recordType.value.toLong()),  // Solidity enums are encoded as uint8 in ABI!
-                Utf8String(encryptedKey)
+                Utf8String(encryptedDataIpfsHash),
+                org.web3j.abi.datatypes.generated.Bytes32(keyHashBytes)
             ),
             emptyList()
         )
         
         val encodedFunction = FunctionEncoder.encode(function)
         
-        // Send transaction via user's wallet
         sendTransaction(
             from = userAddress,
             to = CONTRACT_ADDRESS,
@@ -137,34 +238,285 @@ object BlockchainService {
     }
     
     /**
-     * DUMMY TEST METHOD: Send a test health record with dummy data to verify MetaMask notification
+     * Get personal info reference for a user (read-only)
+     * @param userAddress Address of the user
+     * @return PersonalInfoRef or null if not found
+     */
+    suspend fun getPersonalInfoRef(userAddress: String): PersonalInfoRef? = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getPersonalInfoRef",
+                listOf(Address(userAddress)),
+                listOf(
+                    object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
+                    object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {},  // publicKeyHash
+                    object : TypeReference<Uint256>() {},  // createdAt
+                    object : TypeReference<Uint256>() {},  // lastUpdated
+                    object : TypeReference<Bool>() {}  // exists
+                )
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting personal info: ${response.error.message}")
+                return@withContext null
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext null
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.size < 5) {
+                return@withContext null
+            }
+            
+            val exists = (decodedResult[4] as Bool).value
+            if (!exists) {
+                return@withContext null
+            }
+            
+            PersonalInfoRef(
+                encryptedDataIpfsHash = (decodedResult[0] as Utf8String).value,
+                publicKeyHash = Numeric.toHexString((decodedResult[1] as org.web3j.abi.datatypes.generated.Bytes32).value),
+                createdAt = (decodedResult[2] as Uint256).value,
+                lastUpdated = (decodedResult[3] as Uint256).value,
+                exists = exists
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting personal info", e)
+            null
+        }
+    }
+    
+    // ============================================
+    // MEDICATION FUNCTIONS - HealthWalletV2
+    // ============================================
+    
+    /**
+     * Add a medication record (encrypted and stored on IPFS)
+     * @return Medication ID
+     */
+    suspend fun addMedication(
+        encryptedDataIpfsHash: String,
+        isActive: Boolean,
+        startDate: BigInteger,
+        endDate: BigInteger
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        Log.d(TAG, "Adding medication for user: $userAddress")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "addMedication",
+            listOf(
+                Utf8String(encryptedDataIpfsHash),
+                Bool(isActive),
+                Uint256(startDate),
+                Uint256(endDate)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Update an existing medication record
+     */
+    suspend fun updateMedication(
+        medicationId: BigInteger,
+        encryptedDataIpfsHash: String,
+        isActive: Boolean,
+        startDate: BigInteger,
+        endDate: BigInteger
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "updateMedication",
+            listOf(
+                Uint256(medicationId),
+                Utf8String(encryptedDataIpfsHash),
+                Bool(isActive),
+                Uint256(startDate),
+                Uint256(endDate)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Get all medication IDs for a user (read-only)
+     */
+    suspend fun getMedicationIds(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getMedicationIds",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<DynamicArray<Uint256>>() {})
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting medication IDs: ${response.error.message}")
+                return@withContext emptyList()
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext emptyList()
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.isEmpty()) {
+                return@withContext emptyList()
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val ids = (decodedResult[0] as DynamicArray<Uint256>).value
+            ids.map { it.value }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting medication IDs", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get medication record reference (read-only)
+     */
+    suspend fun getMedicationRef(medicationId: BigInteger): MedicationRecordRef? = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getMedicationRef",
+                listOf(Uint256(medicationId)),
+                listOf(
+                    object : TypeReference<Uint256>() {},  // id
+                    object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
+                    object : TypeReference<Bool>() {},  // isActive
+                    object : TypeReference<Uint256>() {},  // startDate
+                    object : TypeReference<Uint256>() {},  // endDate
+                    object : TypeReference<Uint256>() {}  // createdAt
+                )
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting medication ref: ${response.error.message}")
+                return@withContext null
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext null
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.size < 6) {
+                return@withContext null
+            }
+            
+            MedicationRecordRef(
+                id = (decodedResult[0] as Uint256).value,
+                encryptedDataIpfsHash = (decodedResult[1] as Utf8String).value,
+                isActive = (decodedResult[2] as Bool).value,
+                startDate = (decodedResult[3] as Uint256).value,
+                endDate = (decodedResult[4] as Uint256).value,
+                createdAt = (decodedResult[5] as Uint256).value
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting medication ref", e)
+            null
+        }
+    }
+    
+    /**
+     * DUMMY TEST METHOD: Test HealthWalletV2 by calling setPersonalInfo with dummy data
      */
     suspend fun sendDummyTestRecord(): String {
         Log.d(TAG, "========================================")
-        Log.d(TAG, "🧪 TESTING: Sending dummy test record to blockchain...")
+        Log.d(TAG, "🧪 TESTING: Sending dummy personal info to HealthWalletV2...")
         Log.d(TAG, "========================================")
         
-        // FORCE WalletManager to refresh its state by checking AppKit directly
+        // FORCE WalletManager to refresh its state
         Log.d(TAG, "🔍 Forcing session state refresh...")
         WalletManager.forceRefreshSessionState()
         
-        // Wait a moment for state to update
         withContext(Dispatchers.Main) {
             delay(500)
         }
         
-        // Now check if actually connected
         if (!WalletManager.isConnected()) {
-            Log.e(TAG, "❌ NOT CONNECTED! WalletManager reports disconnected state")
+            Log.e(TAG, "❌ NOT CONNECTED!")
             throw Exception("Wallet not connected. Please connect your wallet first.")
         }
         
-        // CRITICAL: Check if WalletConnect session is actually connected
         val account = try {
             AppKit.getAccount()
         } catch (e: Exception) {
             Log.e(TAG, "❌ CRITICAL: Cannot get account from AppKit", e)
-            throw Exception("WalletConnect session not available. Please reconnect your wallet in the app.")
+            throw Exception("WalletConnect session not available. Please reconnect your wallet.")
         }
         
         if (account == null) {
@@ -173,10 +525,8 @@ object BlockchainService {
         }
         
         val userAddress = account.address
-        Log.d(TAG, "✓ WalletConnect session validated")
         Log.d(TAG, "✓ Address: $userAddress")
         
-        // VALIDATION 1: Check selected chain
         val selectedChain = try {
             AppKit.getSelectedChain()
         } catch (e: Exception) {
@@ -185,23 +535,19 @@ object BlockchainService {
         }
         
         val chainId = selectedChain?.chainReference ?: WalletManager.getChainId()
-        Log.d(TAG, "Session validation:")
-        Log.d(TAG, "  ✓ Address: $userAddress")
-        Log.d(TAG, "  ✓ Chain ID: $chainId")
+        Log.d(TAG, "✓ Chain ID: $chainId")
         
         if (chainId == null) {
-            throw Exception("No chain ID available - WalletConnect session may be broken. Try reconnecting wallet.")
+            throw Exception("No chain ID available - try reconnecting wallet.")
         }
         
         if (chainId != "11155111") {
-            Log.e(TAG, "⚠️ WRONG NETWORK!")
-            Log.e(TAG, "Current: $chainId, Expected: 11155111 (Sepolia)")
-            throw Exception("Wrong network! Please switch MetaMask to Sepolia testnet. Current: $chainId")
+            Log.e(TAG, "⚠️ WRONG NETWORK! Current: $chainId, Expected: 11155111 (Sepolia)")
+            throw Exception("Wrong network! Please switch to Sepolia testnet. Current: $chainId")
         }
         
-        Log.d(TAG, "✓ Session valid, on correct network (Sepolia)")
+        Log.d(TAG, "✓ On Sepolia network")
         
-        // VALIDATION 2: Get nonce from blockchain
         val nonce = try {
             withContext(Dispatchers.IO) {
                 val ethGetTransactionCount = web3j.ethGetTransactionCount(
@@ -210,36 +556,35 @@ object BlockchainService {
                 ).send()
                 
                 val nonceValue = ethGetTransactionCount.transactionCount
-                Log.d(TAG, "✓ Fetched nonce from network: $nonceValue")
+                Log.d(TAG, "✓ Nonce: $nonceValue")
                 "0x${nonceValue.toString(16)}"
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Could not fetch nonce, will let wallet handle it: ${e.message}")
+            Log.w(TAG, "Could not fetch nonce: ${e.message}")
             null
         }
         
-        // Dummy test data
-        val dummyIpfsHash = "QmTest123DummyHashForTesting"
-        val dummyRecordType = RecordType.LAB_REPORT  // Type 0
-        val dummyEncryptedKey = "test-encrypted-key-12345"
+        // Dummy data for HealthWalletV2 setPersonalInfo
+        val dummyIpfsHash = "QmTestPersonalInfo123456789"
+        val dummyPublicKeyHash = "0x" + "1234567890abcdef".repeat(4)  // 32 bytes hex
         
-        // Encode the addRecord function call with dummy data
+        Log.d(TAG, "🧪 Dummy IPFS hash: $dummyIpfsHash")
+        Log.d(TAG, "🧪 Dummy public key hash: $dummyPublicKeyHash")
+        
+        // Encode setPersonalInfo function call
+        val keyHashBytes = Numeric.hexStringToByteArray(dummyPublicKeyHash)
         val function = org.web3j.abi.datatypes.Function(
-            "addRecord",  
+            "setPersonalInfo",
             listOf(
                 Utf8String(dummyIpfsHash),
-                Uint8(0L),  // LAB_REPORT = 0 (Solidity enums are encoded as uint8 in ABI!)
-                Utf8String(dummyEncryptedKey)
+                org.web3j.abi.datatypes.generated.Bytes32(keyHashBytes)
             ),
             emptyList()
         )
         
         val encodedFunction = FunctionEncoder.encode(function)
+        Log.d(TAG, "🧪 Encoded data: ${encodedFunction.take(66)}...")
         
-        Log.d(TAG, "🧪 Dummy data encoded: $encodedFunction")
-        Log.d(TAG, "🧪 Full encoded length: ${encodedFunction.length} chars")
-        
-        // Send transaction via user's wallet and return the result
         return sendTransaction(
             from = userAddress,
             to = CONTRACT_ADDRESS,
@@ -249,24 +594,30 @@ object BlockchainService {
         )
     }
     
+    // ============================================
+    // VACCINATION FUNCTIONS - HealthWalletV2
+    // ============================================
+    
     /**
-     * Update an existing health record.
-     * Only the record owner can update.
+     * Add a vaccination record (encrypted and stored on IPFS)
+     * @return Vaccination ID
      */
-    suspend fun updateHealthRecord(
-        recordId: BigInteger,
-        newIpfsHash: String,
-        newEncryptedKey: String
+    suspend fun addVaccination(
+        encryptedDataIpfsHash: String,
+        encryptedCertificateIpfsHash: String,
+        vaccinationDate: BigInteger
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
         
+        Log.d(TAG, "Adding vaccination for user: $userAddress")
+        
         val function = org.web3j.abi.datatypes.Function(
-            "updateRecord",  // Fixed: was "updateHealthRecord", should be "updateRecord"
+            "addVaccination",
             listOf(
-                Uint256(recordId),
-                Utf8String(newIpfsHash),
-                Utf8String(newEncryptedKey)
+                Utf8String(encryptedDataIpfsHash),
+                Utf8String(encryptedCertificateIpfsHash),
+                Uint256(vaccinationDate)
             ),
             emptyList()
         )
@@ -282,53 +633,24 @@ object BlockchainService {
     }
     
     /**
-     * Soft delete a health record.
-     * Only the record owner can delete.
+     * Update an existing vaccination record
      */
-    suspend fun deleteHealthRecord(recordId: BigInteger): String = withContext(Dispatchers.IO) {
-        val userAddress = WalletManager.getAddress()
-            ?: throw IllegalStateException("No wallet connected")
-        
-        val function = org.web3j.abi.datatypes.Function(
-            "deleteRecord",  // Fixed: was "deleteHealthRecord", should be "deleteRecord"
-            listOf(Uint256(recordId)),
-            emptyList()
-        )
-        
-        val encodedFunction = FunctionEncoder.encode(function)
-        
-        sendTransaction(
-            from = userAddress,
-            to = CONTRACT_ADDRESS,
-            data = encodedFunction,
-            value = "0x0"
-        )
-    }
-    
-    /**
-     * Grant access to multiple records for a provider.
-     * User signs this transaction.
-     * 
-     * @param granteeAddress Address of the provider to grant access to
-     * @param recordIds List of record IDs to grant access to
-     * @param durationInDays How many days the access should last
-     */
-    suspend fun grantAccess(
-        granteeAddress: String,
-        recordIds: List<BigInteger>,
-        durationInDays: BigInteger
+    suspend fun updateVaccination(
+        vaccinationId: BigInteger,
+        encryptedDataIpfsHash: String,
+        encryptedCertificateIpfsHash: String,
+        vaccinationDate: BigInteger
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
         
-        Log.d(TAG, "Granting access to $granteeAddress for ${recordIds.size} records")
-        
         val function = org.web3j.abi.datatypes.Function(
-            "grantAccess",
+            "updateVaccination",
             listOf(
-                Address(granteeAddress),
-                DynamicArray(Uint256::class.java, recordIds.map { Uint256(it) }),
-                Uint256(durationInDays)
+                Uint256(vaccinationId),
+                Utf8String(encryptedDataIpfsHash),
+                Utf8String(encryptedCertificateIpfsHash),
+                Uint256(vaccinationDate)
             ),
             emptyList()
         )
@@ -344,16 +666,144 @@ object BlockchainService {
     }
     
     /**
-     * Revoke all access previously granted to a provider.
-     * User signs this transaction.
+     * Get all vaccination IDs for a user (read-only)
      */
-    suspend fun revokeAccess(granteeAddress: String): String = withContext(Dispatchers.IO) {
+    suspend fun getVaccinationIds(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getVaccinationIds",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<DynamicArray<Uint256>>() {})
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting vaccination IDs: ${response.error.message}")
+                return@withContext emptyList()
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext emptyList()
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.isEmpty()) {
+                return@withContext emptyList()
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val ids = (decodedResult[0] as DynamicArray<Uint256>).value
+            ids.map { it.value }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting vaccination IDs", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get vaccination record reference (read-only)
+     */
+    suspend fun getVaccinationRef(vaccinationId: BigInteger): VaccinationRecordRef? = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getVaccinationRef",
+                listOf(Uint256(vaccinationId)),
+                listOf(
+                    object : TypeReference<Uint256>() {},  // id
+                    object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
+                    object : TypeReference<Utf8String>() {},  // encryptedCertificateIpfsHash
+                    object : TypeReference<Uint256>() {},  // vaccinationDate
+                    object : TypeReference<Uint256>() {}  // createdAt
+                )
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting vaccination ref: ${response.error.message}")
+                return@withContext null
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext null
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.size < 5) {
+                return@withContext null
+            }
+            
+            VaccinationRecordRef(
+                id = (decodedResult[0] as Uint256).value,
+                encryptedDataIpfsHash = (decodedResult[1] as Utf8String).value,
+                encryptedCertificateIpfsHash = (decodedResult[2] as Utf8String).value,
+                vaccinationDate = (decodedResult[3] as Uint256).value,
+                createdAt = (decodedResult[4] as Uint256).value
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting vaccination ref", e)
+            null
+        }
+    }
+    
+    // ============================================
+    // MEDICAL REPORT FUNCTIONS - HealthWalletV2
+    // ============================================
+    
+    /**
+     * Add a medical report (encrypted and stored on IPFS)
+     * @return Report ID
+     */
+    suspend fun addReport(
+        encryptedDataIpfsHash: String,
+        encryptedFileIpfsHash: String,
+        reportType: ReportType,
+        hasFile: Boolean,
+        reportDate: BigInteger
+    ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
         
+        Log.d(TAG, "Adding medical report for user: $userAddress")
+        
         val function = org.web3j.abi.datatypes.Function(
-            "revokeAccess",
-            listOf(Address(granteeAddress)),
+            "addReport",
+            listOf(
+                Utf8String(encryptedDataIpfsHash),
+                Utf8String(encryptedFileIpfsHash),
+                Uint8(reportType.value.toLong()),  // Enum encoded as uint8
+                Bool(hasFile),
+                Uint256(reportDate)
+            ),
             emptyList()
         )
         
@@ -368,8 +818,530 @@ object BlockchainService {
     }
     
     /**
-     * Set emergency contact address.
-     * User signs this transaction.
+     * Update an existing medical report
+     */
+    suspend fun updateReport(
+        reportId: BigInteger,
+        encryptedDataIpfsHash: String,
+        encryptedFileIpfsHash: String,
+        reportType: ReportType,
+        hasFile: Boolean,
+        reportDate: BigInteger
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "updateReport",
+            listOf(
+                Uint256(reportId),
+                Utf8String(encryptedDataIpfsHash),
+                Utf8String(encryptedFileIpfsHash),
+                Uint8(reportType.value.toLong()),
+                Bool(hasFile),
+                Uint256(reportDate)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Get all report IDs for a user (read-only)
+     */
+    suspend fun getReportIds(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getReportIds",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<DynamicArray<Uint256>>() {})
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting report IDs: ${response.error.message}")
+                return@withContext emptyList()
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext emptyList()
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.isEmpty()) {
+                return@withContext emptyList()
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val ids = (decodedResult[0] as DynamicArray<Uint256>).value
+            ids.map { it.value }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting report IDs", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get medical report reference (read-only)
+     */
+    suspend fun getReportRef(reportId: BigInteger): MedicalReportRef? = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getReportRef",
+                listOf(Uint256(reportId)),
+                listOf(
+                    object : TypeReference<Uint256>() {},  // id
+                    object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
+                    object : TypeReference<Utf8String>() {},  // encryptedFileIpfsHash
+                    object : TypeReference<Uint8>() {},  // reportType
+                    object : TypeReference<Bool>() {},  // hasFile
+                    object : TypeReference<Uint256>() {},  // reportDate
+                    object : TypeReference<Uint256>() {}  // createdAt
+                )
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting report ref: ${response.error.message}")
+                return@withContext null
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext null
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.size < 7) {
+                return@withContext null
+            }
+            
+            val reportTypeValue = (decodedResult[3] as Uint8).value.toInt()
+            val reportType = ReportType.values().getOrNull(reportTypeValue) ?: ReportType.OTHER
+            
+            MedicalReportRef(
+                id = (decodedResult[0] as Uint256).value,
+                encryptedDataIpfsHash = (decodedResult[1] as Utf8String).value,
+                encryptedFileIpfsHash = (decodedResult[2] as Utf8String).value,
+                reportType = reportType,
+                hasFile = (decodedResult[4] as Bool).value,
+                reportDate = (decodedResult[5] as Uint256).value,
+                createdAt = (decodedResult[6] as Uint256).value
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting report ref", e)
+            null
+        }
+    }
+    
+    // ============================================
+    // DATA SHARING FUNCTIONS - HealthWalletV2
+    // ============================================
+    
+    /**
+     * Share data with a recipient (healthcare provider, hospital, etc.)
+     * Each data category uses a different encryption key for cryptographic isolation
+     * @return Share ID
+     */
+    suspend fun shareData(
+        recipientAddress: String,
+        recipientNameHash: String,  // bytes32 hash of recipient name
+        encryptedRecipientDataIpfsHash: String,
+        recipientType: RecipientType,
+        dataCategory: DataCategory,
+        expiryDate: BigInteger,  // Unix timestamp
+        accessLevel: AccessLevel,
+        encryptedCategoryKey: String  // Category-specific key encrypted with recipient's public key
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        Log.d(TAG, "Sharing data with: $recipientAddress")
+        
+        // Convert hex string to bytes32
+        val nameHashBytes = Numeric.hexStringToByteArray(recipientNameHash)
+        require(nameHashBytes.size == 32) { "recipientNameHash must be 32 bytes" }
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "shareData",
+            listOf(
+                Address(recipientAddress),
+                org.web3j.abi.datatypes.generated.Bytes32(nameHashBytes),
+                Utf8String(encryptedRecipientDataIpfsHash),
+                Uint8(recipientType.value.toLong()),  // Enum as uint8
+                Uint8(dataCategory.value.toLong()),  // Enum as uint8
+                Uint256(expiryDate),
+                Uint8(accessLevel.value.toLong()),  // Enum as uint8
+                Utf8String(encryptedCategoryKey)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Revoke a data share
+     */
+    suspend fun revokeShare(shareId: BigInteger): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "revokeShare",
+            listOf(Uint256(shareId)),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Get all share record IDs for a user (read-only)
+     */
+    suspend fun getShareIds(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getShareIds",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<DynamicArray<Uint256>>() {})
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting share IDs: ${response.error.message}")
+                return@withContext emptyList()
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext emptyList()
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.isEmpty()) {
+                return@withContext emptyList()
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val ids = (decodedResult[0] as DynamicArray<Uint256>).value
+            ids.map { it.value }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting share IDs", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get share record details (read-only)
+     */
+    suspend fun getShareRecord(shareId: BigInteger): ShareRecord? = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getShareRecord",
+                listOf(Uint256(shareId)),
+                listOf(
+                    object : TypeReference<Uint256>() {},  // id
+                    object : TypeReference<Address>() {},  // recipientAddress
+                    object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {},  // recipientNameHash
+                    object : TypeReference<Utf8String>() {},  // encryptedRecipientDataIpfsHash
+                    object : TypeReference<Uint8>() {},  // recipientType
+                    object : TypeReference<Uint8>() {},  // sharedDataCategory
+                    object : TypeReference<Uint256>() {},  // shareDate
+                    object : TypeReference<Uint256>() {},  // expiryDate
+                    object : TypeReference<Uint8>() {},  // accessLevel
+                    object : TypeReference<Uint8>() {},  // status
+                    object : TypeReference<Utf8String>() {}  // encryptedCategoryKey
+                )
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting share record: ${response.error.message}")
+                return@withContext null
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext null
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.size < 11) {
+                return@withContext null
+            }
+            
+            val recipientTypeValue = (decodedResult[4] as Uint8).value.toInt()
+            val dataCategoryValue = (decodedResult[5] as Uint8).value.toInt()
+            val accessLevelValue = (decodedResult[8] as Uint8).value.toInt()
+            val statusValue = (decodedResult[9] as Uint8).value.toInt()
+            
+            ShareRecord(
+                id = (decodedResult[0] as Uint256).value,
+                recipientAddress = (decodedResult[1] as Address).value,
+                recipientNameHash = Numeric.toHexString((decodedResult[2] as org.web3j.abi.datatypes.generated.Bytes32).value),
+                encryptedRecipientDataIpfsHash = (decodedResult[3] as Utf8String).value,
+                recipientType = RecipientType.values().getOrNull(recipientTypeValue) ?: RecipientType.OTHER,
+                sharedDataCategory = DataCategory.values().getOrNull(dataCategoryValue) ?: DataCategory.ALL_DATA,
+                shareDate = (decodedResult[6] as Uint256).value,
+                expiryDate = (decodedResult[7] as Uint256).value,
+                accessLevel = AccessLevel.values().getOrNull(accessLevelValue) ?: AccessLevel.VIEW_ONLY,
+                status = ShareStatus.values().getOrNull(statusValue) ?: ShareStatus.EXPIRED,
+                encryptedCategoryKey = (decodedResult[10] as Utf8String).value
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting share record", e)
+            null
+        }
+    }
+    
+    // ============================================
+    // ACCESS LOGGING FUNCTIONS - HealthWalletV2
+    // ============================================
+    
+    /**
+     * Log data access (immutable audit trail)
+     * @param ownerAddress Owner of the data being accessed
+     * @param encryptedDetailsIpfsHash IPFS hash of encrypted access details
+     * @param accessedCategory Category of data accessed
+     * @param dataIntegrityHash Hash for data integrity verification (bytes32)
+     * @return Access log ID
+     */
+    suspend fun logDataAccess(
+        ownerAddress: String,
+        encryptedDetailsIpfsHash: String,
+        accessedCategory: DataCategory,
+        dataIntegrityHash: String  // bytes32 hex string
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        Log.d(TAG, "Logging data access for owner: $ownerAddress")
+        
+        // Convert hex string to bytes32
+        val integrityHashBytes = Numeric.hexStringToByteArray(dataIntegrityHash)
+        require(integrityHashBytes.size == 32) { "dataIntegrityHash must be 32 bytes" }
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "logDataAccess",
+            listOf(
+                Address(ownerAddress),
+                Utf8String(encryptedDetailsIpfsHash),
+                Uint8(accessedCategory.value.toLong()),  // Enum as uint8
+                org.web3j.abi.datatypes.generated.Bytes32(integrityHashBytes)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Get all access log IDs for a user (read-only)
+     */
+    suspend fun getAccessLogIds(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getAccessLogIds",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<DynamicArray<Uint256>>() {})
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting access log IDs: ${response.error.message}")
+                return@withContext emptyList()
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext emptyList()
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.isEmpty()) {
+                return@withContext emptyList()
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val ids = (decodedResult[0] as DynamicArray<Uint256>).value
+            ids.map { it.value }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting access log IDs", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get access log details (read-only)
+     */
+    suspend fun getAccessLog(logId: BigInteger): AccessLog? = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "getAccessLog",
+                listOf(Uint256(logId)),
+                listOf(
+                    object : TypeReference<Uint256>() {},  // id
+                    object : TypeReference<Address>() {},  // accessorAddress
+                    object : TypeReference<Utf8String>() {},  // encryptedDetailsIpfsHash
+                    object : TypeReference<Uint8>() {},  // accessedCategory
+                    object : TypeReference<Uint256>() {},  // accessTime
+                    object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {}  // dataIntegrityHash
+                )
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting access log: ${response.error.message}")
+                return@withContext null
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext null
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.size < 6) {
+                return@withContext null
+            }
+            
+            val categoryValue = (decodedResult[3] as Uint8).value.toInt()
+            
+            AccessLog(
+                id = (decodedResult[0] as Uint256).value,
+                accessorAddress = (decodedResult[1] as Address).value,
+                encryptedDetailsIpfsHash = (decodedResult[2] as Utf8String).value,
+                accessedCategory = DataCategory.values().getOrNull(categoryValue) ?: DataCategory.ALL_DATA,
+                accessTime = (decodedResult[4] as Uint256).value,
+                dataIntegrityHash = Numeric.toHexString((decodedResult[5] as org.web3j.abi.datatypes.generated.Bytes32).value)
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting access log", e)
+            null
+        }
+    }
+    
+    // ============================================
+    // UTILITY FUNCTIONS - HealthWalletV2
+    // ============================================
+    
+    /**
+     * Set emergency contact address
      */
     suspend fun setEmergencyContact(contactAddress: String): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
@@ -392,15 +1364,14 @@ object BlockchainService {
     }
     
     /**
-     * Get total number of records in the system.
-     * This is a read-only call, no signature needed.
+     * Get emergency contact address for a user (read-only)
      */
-    suspend fun getTotalRecords(): BigInteger = withContext(Dispatchers.IO) {
+    suspend fun getEmergencyContact(userAddress: String): String? = withContext(Dispatchers.IO) {
         try {
             val function = org.web3j.abi.datatypes.Function(
-                "getTotalRecords",
-                emptyList(),
-                listOf(object : TypeReference<Uint256>() {})
+                "getEmergencyContact",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<Address>() {})
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
@@ -415,163 +1386,40 @@ object BlockchainService {
             ).send()
             
             if (response.hasError()) {
-                Log.e(TAG, "Error getting total records: ${response.error.message}")
-                return@withContext BigInteger.ZERO
+                Log.e(TAG, "Error getting emergency contact: ${response.error.message}")
+                return@withContext null
             }
             
             val result = response.value
             if (result.isNullOrEmpty() || result == "0x") {
-                return@withContext BigInteger.ZERO
+                return@withContext null
             }
             
-            Numeric.decodeQuantity(result)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting total records", e)
-            BigInteger.ZERO
-        }
-    }
-    
-    /**
-     * Get all record IDs owned by a patient.
-     * Read-only operation.
-     */
-    suspend fun getPatientRecords(patientAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
-        try {
-            val function = org.web3j.abi.datatypes.Function(
-                "getPatientRecords",
-                listOf(Address(patientAddress)),
-                listOf(object : TypeReference<DynamicArray<Uint256>>() {})
-            )
-            
-            val encodedFunction = FunctionEncoder.encode(function)
-            
-            val response = web3j.ethCall(
-                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
-                    CONTRACT_ADDRESS,
-                    encodedFunction
-                ),
-                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
-            ).send()
-            
-            if (response.hasError()) {
-                Log.e(TAG, "Error getting patient records: ${response.error.message}")
-                return@withContext emptyList()
-            }
-            
-            val result = response.value
-            if (result.isNullOrEmpty() || result == "0x") {
-                return@withContext emptyList()
-            }
-            
-            // Decode the dynamic array of uint256
             val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
                 result,
                 function.outputParameters
             )
             
             if (decodedResult.isEmpty()) {
-                return@withContext emptyList()
+                return@withContext null
             }
             
-            @Suppress("UNCHECKED_CAST")
-            val recordIds = (decodedResult[0] as DynamicArray<Uint256>).value
-            recordIds.map { it.value }
-            
+            val address = (decodedResult[0] as Address).value
+            if (address == "0x0000000000000000000000000000000000000000") null else address
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting patient records", e)
-            emptyList()
-        }
-    }
-    
-    /**
-     * Get details of a specific health record.
-     * Read-only operation.
-     */
-    suspend fun getHealthRecord(recordId: BigInteger): HealthRecord? = withContext(Dispatchers.IO) {
-        try {
-            val function = org.web3j.abi.datatypes.Function(
-                "getHealthRecord",
-                listOf(Uint256(recordId)),
-                listOf(
-                    object : TypeReference<Uint256>() {},
-                    object : TypeReference<Address>() {},
-                    object : TypeReference<Utf8String>() {},
-                    object : TypeReference<Uint256>() {},  // RecordType enum
-                    object : TypeReference<Uint256>() {},
-                    object : TypeReference<Address>() {},
-                    object : TypeReference<Bool>() {},
-                    object : TypeReference<Utf8String>() {},
-                    object : TypeReference<Uint256>() {}
-                )
-            )
-            
-            val encodedFunction = FunctionEncoder.encode(function)
-            
-            val response = web3j.ethCall(
-                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    null,
-                    CONTRACT_ADDRESS,
-                    encodedFunction
-                ),
-                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
-            ).send()
-            
-            if (response.hasError()) {
-                Log.e(TAG, "Error getting health record: ${response.error.message}")
-                return@withContext null
-            }
-            
-            val result = response.value
-            if (result.isNullOrEmpty() || result == "0x") {
-                return@withContext null
-            }
-            
-            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
-                result,
-                function.outputParameters
-            )
-            
-            if (decodedResult.size < 9) {
-                return@withContext null
-            }
-            
-            HealthRecord(
-                recordId = (decodedResult[0] as Uint256).value,
-                patientAddress = (decodedResult[1] as Address).value,
-                ipfsHash = (decodedResult[2] as Utf8String).value,
-                recordType = RecordType.values().getOrNull((decodedResult[3] as Uint256).value.toInt()) 
-                    ?: RecordType.LAB_REPORT,
-                timestamp = (decodedResult[4] as Uint256).value,
-                issuedBy = (decodedResult[5] as Address).value,
-                isActive = (decodedResult[6] as Bool).value,
-                encryptedKey = (decodedResult[7] as Utf8String).value,
-                version = (decodedResult[8] as Uint256).value
-            )
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting health record", e)
+            Log.e(TAG, "Error getting emergency contact", e)
             null
         }
     }
     
     /**
-     * Check if an address has access to a specific record.
-     * Read-only operation.
+     * Check if a user has set their personal info (read-only)
      */
-    suspend fun hasAccess(
-        patientAddress: String,
-        requesterAddress: String,
-        recordId: BigInteger
-    ): Boolean = withContext(Dispatchers.IO) {
+    suspend fun hasPersonalInfo(userAddress: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val function = org.web3j.abi.datatypes.Function(
-                "hasAccess",
-                listOf(
-                    Address(patientAddress),
-                    Address(requesterAddress),
-                    Uint256(recordId)
-                ),
+                "hasPersonalInfo",
+                listOf(Address(userAddress)),
                 listOf(object : TypeReference<Bool>() {})
             )
             
@@ -587,7 +1435,7 @@ object BlockchainService {
             ).send()
             
             if (response.hasError()) {
-                Log.e(TAG, "Error checking access: ${response.error.message}")
+                Log.e(TAG, "Error checking personal info: ${response.error.message}")
                 return@withContext false
             }
             
@@ -606,33 +1454,27 @@ object BlockchainService {
             }
             
             (decodedResult[0] as Bool).value
-            
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking access", e)
+            Log.e(TAG, "Error checking personal info", e)
             false
         }
     }
     
     /**
-     * Get access grant details between patient and provider.
-     * Read-only operation.
+     * Get total counts of all record types (read-only)
+     * Returns: (medications, vaccinations, reports, shares, accessLogs)
      */
-    suspend fun getAccessGrant(
-        patientAddress: String,
-        granteeAddress: String
-    ): AccessGrant? = withContext(Dispatchers.IO) {
+    suspend fun getTotalCounts(): Map<String, BigInteger> = withContext(Dispatchers.IO) {
         try {
             val function = org.web3j.abi.datatypes.Function(
-                "getAccessGrant",
+                "getTotalCounts",
+                emptyList(),
                 listOf(
-                    Address(patientAddress),
-                    Address(granteeAddress)
-                ),
-                listOf(
-                    object : TypeReference<Address>() {},
-                    object : TypeReference<DynamicArray<Uint256>>() {},
-                    object : TypeReference<Uint256>() {},
-                    object : TypeReference<Bool>() {}
+                    object : TypeReference<Uint256>() {},  // medications
+                    object : TypeReference<Uint256>() {},  // vaccinations
+                    object : TypeReference<Uint256>() {},  // reports
+                    object : TypeReference<Uint256>() {},  // shares
+                    object : TypeReference<Uint256>() {}   // accessLogs
                 )
             )
             
@@ -648,13 +1490,13 @@ object BlockchainService {
             ).send()
             
             if (response.hasError()) {
-                Log.e(TAG, "Error getting access grant: ${response.error.message}")
-                return@withContext null
+                Log.e(TAG, "Error getting total counts: ${response.error.message}")
+                return@withContext emptyMap()
             }
             
             val result = response.value
             if (result.isNullOrEmpty() || result == "0x") {
-                return@withContext null
+                return@withContext emptyMap()
             }
             
             val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
@@ -662,25 +1504,26 @@ object BlockchainService {
                 function.outputParameters
             )
             
-            if (decodedResult.size < 4) {
-                return@withContext null
+            if (decodedResult.size < 5) {
+                return@withContext emptyMap()
             }
             
-            @Suppress("UNCHECKED_CAST")
-            val recordIds = (decodedResult[1] as DynamicArray<Uint256>).value.map { it.value }
-            
-            AccessGrant(
-                grantee = (decodedResult[0] as Address).value,
-                recordIds = recordIds,
-                expiryTime = (decodedResult[2] as Uint256).value,
-                isActive = (decodedResult[3] as Bool).value
+            mapOf(
+                "medications" to (decodedResult[0] as Uint256).value,
+                "vaccinations" to (decodedResult[1] as Uint256).value,
+                "reports" to (decodedResult[2] as Uint256).value,
+                "shares" to (decodedResult[3] as Uint256).value,
+                "accessLogs" to (decodedResult[4] as Uint256).value
             )
-            
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting access grant", e)
-            null
+            Log.e(TAG, "Error getting total counts", e)
+            emptyMap()
         }
     }
+    
+    // ============================================
+    // TRANSACTION HANDLER
+    // ============================================
     
     /**
      * Send a transaction using the user's connected wallet.

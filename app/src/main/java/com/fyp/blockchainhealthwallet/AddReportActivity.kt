@@ -397,24 +397,26 @@ class AddReportActivity : AppCompatActivity() {
             try {
                 showProgressDialog("Preparing blockchain transaction...")
                 
-                // Map UI type to blockchain RecordType enum
-                val recordType = when (typeString) {
-                    "Lab Report" -> BlockchainService.RecordType.LAB_REPORT
-                    "Prescription" -> BlockchainService.RecordType.PRESCRIPTION
-                    "Medical Image" -> BlockchainService.RecordType.MEDICAL_IMAGE
-                    "Diagnosis" -> BlockchainService.RecordType.DIAGNOSIS
-                    "Vaccination" -> BlockchainService.RecordType.VACCINATION
-                    else -> BlockchainService.RecordType.VISIT_SUMMARY
+                // Map UI type to blockchain ReportType enum (HealthWalletV2)
+                val reportType = when (typeString) {
+                    "Lab Report" -> BlockchainService.ReportType.LAB_RESULT
+                    "Prescription" -> BlockchainService.ReportType.PRESCRIPTION
+                    "Medical Image" -> BlockchainService.ReportType.IMAGING
+                    "Diagnosis" -> BlockchainService.ReportType.DOCTOR_NOTE
+                    "Vaccination" -> BlockchainService.ReportType.OTHER  // Vaccinations have their own function
+                    else -> BlockchainService.ReportType.OTHER
                 }
                 
                 updateProgressDialog("Sending request to wallet...\nPlease open your wallet app to approve")
                 
-                // User signs transaction with their wallet
+                // Use HealthWalletV2 addReport function
                 val txHash = withContext(Dispatchers.IO) {
-                    BlockchainService.addHealthRecord(
-                        ipfsHash = uploadedIpfsHash!!,
-                        recordType = recordType,
-                        encryptedKey = encryptedKeyForBlockchain!!
+                    BlockchainService.addReport(
+                        encryptedDataIpfsHash = uploadedIpfsHash!!,
+                        encryptedFileIpfsHash = uploadedIpfsHash!!,  // Same hash for both (can be different if needed)
+                        reportType = reportType,
+                        hasFile = true,  // This report has an attached file
+                        reportDate = java.math.BigInteger.valueOf(System.currentTimeMillis() / 1000)  // Current timestamp
                     )
                 }
                 
