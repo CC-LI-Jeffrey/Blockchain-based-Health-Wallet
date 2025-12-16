@@ -261,19 +261,158 @@ class ProfileActivity : AppCompatActivity() {
     }
     
     /**
-     * Show dialog to create/edit profile
-     * For this demo, we'll create a sample profile
-     * In production, you'd show a form for user input
+     * Show dialog to choose between sample data or custom form
      */
     private fun showEditProfileDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Create Profile")
-            .setMessage("This will create a sample profile and store it on the blockchain via IPFS. In production, you would show a form to collect real data.\n\nContinue?")
-            .setPositiveButton("Create Sample Profile") { _, _ ->
+            .setTitle("Edit Profile")
+            .setMessage("Choose how to create/update your profile:")
+            .setPositiveButton("Use Real Form") { _, _ ->
+                showProfileForm()
+            }
+            .setNeutralButton("Create Sample Data") { _, _ ->
                 createSampleProfile()
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+    
+    /**
+     * Show form to collect real profile data from user
+     */
+    private fun showProfileForm() {
+        val formView = layoutInflater.inflate(R.layout.dialog_edit_profile, null)
+        
+        // Populate with existing data if available
+        currentPersonalInfo?.let { info ->
+            formView.findViewById<android.widget.EditText>(R.id.etFirstName)?.setText(info.firstName)
+            formView.findViewById<android.widget.EditText>(R.id.etLastName)?.setText(info.lastName)
+            formView.findViewById<android.widget.EditText>(R.id.etEmail)?.setText(info.email)
+            formView.findViewById<android.widget.EditText>(R.id.etHKID)?.setText(info.hkid)
+            formView.findViewById<android.widget.EditText>(R.id.etDOB)?.setText(info.dateOfBirth)
+            formView.findViewById<android.widget.EditText>(R.id.etGender)?.setText(info.gender)
+            formView.findViewById<android.widget.EditText>(R.id.etBloodType)?.setText(info.bloodType)
+            formView.findViewById<android.widget.EditText>(R.id.etPhone)?.setText(info.phone)
+            formView.findViewById<android.widget.EditText>(R.id.etAddress)?.setText(info.address)
+            formView.findViewById<android.widget.EditText>(R.id.etEmergencyName)?.setText(info.emergencyContact.name)
+            formView.findViewById<android.widget.EditText>(R.id.etEmergencyRelation)?.setText(info.emergencyContact.relationship)
+            formView.findViewById<android.widget.EditText>(R.id.etEmergencyPhone)?.setText(info.emergencyContact.phone)
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("Edit Profile")
+            .setView(formView)
+            .setPositiveButton("Save to Blockchain") { _, _ ->
+                saveProfileFromForm(formView)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    /**
+     * Save profile data from form to blockchain + IPFS
+     */
+    private fun saveProfileFromForm(formView: android.view.View) {
+        val address = WalletManager.getAddress()
+        
+        if (address == null) {
+            Toast.makeText(this, "Please connect wallet first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Extract data from form fields
+        val firstName = formView.findViewById<android.widget.EditText>(R.id.etFirstName)?.text.toString().trim()
+        val lastName = formView.findViewById<android.widget.EditText>(R.id.etLastName)?.text.toString().trim()
+        val email = formView.findViewById<android.widget.EditText>(R.id.etEmail)?.text.toString().trim()
+        val hkid = formView.findViewById<android.widget.EditText>(R.id.etHKID)?.text.toString().trim()
+        val dob = formView.findViewById<android.widget.EditText>(R.id.etDOB)?.text.toString().trim()
+        val gender = formView.findViewById<android.widget.EditText>(R.id.etGender)?.text.toString().trim()
+        val bloodType = formView.findViewById<android.widget.EditText>(R.id.etBloodType)?.text.toString().trim()
+        val phone = formView.findViewById<android.widget.EditText>(R.id.etPhone)?.text.toString().trim()
+        val addressText = formView.findViewById<android.widget.EditText>(R.id.etAddress)?.text.toString().trim()
+        val emergencyName = formView.findViewById<android.widget.EditText>(R.id.etEmergencyName)?.text.toString().trim()
+        val emergencyRelation = formView.findViewById<android.widget.EditText>(R.id.etEmergencyRelation)?.text.toString().trim()
+        val emergencyPhone = formView.findViewById<android.widget.EditText>(R.id.etEmergencyPhone)?.text.toString().trim()
+        
+        // Validate required fields
+        if (firstName.isEmpty() || lastName.isEmpty() || email.isEmpty()) {
+            Toast.makeText(this, "Please fill in required fields (Name, Email)", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Saving profile to blockchain...")
+            setCancelable(false)
+            show()
+        }
+        
+        lifecycleScope.launch {
+            try {
+                // Create PersonalInfo from form data
+                val personalInfo = PersonalInfo(
+                    firstName = firstName,
+                    lastName = lastName,
+                    email = email,
+                    hkid = hkid,
+                    dateOfBirth = dob,
+                    gender = gender,
+                    bloodType = bloodType,
+                    phone = phone,
+                    address = addressText,
+                    emergencyContact = EmergencyContact(
+                        name = emergencyName,
+                        relationship = emergencyRelation,
+                        phone = emergencyPhone
+                    )
+                )
+                
+                progressDialog.setMessage("Uploading to IPFS...")
+                
+                // Convert to JSON
+                val jsonData = gson.toJson(personalInfo)
+                Log.d(TAG, "Personal info JSON: $jsonData")
+                
+                // Upload JSON to IPFS
+                val ipfsHash = withContext(Dispatchers.IO) {
+                    uploadJsonToIPFS(jsonData)
+                }
+                
+                Log.d(TAG, "Uploaded to IPFS with hash: $ipfsHash")
+                progressDialog.setMessage("Storing on blockchain...")
+                
+                // Store IPFS hash on blockchain
+                val dummyPublicKeyHash = "0x" + "0".repeat(64)
+                
+                val txHash = withContext(Dispatchers.IO) {
+                    BlockchainService.setPersonalInfo(ipfsHash, dummyPublicKeyHash)
+                }
+                
+                Log.d(TAG, "Stored on blockchain. Transaction: $txHash")
+                
+                // Update UI
+                currentPersonalInfo = personalInfo
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    displayPersonalInfo(personalInfo)
+                    
+                    AlertDialog.Builder(this@ProfileActivity)
+                        .setTitle("Success!")
+                        .setMessage("Profile saved to blockchain!\n\nTransaction: ${txHash.take(20)}...")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving profile", e)
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    AlertDialog.Builder(this@ProfileActivity)
+                        .setTitle("Error")
+                        .setMessage("Failed to save profile: ${e.message}")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+        }
     }
     
     /**
