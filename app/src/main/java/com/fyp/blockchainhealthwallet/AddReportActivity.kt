@@ -52,7 +52,7 @@ class AddReportActivity : AppCompatActivity() {
     private var selectedFileUri: Uri? = null
     private var uploadedFileIpfsHash: String? = null  // For the actual file (PDF, image, etc.)
     private var uploadedMetadataIpfsHash: String? = null  // For report metadata (title, description, etc.)
-    private var encryptedKeyForBlockchain: String? = null
+    // Note: encryptedKeyForBlockchain removed - keys are now derived from wallet via CategoryKeyManager
     private var progressDialog: ProgressDialog? = null
     
     // File picker launcher
@@ -201,17 +201,22 @@ class AddReportActivity : AppCompatActivity() {
                 // Create temporary file from URI
                 val tempFile = createTempFileFromUri(uri, fileName)
                 
-                // Encrypt file locally
-                updateProgressDialog("Encrypting file locally...")
-                val (encryptedFile, encryptedKey) = withContext(Dispatchers.IO) {
-                    EncryptionHelper.prepareFileForUpload(tempFile, cacheDir)
+                // Encrypt file using CATEGORY KEY (deterministic, can be re-derived)
+                updateProgressDialog("Encrypting file with category key...")
+                val encryptedFile = withContext(Dispatchers.IO) {
+                    // Use MEDICAL_REPORTS category key for report files
+                    EncryptionHelper.prepareFileForUploadWithCategory(
+                        tempFile, 
+                        cacheDir,
+                        BlockchainService.DataCategory.MEDICAL_REPORTS
+                    )
                 }
                 
                 // Clean up original temp file
                 tempFile.delete()
                 
-                // Save encrypted key for blockchain
-                encryptedKeyForBlockchain = encryptedKey
+                // Note: No need to save encryptedKey - it's derived from wallet via CategoryKeyManager
+                // The key can be re-derived using: CategoryKeyManager.getCategoryKey(DataCategory.MEDICAL_REPORTS)
                 
                 // Upload encrypted file to IPFS
                 uploadEncryptedFileToIPFS(encryptedFile)
@@ -268,7 +273,6 @@ class AddReportActivity : AppCompatActivity() {
                 selectedFileUri = null
                 tvAttachedFile.visibility = View.GONE
                 uploadedFileIpfsHash = null
-                encryptedKeyForBlockchain = null
             }
         } catch (e: Exception) {
             dismissProgressDialog()
@@ -283,7 +287,6 @@ class AddReportActivity : AppCompatActivity() {
             selectedFileUri = null
             tvAttachedFile.visibility = View.GONE
             uploadedFileIpfsHash = null
-            encryptedKeyForBlockchain = null
         }
     }
     
@@ -637,15 +640,16 @@ class AddReportActivity : AppCompatActivity() {
     private suspend fun uploadEncryptedMetadata(jsonString: String): String? {
         return withContext(Dispatchers.IO) {
             try {
-                // Create temporary file for metadata
-                val metadataFile = File(cacheDir, "metadata_${System.currentTimeMillis()}.json")
-                metadataFile.writeText(jsonString)
+                // Encrypt metadata using CATEGORY KEY (same as file encryption)
+                // This ensures metadata and file use the same MEDICAL_REPORTS key
+                val encryptedData = EncryptionHelper.encryptDataWithCategory(
+                    jsonString,
+                    BlockchainService.DataCategory.MEDICAL_REPORTS
+                )
                 
-                // Encrypt the metadata file
-                val (encryptedFile, _) = EncryptionHelper.prepareFileForUpload(metadataFile, cacheDir)
-                
-                // Clean up original metadata file
-                metadataFile.delete()
+                // Create encrypted file for upload (encryptedData is Base64 string)
+                val encryptedFile = File(cacheDir, "metadata_enc_${System.currentTimeMillis()}.bin")
+                encryptedFile.writeText(encryptedData)
                 
                 // Upload encrypted metadata to IPFS
                 val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaTypeOrNull())

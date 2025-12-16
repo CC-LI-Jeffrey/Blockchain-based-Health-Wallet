@@ -1,6 +1,7 @@
 package com.fyp.blockchainhealthwallet.wallet
 
 import android.util.Log
+import com.fyp.blockchainhealthwallet.blockchain.CategoryKeyManager
 import com.reown.appkit.client.AppKit
 import com.reown.appkit.client.Modal
 import com.reown.android.CoreClient
@@ -116,6 +117,10 @@ object WalletManager : AppKit.ModalDelegate {
                 _connectionState.value = WalletConnectionState.Connected(address, chainId)
                 Log.d(TAG, "Extracted address: $address")
                 Log.d(TAG, "Chain ID: $chainId")
+                
+                // Notify CategoryKeyManager that wallet connected
+                // This derives master key from wallet address for encryption
+                CategoryKeyManager.onWalletConnected(address)
             } else {
                 // Fallback: just show as connected with Sepolia
                 _connectionState.value = WalletConnectionState.Connected("Unknown", "11155111")
@@ -231,6 +236,10 @@ object WalletManager : AppKit.ModalDelegate {
         _walletAddress.value = null
         _chainId.value = null
         _connectionState.value = WalletConnectionState.Disconnected
+        
+        // Clear cached encryption keys on wallet disconnect
+        CategoryKeyManager.clearCache()
+        
         Log.d(TAG, "Session data cleared")
     }
     
