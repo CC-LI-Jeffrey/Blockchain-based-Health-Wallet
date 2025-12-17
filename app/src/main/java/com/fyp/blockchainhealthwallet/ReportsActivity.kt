@@ -90,24 +90,24 @@ class ReportsActivity : AppCompatActivity() {
                 // Get user's wallet address
                 val userAddress = BlockchainService.getUserAddress()
                 if (userAddress == null) {
-                    Log.e("ReportsActivity", "❌ Wallet not connected")
+                    Log.e("ReportsActivity", "Wallet not connected")
                     showError("Wallet not connected. Please connect your wallet.")
                     progressBar.visibility = View.GONE
                     emptyStateLayout.visibility = View.VISIBLE
                     return@launch
                 }
                 
-                Log.d("ReportsActivity", "📱 Fetching reports for: $userAddress")
+                Log.d("ReportsActivity", "Fetching reports for: $userAddress")
                 
                 // Get all report IDs from blockchain
                 val reportIds = withContext(Dispatchers.IO) {
                     BlockchainService.getReportIds(userAddress)
                 }
                 
-                Log.d("ReportsActivity", "📊 Found ${reportIds.size} report IDs: $reportIds")
+                Log.d("ReportsActivity", "Found ${reportIds.size} report IDs: $reportIds")
                 
                 if (reportIds.isEmpty()) {
-                    Log.w("ReportsActivity", "⚠️ No reports found for this address")
+                    Log.w("ReportsActivity", "No reports found for this address")
                     progressBar.visibility = View.GONE
                     emptyStateLayout.visibility = View.VISIBLE
                     return@launch
@@ -117,20 +117,20 @@ class ReportsActivity : AppCompatActivity() {
                 val reports = mutableListOf<Report>()
                 for (reportId in reportIds) {
                     try {
-                        Log.d("ReportsActivity", "🔄 Fetching report ID: $reportId")
+                        Log.d("ReportsActivity", "Fetching report ID: $reportId")
                         val report = fetchReportDetails(reportId)
                         if (report != null) {
                             reports.add(report)
-                            Log.d("ReportsActivity", "✅ Report loaded: ${report.title}")
+                            Log.d("ReportsActivity", "Report loaded: ${report.title}")
                         } else {
-                            Log.w("ReportsActivity", "⚠️ Report $reportId returned null")
+                            Log.w("ReportsActivity", "Report $reportId returned null")
                         }
                     } catch (e: Exception) {
                         Log.e("ReportsActivity", "❌ Failed to fetch report $reportId", e)
                     }
                 }
                 
-                Log.d("ReportsActivity", "📋 Total reports loaded: ${reports.size}")
+                Log.d("ReportsActivity", "Total reports loaded: ${reports.size}")
                 
                 reportsList.clear()
                 reportsList.addAll(reports)

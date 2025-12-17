@@ -94,8 +94,8 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                         share?.let {
                             Log.d(TAG, "Share $shareId: recipient=${it.recipientAddress}, category=${it.sharedDataCategory}")
                             // Check if this share is for current user
-                            if (it.recipientAddress.equals(address, ignoreCase = true)) {
-                                Log.d(TAG, "✅ Found share $shareId for current user!")
+                                if (it.recipientAddress.equals(address, ignoreCase = true)) {
+                                Log.d(TAG, "Found share $shareId for current user!")
                                 receivedShares.add(it)
                             }
                         }

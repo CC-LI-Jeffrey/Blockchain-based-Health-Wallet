@@ -251,7 +251,7 @@ object EncryptionHelper {
         // Return key as Base64 (not truly encrypted - caller must store this!)
         val keyString = keyToString(result.aesKey)
         
-        Log.w(TAG, "⚠️ Using deprecated prepareFileForUpload() - key must be stored or will be lost!")
+        Log.w(TAG, "Using deprecated prepareFileForUpload() - key must be stored or will be lost!")
         Log.d(TAG, "File prepared for upload: encrypted file = ${encryptedFile.absolutePath}")
         
         return Pair(encryptedFile, keyString)

@@ -119,7 +119,7 @@ class ProfileActivity : AppCompatActivity() {
                 Log.d(TAG, "Step 1 Result: personalInfoRef = $personalInfoRef")
                 
                 if (personalInfoRef == null) {
-                    Log.w(TAG, "⚠️ personalInfoRef is NULL")
+                    Log.w(TAG, "personalInfoRef is NULL")
                 } else {
                     Log.d(TAG, "PersonalInfoRef details:")
                     Log.d(TAG, "  - exists: ${personalInfoRef.exists}")

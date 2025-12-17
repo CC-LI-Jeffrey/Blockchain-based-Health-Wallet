@@ -146,7 +146,7 @@ class ViewReportActivity : AppCompatActivity() {
                 }
                 
                 // 3. File ready - show tap to view
-                Log.d("ViewReportActivity", "✅ File decrypted successfully: ${decryptedFile?.absolutePath}")
+                Log.d("ViewReportActivity", "File decrypted successfully: ${decryptedFile?.absolutePath}")
                 Log.d("ViewReportActivity", "File size: ${decryptedFile?.length()} bytes")
                 Log.d("ViewReportActivity", "File exists: ${decryptedFile?.exists()}")
                 
@@ -155,7 +155,7 @@ class ViewReportActivity : AppCompatActivity() {
                 decryptedFile?.let { file ->
                     try {
                         val header = file.inputStream().use { it.readBytes().take(10).toByteArray() }
-                        Log.d("ViewReportActivity", "📄 File header: ${header.joinToString(" ") { "%02x".format(it) }}")
+                        Log.d("ViewReportActivity", "File header: ${header.joinToString(" ") { "%02x".format(it) }}")
                         
                         // Detect file type
                         val (detectedType, extension) = when {
@@ -166,7 +166,7 @@ class ViewReportActivity : AppCompatActivity() {
                         }
                         
                         fileType = detectedType
-                        Log.d("ViewReportActivity", "🎯 Detected file type: $fileType")
+                        Log.d("ViewReportActivity", "Detected file type: $fileType")
                         
                         // Rename file with correct extension using copy instead of rename
                         if (file.extension != extension) {
@@ -174,7 +174,7 @@ class ViewReportActivity : AppCompatActivity() {
                             file.copyTo(correctFile, overwrite = true)
                             file.delete()
                             decryptedFile = correctFile
-                            Log.d("ViewReportActivity", "📁 Renamed to: ${correctFile.absolutePath}")
+                            Log.d("ViewReportActivity", "Renamed to: ${correctFile.absolutePath}")
                         }
                         
                         tvFilePath.text = "Tap to view $fileType"
@@ -187,7 +187,7 @@ class ViewReportActivity : AppCompatActivity() {
                                     ivFilePreview.setImageBitmap(bitmap)
                                     ivFilePreview.visibility = View.VISIBLE
                                     tvFilePath.text = "Image Preview (tap to view fullscreen)"
-                                    Log.d("ViewReportActivity", "✅ Image displayed inline")
+                                    Log.d("ViewReportActivity", "Image displayed inline")
                                 }
                             } catch (e: Exception) {
                                 Log.e("ViewReportActivity", "Error displaying image", e)
@@ -221,7 +221,7 @@ class ViewReportActivity : AppCompatActivity() {
      */
     private fun openFile(file: File) {
         try {
-            Log.d("ViewReportActivity", "📄 Opening file: ${file.absolutePath}")
+            Log.d("ViewReportActivity", "Opening file: ${file.absolutePath}")
             Log.d("ViewReportActivity", "File exists: ${file.exists()}")
             Log.d("ViewReportActivity", "File size: ${file.length()} bytes")
             

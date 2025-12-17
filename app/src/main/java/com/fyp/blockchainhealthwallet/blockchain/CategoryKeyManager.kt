@@ -266,7 +266,7 @@ object CategoryKeyManager {
         // In production, this should use RSA or ECDH with recipient's public key
         // TODO: Implement proper asymmetric encryption when recipient key exchange is implemented
         
-        Log.w(TAG, "⚠️ Using placeholder encryption for category key sharing")
+        Log.w(TAG, "Using placeholder encryption for category key sharing")
         Log.w(TAG, "TODO: Implement RSA/ECDH encryption with recipient's public key")
         
         // Placeholder: XOR with SHA-256 of recipient's public key

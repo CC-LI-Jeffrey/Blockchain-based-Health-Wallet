@@ -249,12 +249,12 @@ object BlockchainService {
                 ).send()
                 
                 val elapsed = System.currentTimeMillis() - startTime
-                Log.d(TAG, "✅ $name RPC responded in ${elapsed}ms")
+                Log.d(TAG, "$name RPC responded in ${elapsed}ms")
                 
                 return@withContext response
             } catch (e: Exception) {
                 val errorMsg = e.message ?: "Unknown error"
-                Log.w(TAG, "❌ $name RPC failed: $errorMsg")
+                Log.w(TAG, "$name RPC failed: $errorMsg")
                 lastException = e
                 // Continue to next endpoint
             }
@@ -345,7 +345,7 @@ object BlockchainService {
             )
             
             if (response.hasError()) {
-                Log.e(TAG, "❌ RPC Error: ${response.error.message}")
+                Log.e(TAG, "RPC Error: ${response.error.message}")
                 Log.e(TAG, "Error code: ${response.error.code}")
                 Log.e(TAG, "Error data: ${response.error.data}")
                 return@withContext null
@@ -356,7 +356,7 @@ object BlockchainService {
             Log.d(TAG, "Response is null or empty: ${result.isNullOrEmpty()}")
             
             if (result.isNullOrEmpty() || result == "0x") {
-                Log.w(TAG, "⚠️ Empty response from blockchain")
+                Log.w(TAG, "⚠Empty response from blockchain")
                 return@withContext null
             }
             
@@ -384,7 +384,7 @@ object BlockchainService {
             Log.d(TAG, "exists flag: $exists")
             
             if (!exists) {
-                Log.w(TAG, "⚠️ exists=false, no data stored")
+                Log.w(TAG, "exists=false, no data stored")
                 return@withContext null
             }
             
@@ -399,7 +399,7 @@ object BlockchainService {
             val stringDataEnd = stringDataStart + stringLength
             
             if (stringDataEnd > cleanHex.length) {
-                Log.e(TAG, "❌ String data out of bounds")
+                Log.e(TAG, "String data out of bounds")
                 return@withContext null
             }
             
@@ -417,7 +417,7 @@ object BlockchainService {
             )
             
             if (decodedResult.size < 5) {
-                Log.e(TAG, "❌ Invalid decoded result size: ${decodedResult.size}")
+                Log.e(TAG, "Invalid decoded result size: ${decodedResult.size}")
                 return@withContext null
             }
             
@@ -426,7 +426,7 @@ object BlockchainService {
             val createdAt = (decodedResult[2] as Uint256).value
             val lastUpdated = (decodedResult[3] as Uint256).value
             
-            Log.d(TAG, "✅ Successfully decoded PersonalInfoRef:")
+            Log.d(TAG, "Successfully decoded PersonalInfoRef:")
             Log.d(TAG, "  - IPFS Hash: $ipfsHash")
             Log.d(TAG, "  - Public Key Hash: $publicKeyHash")
             Log.d(TAG, "  - Created At: $createdAt")
@@ -640,11 +640,11 @@ object BlockchainService {
      */
     suspend fun sendDummyTestRecord(): String {
         Log.d(TAG, "========================================")
-        Log.d(TAG, "🧪 TESTING: Sending dummy personal info to HealthWalletV2...")
+        Log.d(TAG, "TESTING: Sending dummy personal info to HealthWalletV2...")
         Log.d(TAG, "========================================")
         
         // FORCE WalletManager to refresh its state
-        Log.d(TAG, "🔍 Forcing session state refresh...")
+        Log.d(TAG, "Forcing session state refresh...")
         WalletManager.forceRefreshSessionState()
         
         withContext(Dispatchers.Main) {
@@ -652,24 +652,24 @@ object BlockchainService {
         }
         
         if (!WalletManager.isConnected()) {
-            Log.e(TAG, "❌ NOT CONNECTED!")
+            Log.e(TAG, "NOT CONNECTED!")
             throw Exception("Wallet not connected. Please connect your wallet first.")
         }
         
         val account = try {
             AppKit.getAccount()
         } catch (e: Exception) {
-            Log.e(TAG, "❌ CRITICAL: Cannot get account from AppKit", e)
+            Log.e(TAG, "CRITICAL: Cannot get account from AppKit", e)
             throw Exception("WalletConnect session not available. Please reconnect your wallet.")
         }
         
         if (account == null) {
-            Log.e(TAG, "❌ CRITICAL: AppKit.getAccount() returned null!")
+            Log.e(TAG, "CRITICAL: AppKit.getAccount() returned null!")
             throw Exception("No wallet account available. Please connect your wallet first.")
         }
         
         val userAddress = account.address
-        Log.d(TAG, "✓ Address: $userAddress")
+        Log.d(TAG, "Address: $userAddress")
         
         val selectedChain = try {
             AppKit.getSelectedChain()
@@ -679,18 +679,18 @@ object BlockchainService {
         }
         
         val chainId = selectedChain?.chainReference ?: WalletManager.getChainId()
-        Log.d(TAG, "✓ Chain ID: $chainId")
+        Log.d(TAG, "Chain ID: $chainId")
         
         if (chainId == null) {
             throw Exception("No chain ID available - try reconnecting wallet.")
         }
         
         if (chainId != "11155111") {
-            Log.e(TAG, "⚠️ WRONG NETWORK! Current: $chainId, Expected: 11155111 (Sepolia)")
+            Log.e(TAG, "⚠WRONG NETWORK! Current: $chainId, Expected: 11155111 (Sepolia)")
             throw Exception("Wrong network! Please switch to Sepolia testnet. Current: $chainId")
         }
         
-        Log.d(TAG, "✓ On Sepolia network")
+        Log.d(TAG, "On Sepolia network")
         
         val nonce = try {
             withContext(Dispatchers.IO) {
@@ -700,7 +700,7 @@ object BlockchainService {
                 ).send()
                 
                 val nonceValue = ethGetTransactionCount.transactionCount
-                Log.d(TAG, "✓ Nonce: $nonceValue")
+                Log.d(TAG, "Nonce: $nonceValue")
                 "0x${nonceValue.toString(16)}"
             }
         } catch (e: Exception) {
@@ -712,8 +712,8 @@ object BlockchainService {
         val dummyIpfsHash = "QmTestPersonalInfo123456789"
         val dummyPublicKeyHash = "0x" + "1234567890abcdef".repeat(4)  // 32 bytes hex
         
-        Log.d(TAG, "🧪 Dummy IPFS hash: $dummyIpfsHash")
-        Log.d(TAG, "🧪 Dummy public key hash: $dummyPublicKeyHash")
+        Log.d(TAG, "Dummy IPFS hash: $dummyIpfsHash")
+        Log.d(TAG, "Dummy public key hash: $dummyPublicKeyHash")
         
         // Encode setPersonalInfo function call
         val keyHashBytes = Numeric.hexStringToByteArray(dummyPublicKeyHash)
@@ -727,7 +727,7 @@ object BlockchainService {
         )
         
         val encodedFunction = FunctionEncoder.encode(function)
-        Log.d(TAG, "🧪 Encoded data: ${encodedFunction.take(66)}...")
+        Log.d(TAG, "Encoded data: ${encodedFunction.take(66)}...")
         
         return sendTransaction(
             from = userAddress,
@@ -1008,7 +1008,7 @@ object BlockchainService {
      */
     suspend fun getReportIds(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "🔍 Getting report IDs for: $userAddress")
+            Log.d(TAG, "Getting report IDs for: $userAddress")
 
             // Try direct contract call first
             val function = org.web3j.abi.datatypes.Function(
@@ -1018,7 +1018,7 @@ object BlockchainService {
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
-            Log.d(TAG, "📤 Encoded function: $encodedFunction")
+            Log.d(TAG, "Encoded function: $encodedFunction")
 
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
@@ -1030,12 +1030,12 @@ object BlockchainService {
             ).send()
             
             if (response.hasError()) {
-                Log.e(TAG, "❌ Error getting report IDs: ${response.error.message}")
+                Log.e(TAG, "Error getting report IDs: ${response.error.message}")
                 Log.e(TAG, "Error code: ${response.error.code}, Data: ${response.error.data}")
 
                 // If access control error, try fetching from events
                 if (response.error.message.contains("No access") || response.error.message.contains("revert")) {
-                    Log.w(TAG, "⚠️ Access control blocking read, trying events...")
+                    Log.w(TAG, "Access control blocking read, trying events...")
                     return@withContext getReportIdsFromEvents(userAddress)
                 }
 
@@ -1043,10 +1043,10 @@ object BlockchainService {
             }
             
             val result = response.value
-            Log.d(TAG, "📥 Response value: $result")
+            Log.d(TAG, "Response value: $result")
 
             if (result.isNullOrEmpty() || result == "0x") {
-                Log.w(TAG, "⚠️ Empty response - trying events...")
+                Log.w(TAG, "Empty response - trying events...")
                 return@withContext getReportIdsFromEvents(userAddress)
             }
             
@@ -1056,17 +1056,17 @@ object BlockchainService {
             )
             
             if (decodedResult.isEmpty()) {
-                Log.w(TAG, "⚠️ Decoded result is empty - trying events...")
+                Log.w(TAG, "Decoded result is empty - trying events...")
                 return@withContext getReportIdsFromEvents(userAddress)
             }
             
             @Suppress("UNCHECKED_CAST")
             val ids = (decodedResult[0] as DynamicArray<Uint256>).value
             val reportIds = ids.map { it.value }
-            Log.d(TAG, "✅ Found ${reportIds.size} report IDs: $reportIds")
+            Log.d(TAG, "Found ${reportIds.size} report IDs: $reportIds")
             reportIds
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error getting report IDs, trying events...", e)
+            Log.e(TAG, "Error getting report IDs, trying events...", e)
             getReportIdsFromEvents(userAddress)
         }
     }
@@ -1107,7 +1107,7 @@ object BlockchainService {
             val logs = web3j.ethGetLogs(eventFilter).send()
 
             if (logs.hasError()) {
-                Log.e(TAG, "❌ Error fetching events: ${logs.error.message}")
+                Log.e(TAG, "Error fetching events: ${logs.error.message}")
                 return@withContext emptyList()
             }
 
@@ -1125,11 +1125,11 @@ object BlockchainService {
                 }
             }.distinct().sorted()
 
-            Log.d(TAG, "✅ Found ${reportIds.size} report IDs from events: $reportIds")
+            Log.d(TAG, "Found ${reportIds.size} report IDs from events: $reportIds")
             reportIds
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error fetching report IDs from events", e)
+            Log.e(TAG, "Error fetching report IDs from events", e)
             emptyList()
         }
     }
@@ -1223,8 +1223,8 @@ object BlockchainService {
             val encryptedFileIpfsHash = String(fileIpfsHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
             
             val reportType = ReportType.values().getOrNull(reportTypeValue) ?: ReportType.OTHER
-            
-            Log.d(TAG, "✅ Decoded report: id=$id, type=$reportType, hasFile=$hasFile")
+
+            Log.d(TAG, "Decoded report: id=$id, type=$reportType, hasFile=$hasFile")
             
             MedicalReportRef(
                 id = id,
@@ -1358,7 +1358,7 @@ object BlockchainService {
             Log.d(TAG, "Raw response value: $result")
 
             if (result.isNullOrEmpty() || result == "0x") {
-                Log.w(TAG, "⚠️ Empty response from blockchain - no shares found")
+                Log.w(TAG, "Empty response from blockchain - no shares found")
                 return@withContext emptyList()
             }
             
@@ -1370,7 +1370,7 @@ object BlockchainService {
             Log.d(TAG, "Decoded result size: ${decodedResult.size}")
 
             if (decodedResult.isEmpty()) {
-                Log.w(TAG, "⚠️ Decoded result is empty")
+                Log.w(TAG, "Decoded result is empty")
                 return@withContext emptyList()
             }
             
@@ -1378,10 +1378,10 @@ object BlockchainService {
             val ids = (decodedResult[0] as DynamicArray<Uint256>).value
             val shareIds = ids.map { it.value }
 
-            Log.d(TAG, "✅ Successfully retrieved ${shareIds.size} share IDs: $shareIds")
+            Log.d(TAG, "Successfully retrieved ${shareIds.size} share IDs: $shareIds")
             shareIds
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Exception getting share IDs for $userAddress", e)
+            Log.e(TAG, "Exception getting share IDs for $userAddress", e)
             Log.e(TAG, "Exception type: ${e.javaClass.name}")
             Log.e(TAG, "Exception message: ${e.message}")
             e.printStackTrace()
@@ -1512,7 +1512,7 @@ object BlockchainService {
                 encryptedCategoryKey = encryptedCategoryKey
             )
 
-            Log.d(TAG, "✅ Successfully retrieved share record $shareId")
+            Log.d(TAG, "Successfully retrieved share record $shareId")
             shareRecord
 
         } catch (e: Exception) {
@@ -1826,9 +1826,9 @@ object BlockchainService {
      */
     suspend fun hasPersonalInfo(userAddress: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "🔍 Checking personal info for address: $userAddress")
-            Log.d(TAG, "🔗 Using RPC: $RPC_URL")
-            Log.d(TAG, "📝 Contract: $CONTRACT_ADDRESS")
+            Log.d(TAG, "Checking personal info for address: $userAddress")
+            Log.d(TAG, "Using RPC: $RPC_URL")
+            Log.d(TAG, "Contract: $CONTRACT_ADDRESS")
             
             val function = org.web3j.abi.datatypes.Function(
                 "hasPersonalInfo",
@@ -1848,21 +1848,21 @@ object BlockchainService {
                 org.web3j.protocol.core.DefaultBlockParameterName.LATEST
             ).send()
             
-            Log.d(TAG, "📥 Response received")
+            Log.d(TAG, "Response received")
             
             if (response.hasError()) {
-                Log.e(TAG, "❌ RPC Error: ${response.error.message}")
-                Log.e(TAG, "❌ Error code: ${response.error.code}")
+                Log.e(TAG, "RPC Error: ${response.error.message}")
+                Log.e(TAG, "Error code: ${response.error.code}")
                 // RPC error - don't block the user, assume they have personal info
-                Log.w(TAG, "⚠️ RPC failed, allowing user to proceed")
+                Log.w(TAG, "RPC failed, allowing user to proceed")
                 return@withContext true  // Allow user to try
             }
             
             val result = response.value
-            Log.d(TAG, "📦 Raw result: $result")
+            Log.d(TAG, "Raw result: $result")
             
             if (result.isNullOrEmpty() || result == "0x") {
-                Log.w(TAG, "⚠️ Empty result from RPC")
+                Log.w(TAG, "Empty result from RPC")
                 return@withContext true  // Allow user to try
             }
             
@@ -1872,7 +1872,7 @@ object BlockchainService {
             )
             
             if (decodedResult.isEmpty()) {
-                Log.w(TAG, "⚠️ Could not decode result")
+                Log.w(TAG, "Could not decode result")
                 return@withContext true  // Allow user to try
             }
             
@@ -1882,7 +1882,7 @@ object BlockchainService {
         } catch (e: Exception) {
             Log.e(TAG, "❌ Exception checking personal info: ${e.message}", e)
             // Network error - don't block the user
-            Log.w(TAG, "⚠️ Exception occurred, allowing user to proceed")
+            Log.w(TAG, "Exception occurred, allowing user to proceed")
             true  // Allow user to try - blockchain will reject if no personal info
         }
     }

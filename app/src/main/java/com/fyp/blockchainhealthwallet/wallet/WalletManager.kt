@@ -71,11 +71,11 @@ object WalletManager : AppKit.ModalDelegate {
                     _chainId.value = chainId
                     _connectionState.value = WalletConnectionState.Connected(account.address, chainId)
                     
-                    Log.d(TAG, "✅ Session restored successfully")
+                    Log.d(TAG, "Session restored successfully")
                     Log.d(TAG, "   Address: ${account.address}")
                     Log.d(TAG, "   Chain: $chainId")
                 } catch (e: Exception) {
-                    Log.w(TAG, "⚠️ Session appears stale, clearing: ${e.message}")
+                    Log.w(TAG, "Session appears stale, clearing: ${e.message}")
                     clearAndDisconnectStaleSession()
                 }
             } else {
@@ -135,7 +135,7 @@ object WalletManager : AppKit.ModalDelegate {
     fun disconnectWallet() {
         try {
             Log.d(TAG, "========================================")
-            Log.d(TAG, "🔌 DISCONNECTING WALLET")
+            Log.d(TAG, "DISCONNECTING WALLET")
             Log.d(TAG, "========================================")
             
             // CRITICAL: Clear session data FIRST to update UI immediately
@@ -146,12 +146,12 @@ object WalletManager : AppKit.ModalDelegate {
             try {
                 AppKit.disconnect(
                     onSuccess = {
-                        Log.d(TAG, "✅ AppKit.disconnect() successful")
+                        Log.d(TAG, "AppKit.disconnect() successful")
                         disconnectAllPairings()
                         Log.d(TAG, "Session fully disconnected")
                     },
                     onError = { error ->
-                        Log.e(TAG, "❌ Error disconnecting: ${error.message}")
+                        Log.e(TAG, "Error disconnecting: ${error.message}")
                         // Still try to clear pairings
                         disconnectAllPairings()
                     }
@@ -177,7 +177,7 @@ object WalletManager : AppKit.ModalDelegate {
      */
     private fun disconnectAllPairings() {
         try {
-            Log.d(TAG, "🧹 Cleaning up all pairings...")
+            Log.d(TAG, "Cleaning up all pairings...")
             
             // Access the Core API to get and disconnect all pairings
             val pairings = CoreClient.Pairing.getPairings()
@@ -189,9 +189,9 @@ object WalletManager : AppKit.ModalDelegate {
                     Log.d(TAG, "  Disconnecting pairing: ${pairing.topic.take(10)}...")
                     CoreClient.Pairing.disconnect(pairing.topic) { error ->
                         if (error != null) {
-                            Log.w(TAG, "    ⚠️ Error disconnecting pairing: ${error.throwable.message}")
+                            Log.w(TAG, "    Error disconnecting pairing: ${error.throwable.message}")
                         } else {
-                            Log.d(TAG, "    ✅ Pairing disconnected")
+                            Log.d(TAG, "    Pairing disconnected")
                         }
                     }
                 } catch (e: Exception) {
@@ -199,9 +199,9 @@ object WalletManager : AppKit.ModalDelegate {
                 }
             }
             
-            Log.d(TAG, "✅ Pairing cleanup complete")
+            Log.d(TAG, "Pairing cleanup complete")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error accessing pairings: ${e.message}", e)
+            Log.e(TAG, "Error accessing pairings: ${e.message}", e)
         }
     }
     
@@ -209,7 +209,7 @@ object WalletManager : AppKit.ModalDelegate {
      * Clear stale session that appears connected but isn't valid
      */
     private fun clearAndDisconnectStaleSession() {
-        Log.w(TAG, "🧹 Clearing stale session...")
+        Log.w(TAG, "Clearing stale session...")
         
         try {
             // Force disconnect
@@ -319,7 +319,7 @@ object WalletManager : AppKit.ModalDelegate {
                 
                 if (account == null) {
                     // Session appears available but account is null = stale session
-                    Log.w(TAG, "⚠️ Session appears available but account is NULL - clearing stale session")
+                    Log.w(TAG, "Session appears available but account is NULL - clearing stale session")
                     clearSessionData()
                     
                     // Try to force disconnect the stale session
