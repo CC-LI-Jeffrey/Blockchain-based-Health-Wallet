@@ -92,6 +92,14 @@
             android:exported="false"
             android:label="Share Records" />
         <activity
+            android:name=".SharedRecordsActivity"
+            android:exported="false"
+            android:label="Records I Shared" />
+        <activity
+            android:name=".ReceivedRecordsActivity"
+            android:exported="false"
+            android:label="Records I Received" />
+        <activity
             android:name=".ShareRecordDetailActivity"
             android:exported="false"
             android:label="Share Details" />
