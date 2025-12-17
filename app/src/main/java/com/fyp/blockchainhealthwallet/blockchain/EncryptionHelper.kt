@@ -281,7 +281,7 @@ object EncryptionHelper {
         // Encrypt the file with category key
         encryptFile(sourceFile, encryptedFile, categoryKey)
         
-        Log.d(TAG, "✅ File encrypted with ${category.name} key")
+        Log.d(TAG, "File encrypted with ${category.name} key")
         Log.d(TAG, "File prepared for upload: ${encryptedFile.absolutePath}")
         
         return encryptedFile
@@ -382,7 +382,7 @@ object EncryptionHelper {
     ) {
         val categoryKey = CategoryKeyManager.getCategoryKey(category)
         decryptFile(encryptedFile, outputFile, categoryKey)
-        Log.d(TAG, "✅ File decrypted with ${category.name} key")
+        Log.d(TAG, "File decrypted with ${category.name} key")
     }
 
     /**

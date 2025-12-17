@@ -195,7 +195,7 @@ object WalletManager : AppKit.ModalDelegate {
                         }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "    ⚠️ Exception disconnecting pairing: ${e.message}")
+                    Log.w(TAG, "    Exception disconnecting pairing: ${e.message}")
                 }
             }
             
@@ -375,18 +375,18 @@ object WalletManager : AppKit.ModalDelegate {
     }
     
     fun forceRefreshSessionState() {
-        Log.d(TAG, "🔄 FORCE REFRESH: Checking actual session state...")
+        Log.d(TAG, "FORCE REFRESH: Checking actual session state...")
         try {
             val account = AppKit.getAccount()
             if (account == null) {
-                Log.w(TAG, "🔄 No account found - clearing stale connection state")
+                Log.w(TAG, "No account found - clearing stale connection state")
                 clearSessionData()
             } else {
-                Log.d(TAG, "🔄 Account found: ${account.address}")
+                Log.d(TAG, "Account found: ${account.address}")
                 // Session is valid, state should already be correct
             }
         } catch (e: Exception) {
-            Log.e(TAG, "🔄 Error during force refresh - clearing state", e)
+            Log.e(TAG, "Error during force refresh - clearing state", e)
             clearSessionData()
         }
     }

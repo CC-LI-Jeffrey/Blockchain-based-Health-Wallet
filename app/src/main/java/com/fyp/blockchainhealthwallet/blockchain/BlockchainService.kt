@@ -1837,7 +1837,7 @@ object BlockchainService {
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
-            Log.d(TAG, "📤 Encoded function: ${encodedFunction.take(20)}...")
+            Log.d(TAG, "Encoded function: ${encodedFunction.take(20)}...")
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
@@ -1877,10 +1877,10 @@ object BlockchainService {
             }
             
             val hasInfo = (decodedResult[0] as Bool).value
-            Log.d(TAG, "✅ hasPersonalInfo result: $hasInfo")
+            Log.d(TAG, "hasPersonalInfo result: $hasInfo")
             hasInfo
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Exception checking personal info: ${e.message}", e)
+            Log.e(TAG, "Exception checking personal info: ${e.message}", e)
             // Network error - don't block the user
             Log.w(TAG, "Exception occurred, allowing user to proceed")
             true  // Allow user to try - blockchain will reject if no personal info
@@ -1971,7 +1971,7 @@ object BlockchainService {
                 val chainId = WalletManager.getChainId() ?: "1"
                 
                 Log.d(TAG, "========================================")
-                Log.d(TAG, "⚠️ TRANSACTION DEBUG INFO")
+                Log.d(TAG, "⚠TRANSACTION DEBUG INFO")
                 Log.d(TAG, "========================================")
                 Log.d(TAG, "Wallet Address: $from")
                 Log.d(TAG, "Contract Address: $to")
@@ -1979,9 +1979,8 @@ object BlockchainService {
                 Log.d(TAG, "Expected Chain: Sepolia (11155111)")
                 
                 if (chainId != "11155111") {
-                    Log.e(TAG, "⚠️⚠️⚠️ CHAIN MISMATCH! ⚠️⚠️⚠️")
+                    Log.e(TAG, "Chain is not Sepolia")
                     Log.e(TAG, "Current chain: $chainId, Expected: 11155111 (Sepolia)")
-                    Log.e(TAG, "Please switch to Sepolia network in MetaMask!")
                 }
                 
                 // Estimate gas (500,000 gas units)
@@ -2031,9 +2030,9 @@ object BlockchainService {
                     method = "eth_sendTransaction",
                     params = transactionParams
                 )
-                
+
                 Log.d(TAG, "========================================")
-                Log.d(TAG, "📤 SENDING TO WALLETCONNECT...")
+                Log.d(TAG, "SENDING TO WALLETCONNECT...")
                 Log.d(TAG, "Method: eth_sendTransaction")
                 Log.d(TAG, "========================================")
                 
@@ -2042,14 +2041,14 @@ object BlockchainService {
                     request = request,
                     onSuccess = { result ->
                         Log.d(TAG, "========================================")
-                        Log.d(TAG, "✅ SUCCESS - TRANSACTION REQUEST SENT!")
+                        Log.d(TAG, "TRANSACTION REQUEST SENT!")
                         Log.d(TAG, "========================================")
                         Log.d(TAG, "Raw result type: ${result::class.java.simpleName}")
                         Log.d(TAG, "Raw result: $result")
                         
                         Log.i(TAG, "========================================")
-                        Log.i(TAG, "⏳ Transaction Status: PENDING USER APPROVAL")
-                        Log.i(TAG, "📱 Please open MetaMask to approve transaction")
+                        Log.i(TAG, "Transaction Status: PENDING USER APPROVAL")
+                        Log.i(TAG, "Please open MetaMask to approve transaction")
                         Log.i(TAG, "========================================")
                         
                         if (!isResumed) {
@@ -2061,7 +2060,7 @@ object BlockchainService {
                         if (!isResumed) {
                             isResumed = true
                             Log.e(TAG, "========================================")
-                            Log.e(TAG, "❌ TRANSACTION FAILED OR REJECTED")
+                            Log.e(TAG, "TRANSACTION FAILED OR REJECTED")
                             Log.e(TAG, "========================================")
                             Log.e(TAG, "Error type: ${error.javaClass.simpleName}")
                             Log.e(TAG, "Error message: ${error.message}")
