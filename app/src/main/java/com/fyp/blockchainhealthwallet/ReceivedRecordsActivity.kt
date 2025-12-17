@@ -269,14 +269,14 @@ class ReceivedRecordsActivity : AppCompatActivity() {
             addDataRow(container, "ℹ️ Status", "You no longer have access to this data")
             return
         }
-        
+
         // Check if the share is expired
         if (share.status == BlockchainService.ShareStatus.EXPIRED) {
             addDataRow(container, "⏰ Access Expired", "This share has expired")
             addDataRow(container, "ℹ️ Status", "The access period for this data has ended")
             return
         }
-        
+
         addDataRow(container, "⏳ Loading", "Fetching data from IPFS...")
 
         lifecycleScope.launch {
@@ -310,19 +310,19 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                         // Parse as JSON object and display fields
                         val dataMap = Gson().fromJson(jsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
-                            addDataRow(container, "💊 ${key.capitalize()}", value.toString())
+                            addDataRow(container, "💊 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
                     }
                     BlockchainService.DataCategory.VACCINATION_RECORDS -> {
                         val dataMap = Gson().fromJson(jsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
-                            addDataRow(container, "💉 ${key.capitalize()}", value.toString())
+                            addDataRow(container, "💉 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
                     }
                     BlockchainService.DataCategory.MEDICAL_REPORTS -> {
                         val dataMap = Gson().fromJson(jsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
-                            addDataRow(container, "📄 ${key.capitalize()}", value.toString())
+                            addDataRow(container, "📄 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
                     }
                     else -> {

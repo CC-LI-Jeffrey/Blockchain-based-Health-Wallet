@@ -4,12 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
 import com.fyp.blockchainhealthwallet.databinding.ActivityShareRecordHubBinding
-import com.fyp.blockchainhealthwallet.wallet.WalletManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class ShareRecordActivity : AppCompatActivity() {
 
@@ -21,12 +16,10 @@ class ShareRecordActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupClickListeners()
-        loadStatistics()
     }
 
     override fun onResume() {
         super.onResume()
-        loadStatistics()
     }
 
     private fun setupClickListeners() {
@@ -47,40 +40,5 @@ class ShareRecordActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadStatistics() {
-        val address = WalletManager.getAddress() ?: return
-
-        lifecycleScope.launch {
-            try {
-                val shareIds = withContext(Dispatchers.IO) {
-                    BlockchainService.getShareIds(address)
-                }
-
-                var activeCount = 0
-                var expiredCount = 0
-                var revokedCount = 0
-
-                shareIds.forEach { shareId ->
-                    val share = withContext(Dispatchers.IO) {
-                        BlockchainService.getShareRecord(shareId)
-                    }
-                    share?.let {
-                        when (it.status) {
-                            BlockchainService.ShareStatus.ACTIVE -> activeCount++
-                            BlockchainService.ShareStatus.EXPIRED -> expiredCount++
-                            BlockchainService.ShareStatus.REVOKED -> revokedCount++
-                            else -> {}
-                        }
-                    }
-                }
-
-                binding.tvActiveShares.text = activeCount.toString()
-                binding.tvExpiredShares.text = expiredCount.toString()
-                binding.tvRevokedShares.text = revokedCount.toString()
-
-            } catch (e: Exception) {
-                // Silently fail - statistics optional
-            }
-        }
-    }
+    
 }
