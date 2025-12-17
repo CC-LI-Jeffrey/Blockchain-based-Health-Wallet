@@ -10,12 +10,16 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.blockchain.CategoryKeyManager
+import com.fyp.blockchainhealthwallet.crypto.PublicKeyRegistry
 import com.fyp.blockchainhealthwallet.databinding.ActivityReceivedRecordsBinding
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
 
 class ReceivedRecordsActivity : AppCompatActivity() {
 
@@ -69,41 +73,33 @@ class ReceivedRecordsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val progressDialog = android.app.ProgressDialog(this@ReceivedRecordsActivity).apply {
-                    setMessage("Scanning blockchain for shares...")
+                    setMessage("Loading received shares...")
                     setCancelable(false)
                     show()
                 }
 
-                // Get the latest share ID from blockchain to know how many exist
-                val maxShareId = withContext(Dispatchers.IO) {
-                    // Try to get share IDs from a known address to find max ID
-                    // We'll scan first 100 shares (can be adjusted)
-                    100
+                receivedShares.clear()
+                Log.d(TAG, "Getting received share IDs for: $address")
+
+                // Use efficient contract function to get shares where user is recipient
+                val shareIds = withContext(Dispatchers.IO) {
+                    BlockchainService.getReceivedShareIds(address)
                 }
 
-                receivedShares.clear()
-                Log.d(TAG, "Scanning for shares where recipient = $address")
+                Log.d(TAG, "Found ${shareIds.size} received share IDs: $shareIds")
 
-                // Scan all possible share IDs
-                for (shareId in 1..maxShareId) {
+                // Fetch each share record
+                for (shareId in shareIds) {
                     try {
                         val share = withContext(Dispatchers.IO) {
-                            BlockchainService.getShareRecord(java.math.BigInteger.valueOf(shareId.toLong()))
+                            BlockchainService.getShareRecord(shareId)
                         }
-
                         share?.let {
-                            Log.d(TAG, "Share $shareId: recipient=${it.recipientAddress}, category=${it.sharedDataCategory}")
-                            // Check if this share is for current user
-                                if (it.recipientAddress.equals(address, ignoreCase = true)) {
-                                Log.d(TAG, "Found share $shareId for current user!")
-                                receivedShares.add(it)
-                            }
+                            Log.d(TAG, "Loaded share $shareId: category=${it.sharedDataCategory}, status=${it.status}")
+                            receivedShares.add(it)
                         }
                     } catch (e: Exception) {
-                        // Share doesn't exist, continue scanning
-                        if (shareId <= 10) { // Only log first 10 to avoid spam
-                            Log.d(TAG, "Share $shareId doesn't exist or error: ${e.message}")
-                        }
+                        Log.e(TAG, "Error loading share $shareId: ${e.message}")
                     }
                 }
 
@@ -120,7 +116,7 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error auto-discovering shares", e)
+                Log.e(TAG, "Error loading received shares", e)
                 showEmptyState()
                 Toast.makeText(this@ReceivedRecordsActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -277,34 +273,197 @@ class ReceivedRecordsActivity : AppCompatActivity() {
             return
         }
 
-        addDataRow(container, "⏳ Loading", "Fetching data from IPFS...")
+        addDataRow(container, "⏳ Loading", "Fetching and decrypting data...")
 
         lifecycleScope.launch {
             try {
                 val ipfsHash = share.encryptedRecipientDataIpfsHash
-                Log.d(TAG, "Fetching IPFS data from: $ipfsHash")
+                val encryptedCategoryKey = share.encryptedCategoryKey
+                val ownerAddress = share.ownerAddress
 
-                val jsonData = withContext(Dispatchers.IO) {
-                    val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
-                    response.body()?.string() ?: throw Exception("Empty IPFS response")
+                Log.d(TAG, "Fetching IPFS data from: $ipfsHash")
+                Log.d(TAG, "Owner address: $ownerAddress")
+                Log.d(TAG, "Encrypted category key: ${encryptedCategoryKey.take(30)}...")
+
+                // Step 1: Get owner's public key for ECDH decryption
+                val ownerPublicKey = withContext(Dispatchers.IO) {
+                    PublicKeyRegistry.getPublicKeyForAddress(ownerAddress)
                 }
 
-                Log.d(TAG, "IPFS data received: ${jsonData.take(200)}...")
+                if (ownerPublicKey == null) {
+                    container.removeAllViews()
+                    addDataRow(container, "⚠️ Decryption Error", "Owner's encryption key not found")
+                    addDataRow(container, "ℹ️ Info", "Cannot decrypt without owner's public key")
+                    return@launch
+                }
+
+                // Step 2: Decrypt the category key using ECDH
+                Log.d(TAG, "Attempting to decrypt category key...")
+                Log.d(TAG, "Owner public key: ${ownerPublicKey.take(20)}... (${ownerPublicKey.length} chars)")
+                Log.d(TAG, "Encrypted category key: ${encryptedCategoryKey.take(50)}...")
+                
+                // Verify recipient has their own ECDH key
+                val recipientPrivateKey = try {
+                    PublicKeyRegistry.getPrivateKey()
+                } catch (e: Exception) {
+                    container.removeAllViews()
+                    addDataRow(container, "⚠️ Decryption Error", "Failed to load your encryption key")
+                    addDataRow(container, "ℹ️ Solution", "Please reconnect your wallet or re-register your encryption key in Profile")
+                    return@launch
+                }
+                
+                if (recipientPrivateKey == null) {
+                    container.removeAllViews()
+                    addDataRow(container, "⚠️ Decryption Error", "You haven't registered your encryption key")
+                    addDataRow(container, "ℹ️ Solution", "Please open Profile and create/update your profile to register your encryption key")
+                    return@launch
+                }
+                
+                // Verify our public key on blockchain matches our private key
+                val recipientAddress = WalletManager.getAddress()
+                val recipientPublicKeyOnChain = withContext(Dispatchers.IO) {
+                    PublicKeyRegistry.getPublicKeyForAddress(recipientAddress!!)
+                }
+                val recipientLocalPublicKey = PublicKeyRegistry.getPublicKeyHex()
+                
+                if (recipientPublicKeyOnChain != recipientLocalPublicKey) {
+                    Log.w(TAG, "⚠️ Public key mismatch!")
+                    Log.w(TAG, "On-chain: ${recipientPublicKeyOnChain?.take(20)}...")
+                    Log.w(TAG, "Local: ${recipientLocalPublicKey?.take(20)}...")
+                    container.removeAllViews()
+                    addDataRow(container, "⚠️ Key Mismatch", "Your encryption keys are out of sync")
+                    addDataRow(container, "ℹ️ Solution", "Please update your profile to re-register your encryption key")
+                    return@launch
+                }
+                
+                Log.d(TAG, "✅ Recipient key verification passed")
+                
+                val categoryKey = try {
+                    CategoryKeyManager.decryptSharedCategoryKey(encryptedCategoryKey, ownerPublicKey)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decrypt category key", e)
+                    Log.e(TAG, "Exception type: ${e.javaClass.simpleName}")
+                    
+                    // Special case: Old personal info shares (before encryption was implemented)
+                    // These have encrypted category key but plain JSON data on IPFS
+                    if (share.sharedDataCategory == BlockchainService.DataCategory.PERSONAL_INFO && 
+                        e.message?.contains("BadTag") == true) {
+                        Log.w(TAG, "Detected old personal info share (pre-encryption). Attempting to load as plain JSON...")
+                        
+                        try {
+                            // Fetch data from IPFS as plain text
+                            val plainData = withContext(Dispatchers.IO) {
+                                val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
+                                response.body()?.string() ?: throw Exception("Empty IPFS response")
+                            }
+                            
+                            // Parse and display
+                            val data = Gson().fromJson(plainData, PersonalInfo::class.java)
+                            container.removeAllViews()
+                            addDataRow(container, "⚠️ Legacy Share", "This is an old share format (unencrypted)")
+                            addDataRow(container, "👤 Name", "${data.firstName} ${data.lastName}")
+                            addDataRow(container, "✉️ Email", data.email)
+                            addDataRow(container, "📞 Phone", data.phone)
+                            addDataRow(container, "🆔 HKID", data.hkid)
+                            addDataRow(container, "🎂 Date of Birth", data.dateOfBirth)
+                            addDataRow(container, "⚧ Gender", data.gender)
+                            addDataRow(container, "🩸 Blood Type", data.bloodType)
+                            addDataRow(container, "🏠 Address", data.address)
+                            addDataRow(container, "🚨 Emergency Contact", "${data.emergencyContact.name} (${data.emergencyContact.relationship}) - ${data.emergencyContact.phone}")
+                            return@launch
+                        } catch (fallbackError: Exception) {
+                            Log.e(TAG, "Fallback to plain JSON also failed", fallbackError)
+                            // Continue to show original error
+                        }
+                    }
+                    
+                    Log.e(TAG, "Stack trace: ", e)
+                    container.removeAllViews()
+                    addDataRow(container, "⚠️ Decryption Failed", "Could not decrypt the encryption key")
+                    addDataRow(container, "ℹ️ Error Type", e.javaClass.simpleName)
+                    addDataRow(container, "ℹ️ Error Details", e.message ?: "Unknown error")
+                    addDataRow(container, "💡 Suggestion", "This share may be incompatible. Ask the sender to re-share with updated settings.")
+                    return@launch
+                }
+
+                Log.d(TAG, "✅ Category key decrypted successfully")
+
+                // Step 3: Fetch encrypted data from IPFS
+                val jsonData = if (share.sharedDataCategory == BlockchainService.DataCategory.PERSONAL_INFO) {
+                    // Personal info is stored as Base64-encoded encrypted string
+                    val encryptedDataBase64 = withContext(Dispatchers.IO) {
+                        val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
+                        response.body()?.string() ?: throw Exception("Empty IPFS response")
+                    }
+                    
+                    Log.d(TAG, "IPFS encrypted data received: ${encryptedDataBase64.length} chars (Base64)")
+                    
+                    // Decrypt using EncryptionHelper for Base64 encrypted data
+                    try {
+                        com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptDataWithCategory(
+                            encryptedDataBase64,
+                            share.sharedDataCategory
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to decrypt personal info data", e)
+                        // Try as plain text (for old unencrypted shares)
+                        encryptedDataBase64
+                    }
+                } else {
+                    // Medical reports and other files are stored as raw encrypted bytes
+                    val encryptedData = withContext(Dispatchers.IO) {
+                        val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
+                        response.body()?.bytes() ?: throw Exception("Empty IPFS response")
+                    }
+
+                    Log.d(TAG, "IPFS encrypted data received: ${encryptedData.size} bytes")
+
+                    // Step 4: Decrypt the data using the category key
+                    try {
+                        decryptData(encryptedData, categoryKey)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to decrypt IPFS data", e)
+                        // Try as plain text (for backward compatibility with unencrypted data)
+                        String(encryptedData, Charsets.UTF_8)
+                    }
+                }
+
+                Log.d(TAG, "Decrypted data: ${jsonData.take(200)}...")
 
                 container.removeAllViews()
 
                 when (share.sharedDataCategory) {
                     BlockchainService.DataCategory.PERSONAL_INFO -> {
-                        val data = Gson().fromJson(jsonData, PersonalInfo::class.java)
-                        addDataRow(container, "👤 Name", "${data.firstName} ${data.lastName}")
-                        addDataRow(container, "✉️ Email", data.email)
-                        addDataRow(container, "📞 Phone", data.phone)
-                        addDataRow(container, "🆔 HKID", data.hkid)
-                        addDataRow(container, "🎂 Date of Birth", data.dateOfBirth)
-                        addDataRow(container, "⚧ Gender", data.gender)
-                        addDataRow(container, "🩸 Blood Type", data.bloodType)
-                        addDataRow(container, "🏠 Address", data.address)
-                        addDataRow(container, "🚨 Emergency Contact", "${data.emergencyContact.name} (${data.emergencyContact.relationship}) - ${data.emergencyContact.phone}")
+                        var data: PersonalInfo? = null
+                        var legacyWarning = false
+                        try {
+                            data = Gson().fromJson(jsonData, PersonalInfo::class.java)
+                        } catch (jsonEx: Exception) {
+                            // Try to Base64-decode and parse as JSON (handles accidental double-encoding)
+                            try {
+                                val decoded = android.util.Base64.decode(jsonData, android.util.Base64.DEFAULT)
+                                val decodedString = String(decoded, Charsets.UTF_8)
+                                data = Gson().fromJson(decodedString, PersonalInfo::class.java)
+                                legacyWarning = true
+                            } catch (b64Ex: Exception) {
+                                // Still failed, treat as legacy plain JSON
+                                legacyWarning = true
+                            }
+                        }
+                        if (data != null) {
+                            if (legacyWarning) addDataRow(container, "⚠️ Legacy Share", "This is an old or non-standard share format.")
+                            addDataRow(container, "👤 Name", "${data.firstName} ${data.lastName}")
+                            addDataRow(container, "✉️ Email", data.email)
+                            addDataRow(container, "📞 Phone", data.phone)
+                            addDataRow(container, "🆔 HKID", data.hkid)
+                            addDataRow(container, "🎂 Date of Birth", data.dateOfBirth)
+                            addDataRow(container, "⚧ Gender", data.gender)
+                            addDataRow(container, "🩸 Blood Type", data.bloodType)
+                            addDataRow(container, "🏠 Address", data.address)
+                            addDataRow(container, "🚨 Emergency Contact", "${data.emergencyContact.name} (${data.emergencyContact.relationship}) - ${data.emergencyContact.phone}")
+                        } else {
+                            addDataRow(container, "❌ Error", "Could not parse personal info data. This share may be corrupted or incompatible.")
+                        }
                     }
                     BlockchainService.DataCategory.MEDICATION_RECORDS -> {
                         // Parse as JSON object and display fields
@@ -386,5 +545,34 @@ class ReceivedRecordsActivity : AppCompatActivity() {
 
     private fun hideEmptyState() {
         binding.emptyState.visibility = View.GONE
+    }
+
+    /**
+     * Decrypt data using the category key.
+     * The encrypted data format is: IV (12 bytes) + ciphertext + auth tag
+     */
+    private fun decryptData(encryptedData: ByteArray, categoryKey: javax.crypto.SecretKey): String {
+        // Check if data might be plain text (starts with { or [)
+        if (encryptedData.isNotEmpty() &&
+            (encryptedData[0] == '{'.code.toByte() || encryptedData[0] == '['.code.toByte())) {
+            Log.d(TAG, "Data appears to be unencrypted JSON, returning as-is")
+            return String(encryptedData, Charsets.UTF_8)
+        }
+
+        // AES-GCM decryption
+        val ivSize = 12
+        if (encryptedData.size <= ivSize) {
+            throw IllegalArgumentException("Encrypted data too short")
+        }
+
+        val iv = encryptedData.copyOfRange(0, ivSize)
+        val ciphertext = encryptedData.copyOfRange(ivSize, encryptedData.size)
+
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val gcmSpec = GCMParameterSpec(128, iv)
+        cipher.init(Cipher.DECRYPT_MODE, categoryKey, gcmSpec)
+
+        val decryptedBytes = cipher.doFinal(ciphertext)
+        return String(decryptedBytes, Charsets.UTF_8)
     }
 }

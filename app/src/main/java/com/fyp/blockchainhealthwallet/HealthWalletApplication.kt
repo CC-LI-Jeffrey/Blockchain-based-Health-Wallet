@@ -3,6 +3,7 @@ package com.fyp.blockchainhealthwallet
 import android.app.Application
 import android.util.Log
 import com.fyp.blockchainhealthwallet.blockchain.CategoryKeyManager
+import com.fyp.blockchainhealthwallet.crypto.PublicKeyRegistry
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.reown.android.Core
 import com.reown.android.CoreClient
@@ -18,6 +19,9 @@ class HealthWalletApplication : Application() {
         try {
             // Initialize CategoryKeyManager first (required for encryption)
             CategoryKeyManager.initialize(this)
+            
+            // Initialize PublicKeyRegistry for ECDH key exchange
+            PublicKeyRegistry.initialize(this)
             
             initializeWalletConnect()
             // Initialize WalletManager after AppKit

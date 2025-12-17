@@ -9,6 +9,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.LifecycleCoroutineScope
 import com.fyp.blockchainhealthwallet.ShareRecordActivity
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.blockchain.CategoryKeyManager
+import com.fyp.blockchainhealthwallet.crypto.PublicKeyRegistry
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.Dispatchers
@@ -41,12 +43,12 @@ object BlockchainHelper {
             setPadding(50, 20, 50, 20)
         }
         
-        // Data category selection (using Personal Info for testing until medical records are implemented)
+        // Data category selection
         val categories = arrayOf(
-            "Personal Info (for testing)",
-            "Medication Records (coming soon)",
-            "Vaccination Records (coming soon)",
-            "Medical Reports (coming soon)"
+            "Personal Info",
+            "Medication Records",
+            "Vaccination Records",
+            "Medical Reports"
         )
         var selectedCategory = BlockchainService.DataCategory.PERSONAL_INFO
         val categoryInput = android.widget.Spinner(context).apply {
@@ -158,6 +160,7 @@ object BlockchainHelper {
     
     /**
      * Share data with recipient on blockchain (HealthWalletV2).
+     * Uses ECDH for secure category key encryption.
      */
     private fun shareData(
         context: Context,
@@ -182,38 +185,91 @@ object BlockchainHelper {
                 val userAddress = WalletManager.getAddress()
                     ?: throw Exception("Wallet not connected")
                 
-                // Step 1: Fetch the actual personal info from blockchain + IPFS
-                progressDialog?.setMessage("Fetching your personal info from IPFS...")
+                // Step 1: Ensure our public key is registered
+                progressDialog?.setMessage("Registering encryption key...")
+                if (!PublicKeyRegistry.isKeyRegistered()) {
+                    val registered = withContext(Dispatchers.IO) {
+                        PublicKeyRegistry.registerPublicKey()
+                    }
+                    if (!registered) {
+                        Log.w("BlockchainHelper", "Failed to register public key, continuing anyway")
+                    }
+                }
                 
-                val personalInfoRef = withContext(Dispatchers.IO) {
-                    BlockchainService.getPersonalInfoRef(userAddress)
-                } ?: throw Exception("No personal info found. Please set your personal info first in Profile.")
+                // Step 2: Get recipient's public key for ECDH
+                progressDialog?.setMessage("Fetching recipient's encryption key...")
+                val recipientPublicKey = withContext(Dispatchers.IO) {
+                    PublicKeyRegistry.getPublicKeyForAddress(recipientAddress)
+                }
                 
-                // The personal info is already stored on IPFS, we'll use that hash
-                val personalInfoIpfsHash = personalInfoRef.encryptedDataIpfsHash
+                if (recipientPublicKey == null) {
+                    throw Exception("Recipient has not registered their encryption key.\n\nThe recipient must open the app at least once to register their public key for secure sharing.")
+                }
                 
-                Log.d("BlockchainHelper", "Using existing personal info IPFS hash: $personalInfoIpfsHash")
+                // Step 3: Fetch the data IPFS hash based on category
+                progressDialog?.setMessage("Fetching your ${dataCategory.name.lowercase().replace('_', ' ')} from blockchain...")
                 
-                // Step 2: Generate recipient name hash and category key
+                val ipfsHash = when (dataCategory) {
+                    BlockchainService.DataCategory.PERSONAL_INFO -> {
+                        val personalInfoRef = withContext(Dispatchers.IO) {
+                            BlockchainService.getPersonalInfoRef(userAddress)
+                        } ?: throw Exception("No personal info found. Please set your personal info first in Profile.")
+                        personalInfoRef.encryptedDataIpfsHash
+                    }
+                    BlockchainService.DataCategory.MEDICAL_REPORTS -> {
+                        // For medical reports, we'll share the most recent report
+                        // In future, add UI to select specific report
+                        val reportIds = withContext(Dispatchers.IO) {
+                            BlockchainService.getReportIds(userAddress)
+                        }
+                        if (reportIds.isEmpty()) {
+                            throw Exception("No medical reports found. Please add a medical report first.")
+                        }
+                        // Get the most recent report (last in list)
+                        val latestReportId = reportIds.last()
+                        val report = withContext(Dispatchers.IO) {
+                            BlockchainService.getReportRef(latestReportId)
+                        } ?: throw Exception("Failed to fetch medical report")
+                        report.encryptedDataIpfsHash
+                    }
+                    BlockchainService.DataCategory.MEDICATION_RECORDS -> {
+                        // TODO: Implement medication records fetching
+                        throw Exception("Medication records sharing not yet implemented")
+                    }
+                    BlockchainService.DataCategory.VACCINATION_RECORDS -> {
+                        // TODO: Implement vaccination records fetching
+                        throw Exception("Vaccination records sharing not yet implemented")
+                    }
+                    else -> throw Exception("Unsupported data category")
+                }
+                
+                Log.d("BlockchainHelper", "Using IPFS hash: $ipfsHash")
+                
+                // Step 4: Encrypt category key with recipient's public key using ECDH
+                progressDialog?.setMessage("Encrypting data key for recipient...")
+                val encryptedCategoryKey = CategoryKeyManager.encryptCategoryKeyForRecipient(
+                    dataCategory,
+                    recipientPublicKey
+                )
+                
+                Log.d("BlockchainHelper", "Category key encrypted with ECDH for recipient")
+                
+                // Step 5: Generate recipient name hash
                 val recipientNameHash = "0x" + recipientName.hashCode().toString().padStart(64, '0').take(64)
-                
-                // TODO: In production, encrypt the category key with recipient's public key
-                // For now, using a placeholder (recipient won't be able to decrypt without proper key)
-                val categoryKey = "encrypted-category-key-" + System.currentTimeMillis()
                 
                 progressDialog?.setMessage("Sending to wallet...\nPlease approve transaction")
                 
-                // Step 3: Share data on blockchain with REAL IPFS hash
+                // Step 6: Share data on blockchain
                 val txHash = withContext(Dispatchers.IO) {
                     BlockchainService.shareData(
                         recipientAddress = recipientAddress,
                         recipientNameHash = recipientNameHash,
-                        encryptedRecipientDataIpfsHash = personalInfoIpfsHash,  // REAL IPFS HASH!
+                        encryptedRecipientDataIpfsHash = ipfsHash,
                         recipientType = recipientType,
                         dataCategory = dataCategory,
                         expiryDate = expiryTimestamp,
                         accessLevel = BlockchainService.AccessLevel.VIEW_ONLY,
-                        encryptedCategoryKey = categoryKey
+                        encryptedCategoryKey = encryptedCategoryKey
                     )
                 }
                 
@@ -226,7 +282,7 @@ object BlockchainHelper {
                 // Show success
                 AlertDialog.Builder(context)
                     .setTitle("Data Shared Successfully!")
-                    .setMessage("Recipient can now access your ${dataCategory.name.lowercase().replace('_', ' ')} until expiry.\n\nTransaction: ${txHash.take(10)}...\n\nFull TX: $txHash\n\nRefresh share list to see new share.")
+                    .setMessage("✅ Securely shared using ECDH encryption\n\nRecipient can now access your ${dataCategory.name.lowercase().replace('_', ' ')} until expiry.\n\nTransaction: ${txHash.take(10)}...\n\nRefresh share list to see new share.")
                     .setPositiveButton("OK") { _, _ ->
                         // Refresh the share list if context is ShareRecordActivity
                         if (context is ShareRecordActivity) {

@@ -74,6 +74,9 @@ object WalletManager : AppKit.ModalDelegate {
                     Log.d(TAG, "Session restored successfully")
                     Log.d(TAG, "   Address: ${account.address}")
                     Log.d(TAG, "   Chain: $chainId")
+                    
+                    // Initialize CategoryKeyManager for restored session
+                    CategoryKeyManager.onWalletConnected(account.address)
                 } catch (e: Exception) {
                     Log.w(TAG, "Session appears stale, clearing: ${e.message}")
                     clearAndDisconnectStaleSession()

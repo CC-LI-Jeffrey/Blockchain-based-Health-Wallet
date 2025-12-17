@@ -8,7 +8,10 @@ import android.util.Base64
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.fyp.blockchainhealthwallet.crypto.ECDHKeyExchange
+import com.fyp.blockchainhealthwallet.crypto.PublicKeyRegistry
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
+import java.math.BigInteger
 import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -249,64 +252,57 @@ object CategoryKeyManager {
     }
     
     /**
-     * Encrypt a category key for sharing with a recipient
-     * The recipient will decrypt this using their private key
+     * Encrypt a category key for sharing with a recipient using ECDH.
+     * The recipient will decrypt this using their ECDH private key and our public key.
      * 
      * @param category The category whose key to share
-     * @param recipientPublicKeyBase64 Recipient's public key in Base64
-     * @return Encrypted category key as Base64 string
+     * @param recipientPublicKeyHex Recipient's ECDH public key in hex (64 bytes)
+     * @return Encrypted category key as Base64 string (contains IV + ciphertext)
      */
     fun encryptCategoryKeyForRecipient(
         category: BlockchainService.DataCategory,
-        recipientPublicKeyBase64: String
+        recipientPublicKeyHex: String
     ): String {
         val categoryKey = getCategoryKey(category)
-        
-        // For now, use AES encryption with a derived shared secret
-        // In production, this should use RSA or ECDH with recipient's public key
-        // TODO: Implement proper asymmetric encryption when recipient key exchange is implemented
-        
-        Log.w(TAG, "Using placeholder encryption for category key sharing")
-        Log.w(TAG, "TODO: Implement RSA/ECDH encryption with recipient's public key")
-        
-        // Placeholder: XOR with SHA-256 of recipient's public key
-        // This is NOT secure for production - just for demonstration
-        val recipientKeyHash = MessageDigest.getInstance("SHA-256")
-            .digest(Base64.decode(recipientPublicKeyBase64, Base64.NO_WRAP))
-        
         val categoryKeyBytes = categoryKey.encoded
-        val encryptedBytes = ByteArray(categoryKeyBytes.size)
-        for (i in categoryKeyBytes.indices) {
-            encryptedBytes[i] = (categoryKeyBytes[i].toInt() xor recipientKeyHash[i % recipientKeyHash.size].toInt()).toByte()
-        }
+
+        // Get our ECDH private key
+        val ownerPrivateKey = PublicKeyRegistry.getPrivateKey()
+
+        // Encrypt using ECDH
+        val encryptedKey = ECDHKeyExchange.encryptCategoryKey(
+            categoryKeyBytes,
+            ownerPrivateKey,
+            recipientPublicKeyHex
+        )
         
-        return Base64.encodeToString(encryptedBytes, Base64.NO_WRAP)
+        Log.d(TAG, "✅ Category key encrypted with ECDH for recipient")
+        return encryptedKey
     }
     
     /**
-     * Decrypt a shared category key (as a recipient)
+     * Decrypt a shared category key as a recipient using ECDH.
      * 
-     * @param encryptedKeyBase64 The encrypted category key
-     * @param privateKeyBase64 Recipient's private key
+     * @param encryptedKeyBase64 The encrypted category key (Base64 with IV + ciphertext)
+     * @param ownerPublicKeyHex Owner's ECDH public key in hex
      * @return Decrypted SecretKey
      */
     fun decryptSharedCategoryKey(
         encryptedKeyBase64: String,
-        privateKeyBase64: String
+        ownerPublicKeyHex: String
     ): SecretKey {
-        // Placeholder: reverse the XOR operation
-        // In production, use RSA/ECDH decryption
+        // Get our ECDH private key
+        val recipientPrivateKey = PublicKeyRegistry.getPrivateKey()
         
-        val privateKeyHash = MessageDigest.getInstance("SHA-256")
-            .digest(Base64.decode(privateKeyBase64, Base64.NO_WRAP))
+        // Decrypt using ECDH
+        val decryptedKeyBytes = ECDHKeyExchange.decryptCategoryKey(
+            encryptedKeyBase64,
+            recipientPrivateKey,
+            ownerPublicKeyHex
+        )
         
-        val encryptedBytes = Base64.decode(encryptedKeyBase64, Base64.NO_WRAP)
-        val decryptedBytes = ByteArray(encryptedBytes.size)
-        for (i in encryptedBytes.indices) {
-            decryptedBytes[i] = (encryptedBytes[i].toInt() xor privateKeyHash[i % privateKeyHash.size].toInt()).toByte()
-        }
-        
-        return SecretKeySpec(decryptedBytes, "AES")
+        Log.d(TAG, "✅ Category key decrypted with ECDH from owner")
+        return SecretKeySpec(decryptedKeyBytes, "AES")
     }
     
     /**

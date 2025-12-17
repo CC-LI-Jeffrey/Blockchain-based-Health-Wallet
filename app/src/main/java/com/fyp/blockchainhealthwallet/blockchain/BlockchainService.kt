@@ -45,7 +45,7 @@ object BlockchainService {
     // ============================================
     // HealthWallet V1 address = 0xed41D59378f36b04567DAB79077d8057eA3E70D6
     // HealthWallet V2 address = 0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B
-    private const val CONTRACT_ADDRESS = "0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B"
+    private const val CONTRACT_ADDRESS = "0x59921F54bD17D7C245fD03dbF075Bf574d00C202"
     
     // Sepolia RPC endpoints - using multiple public endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
@@ -142,7 +142,6 @@ object BlockchainService {
      */
     data class PersonalInfoRef(
         val encryptedDataIpfsHash: String,
-        val publicKeyHash: String,  // bytes32 as hex string
         val createdAt: BigInteger,
         val lastUpdated: BigInteger,
         val exists: Boolean
@@ -189,6 +188,7 @@ object BlockchainService {
      */
     data class ShareRecord(
         val id: BigInteger,
+        val ownerAddress: String,          // Address of the data owner who shared
         val recipientAddress: String,
         val recipientNameHash: String,  // bytes32 as hex string
         val encryptedRecipientDataIpfsHash: String,
@@ -271,27 +271,20 @@ object BlockchainService {
     /**
      * Set or update personal information (encrypted and stored on IPFS)
      * @param encryptedDataIpfsHash IPFS hash of encrypted personal data JSON
-     * @param publicKeyHash Hash of user's public encryption key (bytes32)
      * @return Transaction hash
      */
     suspend fun setPersonalInfo(
-        encryptedDataIpfsHash: String,
-        publicKeyHash: String  // Must be 32 bytes hex string (0x + 64 chars)
+        encryptedDataIpfsHash: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
         
         Log.d(TAG, "Setting personal info for user: $userAddress")
-        
-        // Convert hex string to bytes32
-        val keyHashBytes = Numeric.hexStringToByteArray(publicKeyHash)
-        require(keyHashBytes.size == 32) { "publicKeyHash must be 32 bytes" }
-        
+
         val function = org.web3j.abi.datatypes.Function(
             "setPersonalInfo",
             listOf(
-                Utf8String(encryptedDataIpfsHash),
-                org.web3j.abi.datatypes.generated.Bytes32(keyHashBytes)
+                Utf8String(encryptedDataIpfsHash)
             ),
             emptyList()
         )
@@ -325,7 +318,6 @@ object BlockchainService {
                 listOf(Address(userAddress)),
                 listOf(
                     object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
-                    object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {},  // publicKeyHash
                     object : TypeReference<Uint256>() {},  // createdAt
                     object : TypeReference<Uint256>() {},  // lastUpdated
                     object : TypeReference<Bool>() {}  // exists
@@ -363,24 +355,23 @@ object BlockchainService {
             Log.d(TAG, "Decoding response (manual parsing due to tuple wrapper)...")
             
             // Manually decode the tuple fields from the hex response
+            // PersonalInfoRef has 4 fields: string, uint256, uint256, bool
             // Response format: 
             // 0-64: offset to tuple (32 bytes)
-            // 64-128: offset to string (32 bytes)
-            // 128-192: bytes32 publicKeyHash (32 bytes)
-            // 192-256: uint256 createdAt (32 bytes)
-            // 256-320: uint256 lastUpdated (32 bytes)
-            // 320-384: bool exists (32 bytes) <-- HERE!
-            // 384+: string length + data
+            // 64-128: offset to string within tuple (32 bytes)
+            // 128-192: uint256 createdAt (32 bytes)
+            // 192-256: uint256 lastUpdated (32 bytes)
+            // 256-320: bool exists (32 bytes)
+            // 320-384: string length (32 bytes)
+            // 384+: string content in hex
             
             val cleanHex = result.substring(2) // Remove 0x prefix
             
-            // Parse exists flag at position 320-384
-            val existsHex = cleanHex.substring(320, 384)
+            // Parse exists flag at position 256-320
+            val existsHex = cleanHex.substring(256, 320)
             val exists = existsHex.trim('0') == "1"
             
             Log.d(TAG, "exists hex: $existsHex")
-            Log.d(TAG, "exists flag: $exists")
-            
             Log.d(TAG, "exists flag: $exists")
             
             if (!exists) {
@@ -389,13 +380,13 @@ object BlockchainService {
             }
             
             // Manually parse the IPFS hash string from hex
-            // String starts at position 384 (after the 5 fixed fields)
-            // 384-448: string length (32 bytes)
-            // 448+: string content in hex
+            // String starts at position 320 (after the 4 fixed fields: offset, createdAt, lastUpdated, exists)
+            // 320-384: string length (32 bytes)
+            // 384+: string content in hex
             
-            val stringLengthHex = cleanHex.substring(384, 448)
+            val stringLengthHex = cleanHex.substring(320, 384)
             val stringLength = stringLengthHex.toLong(16).toInt() * 2 // Convert to hex char count
-            val stringDataStart = 448
+            val stringDataStart = 384
             val stringDataEnd = stringDataStart + stringLength
             
             if (stringDataEnd > cleanHex.length) {
@@ -416,26 +407,23 @@ object BlockchainService {
                 function.outputParameters
             )
             
-            if (decodedResult.size < 5) {
+            if (decodedResult.size < 4) {
                 Log.e(TAG, "Invalid decoded result size: ${decodedResult.size}")
                 return@withContext null
             }
             
             // Extract numeric fields (skip string at index 0)
-            val publicKeyHash = Numeric.toHexString((decodedResult[1] as org.web3j.abi.datatypes.generated.Bytes32).value)
-            val createdAt = (decodedResult[2] as Uint256).value
-            val lastUpdated = (decodedResult[3] as Uint256).value
+            val createdAt = (decodedResult[1] as Uint256).value
+            val lastUpdated = (decodedResult[2] as Uint256).value
             
             Log.d(TAG, "Successfully decoded PersonalInfoRef:")
             Log.d(TAG, "  - IPFS Hash: $ipfsHash")
-            Log.d(TAG, "  - Public Key Hash: $publicKeyHash")
             Log.d(TAG, "  - Created At: $createdAt")
             Log.d(TAG, "  - Last Updated: $lastUpdated")
             Log.d(TAG, "========================================")
             
             PersonalInfoRef(
                 encryptedDataIpfsHash = ipfsHash,
-                publicKeyHash = publicKeyHash,
                 createdAt = createdAt,
                 lastUpdated = lastUpdated,
                 exists = exists
@@ -710,18 +698,14 @@ object BlockchainService {
         
         // Dummy data for HealthWalletV2 setPersonalInfo
         val dummyIpfsHash = "QmTestPersonalInfo123456789"
-        val dummyPublicKeyHash = "0x" + "1234567890abcdef".repeat(4)  // 32 bytes hex
         
         Log.d(TAG, "Dummy IPFS hash: $dummyIpfsHash")
-        Log.d(TAG, "Dummy public key hash: $dummyPublicKeyHash")
         
         // Encode setPersonalInfo function call
-        val keyHashBytes = Numeric.hexStringToByteArray(dummyPublicKeyHash)
         val function = org.web3j.abi.datatypes.Function(
             "setPersonalInfo",
             listOf(
-                Utf8String(dummyIpfsHash),
-                org.web3j.abi.datatypes.generated.Bytes32(keyHashBytes)
+                Utf8String(dummyIpfsHash)
             ),
             emptyList()
         )
@@ -1390,6 +1374,64 @@ object BlockchainService {
     }
     
     /**
+     * Get all share record IDs where user is RECIPIENT (shares received)
+     */
+    suspend fun getReceivedShareIds(recipientAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "=== getReceivedShareIds called ===")
+            Log.d(TAG, "Recipient Address: $recipientAddress")
+
+            val function = org.web3j.abi.datatypes.Function(
+                "getReceivedShareIds",
+                listOf(Address(recipientAddress)),
+                listOf(object : TypeReference<DynamicArray<Uint256>>() {})
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    recipientAddress,  // Set from address to recipient's address for auth
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+
+            if (response.hasError()) {
+                Log.e(TAG, "❌ RPC Error getting received share IDs: ${response.error.message}")
+                return@withContext emptyList()
+            }
+
+            val result = response.value
+
+            if (result.isNullOrEmpty() || result == "0x") {
+                Log.w(TAG, "⚠️ No received shares found")
+                return@withContext emptyList()
+            }
+
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+
+            if (decodedResult.isEmpty()) {
+                return@withContext emptyList()
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val ids = (decodedResult[0] as DynamicArray<Uint256>).value
+            val shareIds = ids.map { it.value }
+
+            Log.d(TAG, "✅ Successfully retrieved ${shareIds.size} received share IDs: $shareIds")
+            shareIds
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Exception getting received share IDs", e)
+            emptyList()
+        }
+    }
+
+    /**
      * Get share record details (read-only)
      * @param shareId The share ID to retrieve
      * @param callerAddress Optional: Address of the caller (for auth check). If null, uses connected wallet.
@@ -1500,6 +1542,7 @@ object BlockchainService {
 
             val shareRecord = ShareRecord(
                 id = id,
+                ownerAddress = "", // Will be filled by caller or getShareOwner
                 recipientAddress = recipientAddress,
                 recipientNameHash = recipientNameHash,
                 encryptedRecipientDataIpfsHash = encryptedRecipientDataIpfsHash,
@@ -1512,12 +1555,69 @@ object BlockchainService {
                 encryptedCategoryKey = encryptedCategoryKey
             )
 
-            Log.d(TAG, "Successfully retrieved share record $shareId")
-            shareRecord
+            // Try to get owner address
+            val ownerAddress = try {
+                getShareOwner(id)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not get share owner for $id: ${e.message}")
+                ""
+            }
+
+            Log.d(TAG, "Successfully retrieved share record $shareId (owner: $ownerAddress)")
+            shareRecord.copy(ownerAddress = ownerAddress)
 
         } catch (e: Exception) {
             Log.e(TAG, "Error getting share record $shareId", e)
             null
+        }
+    }
+
+    /**
+     * Get the owner address for a share record
+     * @param shareId The share ID to look up
+     * @return The owner's wallet address
+     */
+    suspend fun getShareOwner(shareId: BigInteger): String = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Getting share owner for share ID: $shareId")
+
+            val function = org.web3j.abi.datatypes.Function(
+                "getShareOwner",
+                listOf(Uint256(shareId)),
+                listOf(object : TypeReference<org.web3j.abi.datatypes.Address>() {})
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting share owner: ${response.error.message}")
+                return@withContext ""
+            }
+
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext ""
+            }
+
+            // Parse address from result (last 40 hex chars after 0x)
+            val cleanHex = result.substring(2)
+            val address = "0x" + cleanHex.takeLast(40)
+
+            Log.d(TAG, "Share $shareId owner: $address")
+            address
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting share owner for $shareId", e)
+            ""
         }
     }
 
@@ -1948,6 +2048,153 @@ object BlockchainService {
         }
     }
     
+    // ============================================
+    // ECDH PUBLIC KEY FUNCTIONS (for secure sharing)
+    // ============================================
+
+    /**
+     * Register ECDH public key on blockchain.
+     * This key is used for encrypting category keys when sharing data.
+     *
+     * @param publicKeyHex The ECDH public key as hex string (128 chars = 64 bytes)
+     * @return Transaction hash
+     */
+    suspend fun registerECDHPublicKey(publicKeyHex: String): String {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("Wallet not connected")
+
+        Log.d(TAG, "Registering ECDH public key on blockchain for: ${userAddress.take(10)}...")
+
+        // Encode function call: registerECDHPublicKey(string _publicKey)
+        val function = org.web3j.abi.datatypes.Function(
+            "registerECDHPublicKey",
+            listOf(org.web3j.abi.datatypes.Utf8String(publicKeyHex)),
+            emptyList()
+        )
+
+        val encodedFunction = FunctionEncoder.encode(function)
+
+        return sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction
+        )
+    }
+
+    /**
+     * Get ECDH public key for an address from blockchain.
+     *
+     * @param userAddress The address to look up
+     * @return Public key hex string, or null if not registered
+     */
+    suspend fun getECDHPublicKey(userAddress: String): String? = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Getting ECDH public key for: ${userAddress.take(10)}...")
+
+            val function = org.web3j.abi.datatypes.Function(
+                "getECDHPublicKey",
+                listOf(org.web3j.abi.datatypes.Address(userAddress)),
+                listOf(object : TypeReference<org.web3j.abi.datatypes.Utf8String>() {})
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting ECDH public key: ${response.error.message}")
+                return@withContext null
+            }
+
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext null
+            }
+
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+
+            if (decodedResult.isEmpty()) {
+                return@withContext null
+            }
+
+            val publicKey = (decodedResult[0] as org.web3j.abi.datatypes.Utf8String).value
+
+            if (publicKey.isEmpty()) {
+                Log.d(TAG, "No ECDH public key registered for: ${userAddress.take(10)}...")
+                return@withContext null
+            }
+
+            Log.d(TAG, "Found ECDH public key for: ${userAddress.take(10)}... (${publicKey.length} chars)")
+            publicKey
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting ECDH public key", e)
+            null
+        }
+    }
+
+    /**
+     * Check if an address has registered an ECDH public key.
+     *
+     * @param userAddress The address to check
+     * @return True if the address has a registered public key
+     */
+    suspend fun hasECDHPublicKey(userAddress: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val function = org.web3j.abi.datatypes.Function(
+                "hasECDHPublicKey",
+                listOf(org.web3j.abi.datatypes.Address(userAddress)),
+                listOf(object : TypeReference<org.web3j.abi.datatypes.Bool>() {})
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    null,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+
+            if (response.hasError()) {
+                Log.e(TAG, "Error checking ECDH public key: ${response.error.message}")
+                return@withContext false
+            }
+
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext false
+            }
+
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+
+            if (decodedResult.isEmpty()) {
+                return@withContext false
+            }
+
+            (decodedResult[0] as org.web3j.abi.datatypes.Bool).value
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking ECDH public key", e)
+            false
+        }
+    }
+
     // ============================================
     // TRANSACTION HANDLER
     // ============================================

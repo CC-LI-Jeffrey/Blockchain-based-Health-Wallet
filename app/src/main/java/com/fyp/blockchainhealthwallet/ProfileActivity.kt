@@ -11,6 +11,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
+import com.fyp.blockchainhealthwallet.crypto.PublicKeyRegistry
 import com.fyp.blockchainhealthwallet.network.ApiClient
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.google.gson.Gson
@@ -124,7 +126,6 @@ class ProfileActivity : AppCompatActivity() {
                     Log.d(TAG, "PersonalInfoRef details:")
                     Log.d(TAG, "  - exists: ${personalInfoRef.exists}")
                     Log.d(TAG, "  - encryptedDataIpfsHash: ${personalInfoRef.encryptedDataIpfsHash}")
-                    Log.d(TAG, "  - publicKeyHash: ${personalInfoRef.publicKeyHash}")
                     Log.d(TAG, "  - createdAt: ${personalInfoRef.createdAt}")
                     Log.d(TAG, "  - lastUpdated: ${personalInfoRef.lastUpdated}")
                 }
@@ -170,13 +171,19 @@ class ProfileActivity : AppCompatActivity() {
                     throw Exception("Failed to retrieve data from IPFS: ${response.code()} - ${response.message()}")
                 }
                 
-                // Step 3: Parse JSON data
+                // Step 3: Decrypt and parse JSON data
                 Log.d(TAG, "========================================")
-                Log.d(TAG, "Step 3: Parsing JSON")
+                Log.d(TAG, "Step 3: Decrypting and Parsing JSON")
                 Log.d(TAG, "========================================")
-                val jsonData = response.body()!!.string()
-                Log.d(TAG, "Retrieved data from IPFS (${jsonData.length} bytes)")
-                Log.d(TAG, "JSON content: $jsonData")
+                val encryptedData = response.body()!!.string()
+                Log.d(TAG, "Retrieved encrypted data from IPFS (${encryptedData.length} bytes)")
+                
+                // Decrypt the data using category key
+                val jsonData = withContext(Dispatchers.IO) {
+                    EncryptionHelper.decryptDataWithCategory(encryptedData, BlockchainService.DataCategory.PERSONAL_INFO)
+                }
+                
+                Log.d(TAG, "Decrypted JSON content: $jsonData")
                 
                 val personalInfo = gson.fromJson(jsonData, PersonalInfo::class.java)
                 currentPersonalInfo = personalInfo
@@ -366,25 +373,55 @@ class ProfileActivity : AppCompatActivity() {
                     )
                 )
                 
-                progressDialog.setMessage("Uploading to IPFS...")
+                progressDialog.setMessage("Encrypting personal info...")
                 
                 // Convert to JSON
                 val jsonData = gson.toJson(personalInfo)
                 Log.d(TAG, "Personal info JSON: $jsonData")
                 
-                // Upload JSON to IPFS
+                // Encrypt the JSON data using category key
+                val encryptedData = withContext(Dispatchers.IO) {
+                    EncryptionHelper.encryptDataWithCategory(jsonData, BlockchainService.DataCategory.PERSONAL_INFO)
+                }
+                
+                progressDialog.setMessage("Uploading to IPFS...")
+                
+                // Upload encrypted data to IPFS
                 val ipfsHash = withContext(Dispatchers.IO) {
-                    uploadJsonToIPFS(jsonData)
+                    uploadEncryptedDataToIPFS(encryptedData)
                 }
                 
                 Log.d(TAG, "Uploaded to IPFS with hash: $ipfsHash")
-                progressDialog.setMessage("Storing on blockchain...")
+                
+                // Check if ECDH key needs to be registered (first time setup)
+                val needsEcdhRegistration = withContext(Dispatchers.IO) {
+                    !PublicKeyRegistry.isKeyRegisteredOnChain()
+                }
+                
+                if (needsEcdhRegistration) {
+                    // First time setup - need 2 transactions
+                    progressDialog.setMessage("Step 1/2: Registering encryption key...\n\nPlease approve in your wallet")
+                    
+                    val ecdhRegistered = withContext(Dispatchers.IO) {
+                        PublicKeyRegistry.registerPublicKey()
+                    }
+                    
+                    if (!ecdhRegistered) {
+                        throw Exception("Failed to register encryption key. Please try again.")
+                    }
+                    Log.d(TAG, "ECDH key registered successfully")
+                    
+                    // Small delay to let first transaction settle
+                    kotlinx.coroutines.delay(5000)
+                    
+                    progressDialog.setMessage("Step 2/2: Saving profile...\n\nPlease approve in your wallet")
+                } else {
+                    progressDialog.setMessage("Saving profile...\n\nPlease approve in your wallet")
+                }
                 
                 // Store IPFS hash on blockchain
-                val dummyPublicKeyHash = "0x" + "0".repeat(64)
-                
                 val txHash = withContext(Dispatchers.IO) {
-                    BlockchainService.setPersonalInfo(ipfsHash, dummyPublicKeyHash)
+                    BlockchainService.setPersonalInfo(ipfsHash)
                 }
                 
                 Log.d(TAG, "Stored on blockchain. Transaction: $txHash")
@@ -395,9 +432,15 @@ class ProfileActivity : AppCompatActivity() {
                     progressDialog.dismiss()
                     displayPersonalInfo(personalInfo)
                     
+                    val message = if (needsEcdhRegistration) {
+                        "Profile created successfully!\n\n✅ Encryption key registered\n✅ Profile saved to blockchain\n\nTransaction: ${txHash.take(20)}..."
+                    } else {
+                        "Profile saved to blockchain!\n\nTransaction: ${txHash.take(20)}..."
+                    }
+                    
                     AlertDialog.Builder(this@ProfileActivity)
                         .setTitle("Success!")
-                        .setMessage("Profile saved to blockchain!\n\nTransaction: ${txHash.take(20)}...")
+                        .setMessage(message)
                         .setPositiveButton("OK", null)
                         .show()
                 }
@@ -453,27 +496,55 @@ class ProfileActivity : AppCompatActivity() {
                     )
                 )
                 
-                progressDialog.setMessage("Uploading to IPFS...")
+                progressDialog.setMessage("Encrypting personal info...")
                 
                 // Step 2: Convert to JSON
                 val jsonData = gson.toJson(personalInfo)
                 Log.d(TAG, "Personal info JSON: $jsonData")
                 
-                // Step 3: Upload JSON to IPFS
+                // Step 3: Encrypt the JSON data using category key
+                val encryptedData = withContext(Dispatchers.IO) {
+                    EncryptionHelper.encryptDataWithCategory(jsonData, BlockchainService.DataCategory.PERSONAL_INFO)
+                }
+                
+                progressDialog.setMessage("Uploading to IPFS...")
+                
+                // Step 4: Upload encrypted data to IPFS
                 val ipfsHash = withContext(Dispatchers.IO) {
-                    uploadJsonToIPFS(jsonData)
+                    uploadEncryptedDataToIPFS(encryptedData)
                 }
                 
                 Log.d(TAG, "Uploaded to IPFS with hash: $ipfsHash")
-                progressDialog.setMessage("Storing on blockchain...")
+                
+                // Check if ECDH key needs to be registered (first time setup)
+                val needsEcdhRegistration = withContext(Dispatchers.IO) {
+                    !PublicKeyRegistry.isKeyRegisteredOnChain()
+                }
+                
+                if (needsEcdhRegistration) {
+                    // First time setup - need 2 transactions
+                    progressDialog.setMessage("Step 1/2: Registering encryption key...\n\nPlease approve in your wallet")
+                    
+                    val ecdhRegistered = withContext(Dispatchers.IO) {
+                        PublicKeyRegistry.registerPublicKey()
+                    }
+                    
+                    if (!ecdhRegistered) {
+                        throw Exception("Failed to register encryption key. Please try again.")
+                    }
+                    Log.d(TAG, "ECDH key registered successfully")
+                    
+                    // Small delay to let first transaction settle
+                    kotlinx.coroutines.delay(6000)
+                    
+                    progressDialog.setMessage("Step 2/2: Saving profile...\n\nPlease approve in your wallet")
+                } else {
+                    progressDialog.setMessage("Saving profile...\n\nPlease approve in your wallet")
+                }
                 
                 // Step 4: Store IPFS hash on blockchain
-                // For demo purposes, using a dummy public key hash
-                // In production, this would be the user's actual encryption public key hash
-                val dummyPublicKeyHash = "0x" + "0".repeat(64)  // 32 bytes of zeros
-                
                 val txHash = withContext(Dispatchers.IO) {
-                    BlockchainService.setPersonalInfo(ipfsHash, dummyPublicKeyHash)
+                    BlockchainService.setPersonalInfo(ipfsHash)
                 }
                 
                 Log.d(TAG, "Stored on blockchain. Transaction: $txHash")
@@ -484,9 +555,15 @@ class ProfileActivity : AppCompatActivity() {
                     progressDialog.dismiss()
                     displayPersonalInfo(personalInfo)
                     
+                    val message = if (needsEcdhRegistration) {
+                        "Profile created successfully!\n\n✅ Encryption key registered\n✅ Profile saved to blockchain\n\nTransaction: ${txHash.take(20)}..."
+                    } else {
+                        "Profile created and stored on blockchain!\n\nTransaction: ${txHash.take(20)}..."
+                    }
+                    
                     AlertDialog.Builder(this@ProfileActivity)
                         .setTitle("Success!")
-                        .setMessage("Profile created and stored on blockchain!\n\nTransaction: ${txHash.take(20)}...")
+                        .setMessage(message)
                         .setPositiveButton("OK", null)
                         .show()
                 }
@@ -506,19 +583,19 @@ class ProfileActivity : AppCompatActivity() {
     }
     
     /**
-     * Upload JSON data to IPFS via backend
-     * @param jsonData JSON string to upload
+     * Upload encrypted data to IPFS via backend
+     * @param encryptedData Base64 encrypted data string
      * @return IPFS hash
      */
-    private suspend fun uploadJsonToIPFS(jsonData: String): String {
-        // Convert JSON string to bytes
-        val jsonBytes = jsonData.toByteArray(Charsets.UTF_8)
+    private suspend fun uploadEncryptedDataToIPFS(encryptedData: String): String {
+        // Convert encrypted data to bytes
+        val jsonBytes = encryptedData.toByteArray(Charsets.UTF_8)
         
         // Create multipart request
-        val requestBody = jsonBytes.toRequestBody("application/json".toMediaTypeOrNull())
+        val requestBody = jsonBytes.toRequestBody("application/octet-stream".toMediaTypeOrNull())
         val filePart = MultipartBody.Part.createFormData(
             "file",
-            "personal_info.json",
+            "personal_info_encrypted.dat",
             requestBody
         )
         
