@@ -103,7 +103,7 @@
                             android:layout_width="20dp"
                             android:layout_height="20dp"
                             android:src="@drawable/ic_calendar"
-                            android:tint="@color/text_secondary" />
+                            app:tint="@color/text_secondary" />
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -142,7 +142,7 @@
                             android:layout_width="20dp"
                             android:layout_height="20dp"
                             android:src="@drawable/ic_profile"
-                            android:tint="@color/text_secondary" />
+                            app:tint="@color/text_secondary" />
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -180,7 +180,7 @@
                             android:layout_width="20dp"
                             android:layout_height="20dp"
                             android:src="@drawable/ic_reports"
-                            android:tint="@color/text_secondary" />
+                            app:tint="@color/text_secondary" />
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -259,45 +259,65 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:padding="20dp"
-                    android:gravity="center_vertical">
+                    android:orientation="vertical"
+                    android:padding="20dp">
 
-                    <ImageView
-                        android:layout_width="32dp"
-                        android:layout_height="32dp"
-                        android:src="@drawable/ic_document" />
-
+                    <!-- File Header (clickable) -->
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:id="@+id/fileHeaderLayout"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="16dp">
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
 
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Attached File"
-                            android:textSize="12sp"
-                            android:textColor="@color/text_hint" />
+                        <ImageView
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:src="@drawable/ic_document" />
 
-                        <TextView
-                            android:id="@+id/tvFilePath"
-                            android:layout_width="wrap_content"
+                        <LinearLayout
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:text="report.pdf"
-                            android:textSize="15sp"
-                            android:textColor="@color/text_primary"
-                            android:layout_marginTop="4dp"
-                            tools:text="report.pdf" />
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:layout_marginStart="16dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Attached File"
+                                android:textSize="12sp"
+                                android:textColor="@color/text_hint" />
+
+                            <TextView
+                                android:id="@+id/tvFilePath"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="report.pdf"
+                                android:textSize="15sp"
+                                android:textColor="@color/text_primary"
+                                android:layout_marginTop="4dp"
+                                tools:text="report.pdf" />
+                        </LinearLayout>
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_arrow_forward"
+                            app:tint="@color/text_secondary" />
                     </LinearLayout>
 
+                    <!-- Image Preview (for images only) -->
                     <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_arrow_forward"
-                        android:tint="@color/text_secondary" />
+                        android:id="@+id/ivFilePreview"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:visibility="gone"
+                        android:adjustViewBounds="true"
+                        android:scaleType="fitCenter"
+                        tools:visibility="visible"
+                        tools:src="@drawable/ic_document" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
         </LinearLayout>

@@ -344,6 +344,31 @@ object EncryptionHelper {
     }
     
     /**
+     * Decrypt raw bytes that were encrypted with category key
+     * Used when IPFS returns binary data instead of Base64 string
+     * 
+     * @param encryptedBytes The encrypted bytes (includes IV)
+     * @param category The data category
+     * @return Decrypted string
+     */
+    fun decryptBytesWithCategory(
+        encryptedBytes: ByteArray,
+        category: BlockchainService.DataCategory
+    ): String {
+        val categoryKey = CategoryKeyManager.getCategoryKey(category)
+        
+        // Extract IV and encrypted data
+        val iv = encryptedBytes.copyOfRange(0, IV_SIZE)
+        val ciphertext = encryptedBytes.copyOfRange(IV_SIZE, encryptedBytes.size)
+        
+        val cipher = Cipher.getInstance(ALGORITHM)
+        cipher.init(Cipher.DECRYPT_MODE, categoryKey, IvParameterSpec(iv))
+        
+        val decryptedBytes = cipher.doFinal(ciphertext)
+        return String(decryptedBytes, Charsets.UTF_8)
+    }
+    
+    /**
      * Decrypt a file that was encrypted with category key
      * 
      * @param encryptedFile The encrypted file from IPFS

@@ -577,7 +577,7 @@ object BlockchainService {
     suspend fun getMedicationRef(medicationId: BigInteger): MedicationRecordRef? = withContext(Dispatchers.IO) {
         try {
             val fromAddress = WalletManager.getAddress()
-            
+
             val function = org.web3j.abi.datatypes.Function(
                 "getMedicationRef",
                 listOf(Uint256(medicationId)),
@@ -865,7 +865,7 @@ object BlockchainService {
     suspend fun getVaccinationRef(vaccinationId: BigInteger): VaccinationRecordRef? = withContext(Dispatchers.IO) {
         try {
             val fromAddress = WalletManager.getAddress()
-            
+
             val function = org.web3j.abi.datatypes.Function(
                 "getVaccinationRef",
                 listOf(Uint256(vaccinationId)),
@@ -1002,9 +1002,15 @@ object BlockchainService {
     
     /**
      * Get all report IDs for a user (read-only)
+     *
+     * Note: If contract's getReportIds has access control, this will fail.
+     * Workaround: Fetch from ReportAdded events instead.
      */
     suspend fun getReportIds(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "🔍 Getting report IDs for: $userAddress")
+
+            // Try direct contract call first
             val function = org.web3j.abi.datatypes.Function(
                 "getReportIds",
                 listOf(Address(userAddress)),
@@ -1012,10 +1018,11 @@ object BlockchainService {
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
-            
+            Log.d(TAG, "📤 Encoded function: $encodedFunction")
+
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    userAddress,  // Set from address for auth
+                    userAddress,
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1023,13 +1030,24 @@ object BlockchainService {
             ).send()
             
             if (response.hasError()) {
-                Log.e(TAG, "Error getting report IDs: ${response.error.message}")
+                Log.e(TAG, "❌ Error getting report IDs: ${response.error.message}")
+                Log.e(TAG, "Error code: ${response.error.code}, Data: ${response.error.data}")
+
+                // If access control error, try fetching from events
+                if (response.error.message.contains("No access") || response.error.message.contains("revert")) {
+                    Log.w(TAG, "⚠️ Access control blocking read, trying events...")
+                    return@withContext getReportIdsFromEvents(userAddress)
+                }
+
                 return@withContext emptyList()
             }
             
             val result = response.value
+            Log.d(TAG, "📥 Response value: $result")
+
             if (result.isNullOrEmpty() || result == "0x") {
-                return@withContext emptyList()
+                Log.w(TAG, "⚠️ Empty response - trying events...")
+                return@withContext getReportIdsFromEvents(userAddress)
             }
             
             val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
@@ -1038,14 +1056,80 @@ object BlockchainService {
             )
             
             if (decodedResult.isEmpty()) {
-                return@withContext emptyList()
+                Log.w(TAG, "⚠️ Decoded result is empty - trying events...")
+                return@withContext getReportIdsFromEvents(userAddress)
             }
             
             @Suppress("UNCHECKED_CAST")
             val ids = (decodedResult[0] as DynamicArray<Uint256>).value
-            ids.map { it.value }
+            val reportIds = ids.map { it.value }
+            Log.d(TAG, "✅ Found ${reportIds.size} report IDs: $reportIds")
+            reportIds
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting report IDs", e)
+            Log.e(TAG, "❌ Error getting report IDs, trying events...", e)
+            getReportIdsFromEvents(userAddress)
+        }
+    }
+
+    /**
+     * Get report IDs by scanning ReportAdded events
+     * This works even if getReportIds has access control
+     */
+    private suspend fun getReportIdsFromEvents(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "📡 Fetching reports from ReportAdded events for $userAddress")
+
+            // Create event filter for ReportAdded(address indexed patient, uint256 indexed reportId, ...)
+            val event = org.web3j.abi.datatypes.Event(
+                "ReportAdded",
+                listOf(
+                    object : TypeReference<Address>(true) {},  // indexed patient
+                    object : TypeReference<Uint256>(true) {},  // indexed reportId
+                    object : TypeReference<Uint8>() {},        // reportType
+                    object : TypeReference<Uint256>() {}       // timestamp
+                )
+            )
+
+            val eventFilter = org.web3j.protocol.core.methods.request.EthFilter(
+                org.web3j.protocol.core.DefaultBlockParameterName.EARLIEST,
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST,
+                CONTRACT_ADDRESS
+            )
+
+            // Add topic filter for patient address
+            val eventSignature = org.web3j.abi.EventEncoder.encode(event)
+            // Manually encode address as topic (32 bytes, padded with leading zeros)
+            val addressWithout0x = userAddress.removePrefix("0x").lowercase()
+            val addressTopic = "0x" + "0".repeat(24) + addressWithout0x
+            eventFilter.addSingleTopic(eventSignature)
+            eventFilter.addSingleTopic(addressTopic)
+
+            val logs = web3j.ethGetLogs(eventFilter).send()
+
+            if (logs.hasError()) {
+                Log.e(TAG, "❌ Error fetching events: ${logs.error.message}")
+                return@withContext emptyList()
+            }
+
+            val reportIds = logs.logs.mapNotNull { logResult ->
+                try {
+                    val log = logResult as org.web3j.protocol.core.methods.response.EthLog.LogObject
+                    // reportId is the second indexed parameter (topic[2])
+                    if (log.topics.size >= 3) {
+                        val reportIdHex = log.topics[2]
+                        BigInteger(reportIdHex.substring(2), 16)
+                    } else null
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing log", e)
+                    null
+                }
+            }.distinct().sorted()
+
+            Log.d(TAG, "✅ Found ${reportIds.size} report IDs from events: $reportIds")
+            reportIds
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error fetching report IDs from events", e)
             emptyList()
         }
     }
@@ -1055,27 +1139,21 @@ object BlockchainService {
      */
     suspend fun getReportRef(reportId: BigInteger): MedicalReportRef? = withContext(Dispatchers.IO) {
         try {
-            val fromAddress = WalletManager.getAddress()
-            
+            // Get current user address to pass as 'from' for access control
+            val userAddress = getUserAddress()
+
+            // Create the function call
             val function = org.web3j.abi.datatypes.Function(
                 "getReportRef",
                 listOf(Uint256(reportId)),
-                listOf(
-                    object : TypeReference<Uint256>() {},  // id
-                    object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
-                    object : TypeReference<Utf8String>() {},  // encryptedFileIpfsHash
-                    object : TypeReference<Uint8>() {},  // reportType
-                    object : TypeReference<Bool>() {},  // hasFile
-                    object : TypeReference<Uint256>() {},  // reportDate
-                    object : TypeReference<Uint256>() {}  // createdAt
-                )
+                emptyList() // Don't specify return type, we'll decode manually
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    fromAddress,  // Set from address for auth
+                    userAddress,  // Pass user address to satisfy access control
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1088,30 +1166,74 @@ object BlockchainService {
             }
             
             val result = response.value
+            Log.d(TAG, "📦 Raw response for report $reportId: $result")
+            Log.d(TAG, "📐 Response length: ${result?.length}")
+
             if (result.isNullOrEmpty() || result == "0x") {
+                Log.w(TAG, "Empty response for report $reportId")
                 return@withContext null
             }
             
-            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
-                result,
-                function.outputParameters
-            )
+            // Manually decode the struct
+            // Struct layout:
+            // 0-31: offset to struct data (0x20 = 32)
+            // 32-63: id (uint256)
+            // 64-95: offset to encryptedDataIpfsHash (dynamic)
+            // 96-127: offset to encryptedFileIpfsHash (dynamic)
+            // 128-159: reportType (uint8 padded to 32 bytes)
+            // 160-191: hasFile (bool padded to 32 bytes)
+            // 192-223: reportDate (uint256)
+            // 224-255: createdAt (uint256)
+            // Then the actual string data at their respective offsets
             
-            if (decodedResult.size < 7) {
-                return@withContext null
-            }
+            val hex = result.removePrefix("0x")
             
-            val reportTypeValue = (decodedResult[3] as Uint8).value.toInt()
+            // Skip the first 32 bytes (offset pointer to struct)
+            val structData = hex.substring(64)
+            
+            // Extract fields (each is 64 hex chars = 32 bytes)
+            val idHex = structData.substring(0, 64)
+            val dataIpfsOffsetHex = structData.substring(64, 128)
+            val fileIpfsOffsetHex = structData.substring(128, 192)
+            val reportTypeHex = structData.substring(192, 256)
+            val hasFileHex = structData.substring(256, 320)
+            val reportDateHex = structData.substring(320, 384)
+            val createdAtHex = structData.substring(384, 448)
+            
+            // Parse static values
+            val id = BigInteger(idHex, 16)
+            val reportTypeValue = BigInteger(reportTypeHex, 16).toInt()
+            val hasFile = BigInteger(hasFileHex, 16) != BigInteger.ZERO
+            val reportDate = BigInteger(reportDateHex, 16)
+            val createdAt = BigInteger(createdAtHex, 16)
+            
+            // Parse dynamic strings
+            val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2 // Convert to hex chars
+            val fileIpfsOffset = BigInteger(fileIpfsOffsetHex, 16).toInt() * 2
+            
+            // String format: 32 bytes length, then data
+            val dataIpfsLengthHex = structData.substring(dataIpfsOffset, dataIpfsOffset + 64)
+            val dataIpfsLength = BigInteger(dataIpfsLengthHex, 16).toInt() * 2 // Hex chars
+            val dataIpfsHex = structData.substring(dataIpfsOffset + 64, dataIpfsOffset + 64 + dataIpfsLength)
+            val encryptedDataIpfsHash = String(dataIpfsHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+            
+            val fileIpfsLengthHex = structData.substring(fileIpfsOffset, fileIpfsOffset + 64)
+            val fileIpfsLength = BigInteger(fileIpfsLengthHex, 16).toInt() * 2
+            val fileIpfsHex = structData.substring(fileIpfsOffset + 64, fileIpfsOffset + 64 + fileIpfsLength)
+            val encryptedFileIpfsHash = String(fileIpfsHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+            
             val reportType = ReportType.values().getOrNull(reportTypeValue) ?: ReportType.OTHER
             
+            Log.d(TAG, "✅ Decoded report: id=$id, type=$reportType, hasFile=$hasFile")
+            
             MedicalReportRef(
-                id = (decodedResult[0] as Uint256).value,
-                encryptedDataIpfsHash = (decodedResult[1] as Utf8String).value,
-                encryptedFileIpfsHash = (decodedResult[2] as Utf8String).value,
+                id = id,
+                encryptedDataIpfsHash = encryptedDataIpfsHash,
+                encryptedFileIpfsHash = encryptedFileIpfsHash,
                 reportType = reportType,
-                hasFile = (decodedResult[4] as Bool).value,
-                reportDate = (decodedResult[5] as Uint256).value,
-                createdAt = (decodedResult[6] as Uint256).value
+                hasFile = hasFile,
+                reportDate = reportDate,
+                createdAt = createdAt
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting report ref", e)
@@ -1204,7 +1326,7 @@ object BlockchainService {
             Log.d(TAG, "User Address: $userAddress")
             Log.d(TAG, "Contract Address: $CONTRACT_ADDRESS")
             Log.d(TAG, "RPC URL: $RPC_URL")
-            
+
             val function = org.web3j.abi.datatypes.Function(
                 "getShareIds",
                 listOf(Address(userAddress)),
@@ -1213,7 +1335,7 @@ object BlockchainService {
             
             val encodedFunction = FunctionEncoder.encode(function)
             Log.d(TAG, "Encoded function data: $encodedFunction")
-            
+
             // IMPORTANT: Set 'from' address to match the user being queried
             // This allows the contract's "msg.sender == _user" check to pass
             val response = web3j.ethCall(
@@ -1234,7 +1356,7 @@ object BlockchainService {
             
             val result = response.value
             Log.d(TAG, "Raw response value: $result")
-            
+
             if (result.isNullOrEmpty() || result == "0x") {
                 Log.w(TAG, "⚠️ Empty response from blockchain - no shares found")
                 return@withContext emptyList()
@@ -1246,7 +1368,7 @@ object BlockchainService {
             )
             
             Log.d(TAG, "Decoded result size: ${decodedResult.size}")
-            
+
             if (decodedResult.isEmpty()) {
                 Log.w(TAG, "⚠️ Decoded result is empty")
                 return@withContext emptyList()
@@ -1255,7 +1377,7 @@ object BlockchainService {
             @Suppress("UNCHECKED_CAST")
             val ids = (decodedResult[0] as DynamicArray<Uint256>).value
             val shareIds = ids.map { it.value }
-            
+
             Log.d(TAG, "✅ Successfully retrieved ${shareIds.size} share IDs: $shareIds")
             shareIds
         } catch (e: Exception) {
@@ -1276,9 +1398,9 @@ object BlockchainService {
         try {
             // Use provided address or get from wallet
             val fromAddress = callerAddress ?: WalletManager.getAddress()
-            
+
             Log.d(TAG, "Getting share record $shareId (caller: $fromAddress)")
-            
+
             // Minimal function definition for encoding the call
             val function = org.web3j.abi.datatypes.Function(
                 "getShareRecord",
@@ -1312,18 +1434,18 @@ object BlockchainService {
             
             Log.d(TAG, "Raw hex response: $result")
             Log.d(TAG, "Response length: ${result.length}")
-            
+
             // Manual parsing - ShareRecord struct has dynamic strings which Web3j struggles with
             val cleanHex = result.substring(2) // Remove 0x
             Log.d(TAG, "Clean hex length: ${cleanHex.length}")
-            
+
             // When Solidity returns a struct, it starts with an offset to the actual tuple data
             // Format: 0-64: offset to tuple (usually 0x20 = 32 bytes)
             // Then the actual struct fields start at that offset
-            
+
             val tupleOffset = BigInteger(cleanHex.substring(0, 64), 16).toInt() * 2
             Log.d(TAG, "Tuple offset: $tupleOffset")
-            
+
             // Struct fields (starting from tupleOffset):
             // 0-64: id (uint256)
             // 64-128: recipientAddress (address)
@@ -1336,7 +1458,7 @@ object BlockchainService {
             // 512-576: accessLevel (uint8)
             // 576-640: status (uint8)
             // 640-704: offset to string 2 (encryptedCategoryKey) - relative to tuple start
-            
+
             val base = tupleOffset
             val id = BigInteger(cleanHex.substring(base, base + 64), 16)
             val recipientAddress = "0x" + cleanHex.substring(base + 64 + 24, base + 128) // Address is last 20 bytes
@@ -1347,35 +1469,35 @@ object BlockchainService {
             val expiryDate = BigInteger(cleanHex.substring(base + 448, base + 512), 16)
             val accessLevel = cleanHex.substring(base + 512, base + 576).takeLast(2).toInt(16)
             val status = cleanHex.substring(base + 576, base + 640).takeLast(2).toInt(16)
-            
+
             // Parse first string - offset is relative to tuple start
             val string1RelativeOffset = BigInteger(cleanHex.substring(base + 192, base + 256), 16).toInt() * 2
             val string1AbsoluteOffset = base + string1RelativeOffset
             Log.d(TAG, "String1 relative offset: $string1RelativeOffset, absolute: $string1AbsoluteOffset")
-            
+
             val string1LengthHex = cleanHex.substring(string1AbsoluteOffset, string1AbsoluteOffset + 64)
             val string1Length = BigInteger(string1LengthHex, 16).toInt() * 2
             Log.d(TAG, "String1 length: $string1Length chars")
-            
+
             val string1Data = cleanHex.substring(string1AbsoluteOffset + 64, string1AbsoluteOffset + 64 + string1Length)
             val encryptedRecipientDataIpfsHash = string1Data.chunked(2)
                 .map { it.toInt(16).toChar() }
                 .joinToString("")
-            
+
             // Parse second string - offset is relative to tuple start
             val string2RelativeOffset = BigInteger(cleanHex.substring(base + 640, base + 704), 16).toInt() * 2
             val string2AbsoluteOffset = base + string2RelativeOffset
             Log.d(TAG, "String2 relative offset: $string2RelativeOffset, absolute: $string2AbsoluteOffset")
-            
+
             val string2LengthHex = cleanHex.substring(string2AbsoluteOffset, string2AbsoluteOffset + 64)
             val string2Length = BigInteger(string2LengthHex, 16).toInt() * 2
             Log.d(TAG, "String2 length: $string2Length chars")
-            
+
             val string2Data = cleanHex.substring(string2AbsoluteOffset + 64, string2AbsoluteOffset + 64 + string2Length)
             val encryptedCategoryKey = string2Data.chunked(2)
                 .map { it.toInt(16).toChar() }
                 .joinToString("")
-            
+
             val shareRecord = ShareRecord(
                 id = id,
                 recipientAddress = recipientAddress,
@@ -1389,23 +1511,23 @@ object BlockchainService {
                 status = ShareStatus.values().getOrNull(status) ?: ShareStatus.EXPIRED,
                 encryptedCategoryKey = encryptedCategoryKey
             )
-            
+
             Log.d(TAG, "✅ Successfully retrieved share record $shareId")
             shareRecord
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Error getting share record $shareId", e)
             null
         }
     }
-    
+
     /**
      * Get total number of shares in the contract
      */
     suspend fun getTotalShareCount(): BigInteger = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Getting total share count from contract...")
-            
+
             val function = org.web3j.abi.datatypes.Function(
                 "getTotalCounts",
                 emptyList(),
@@ -1417,9 +1539,9 @@ object BlockchainService {
                     object : TypeReference<Uint256>() {}  // accessLogs
                 )
             )
-            
+
             val encodedFunction = FunctionEncoder.encode(function)
-            
+
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
                     null,
@@ -1428,17 +1550,17 @@ object BlockchainService {
                 ),
                 org.web3j.protocol.core.DefaultBlockParameterName.LATEST
             ).send()
-            
+
             if (response.hasError()) {
                 Log.e(TAG, "Error getting total counts: ${response.error.message}")
                 return@withContext BigInteger.ZERO
             }
-            
+
             val result = response.value
             if (result.isNullOrEmpty() || result == "0x") {
                 return@withContext BigInteger.ZERO
             }
-            
+
             val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
                 result,
                 function.outputParameters
@@ -1452,7 +1574,7 @@ object BlockchainService {
             val shareCount = (decodedResult[3] as Uint256).value
             Log.d(TAG, "Total share count: $shareCount")
             shareCount
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Error getting total share count", e)
             BigInteger.ZERO
@@ -1563,7 +1685,7 @@ object BlockchainService {
     suspend fun getAccessLog(logId: BigInteger): AccessLog? = withContext(Dispatchers.IO) {
         try {
             val fromAddress = WalletManager.getAddress()
-            
+
             val function = org.web3j.abi.datatypes.Function(
                 "getAccessLog",
                 listOf(Uint256(logId)),
@@ -2000,21 +2122,21 @@ object BlockchainService {
      * Check if user has a connected wallet.
      */
     fun isWalletConnected(): Boolean = WalletManager.getAddress() != null
-    
+
     /**
      * Get the contract address for debugging
      */
     fun getContractAddress(): String = CONTRACT_ADDRESS
-    
+
     /**
      * Get the current RPC URL for debugging
      */
     fun getRpcUrl(): String = RPC_URL
-    
+
     // ============================================
     // TEST & VERIFICATION HELPERS
     // ============================================
-    
+
     /**
      * Verify that a share was created successfully
      * Returns detailed information about the share for testing
@@ -2026,25 +2148,25 @@ object BlockchainService {
         try {
             val userAddress = WalletManager.getAddress()
                 ?: return@withContext Pair(false, "No wallet connected")
-            
+
             Log.d(TAG, "Verifying share for user: $userAddress")
-            
+
             // Get all share IDs
             val shareIds = getShareIds(userAddress)
-            
+
             if (shareIds.isEmpty()) {
                 return@withContext Pair(false, "No shares found on blockchain")
             }
-            
+
             // Check the most recent share
             val latestShareId = shareIds.last()
             val share = getShareRecord(latestShareId)
                 ?: return@withContext Pair(false, "Could not retrieve share record #$latestShareId")
-            
+
             // Verify details
             val recipientMatches = share.recipientAddress.equals(expectedRecipient, ignoreCase = true)
             val categoryMatches = share.sharedDataCategory == expectedCategory
-            
+
             val result = StringBuilder()
             result.append("✓ Share Found on Blockchain!\n\n")
             result.append("Share ID: $latestShareId\n")
@@ -2058,16 +2180,16 @@ object BlockchainService {
             result.append("• Access Level: ${share.accessLevel.name}\n")
             result.append("• Share Date: ${share.shareDate}\n")
             result.append("• Expiry Date: ${share.expiryDate}\n")
-            
+
             val success = recipientMatches && categoryMatches
             Pair(success, result.toString())
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Error verifying share", e)
             Pair(false, "Verification error: ${e.message}")
         }
     }
-    
+
     /**
      * Get a summary of all shares for testing/debugging
      */
@@ -2075,18 +2197,18 @@ object BlockchainService {
         try {
             val address = userAddress ?: WalletManager.getAddress()
                 ?: return@withContext "No wallet connected"
-            
+
             val shareIds = getShareIds(address)
-            
+
             if (shareIds.isEmpty()) {
                 return@withContext "No shares found for address: ${address.take(10)}..."
             }
-            
+
             val summary = StringBuilder()
             summary.append("=== SHARE SUMMARY ===\n")
             summary.append("User: ${address.take(10)}...\n")
             summary.append("Total Shares: ${shareIds.size}\n\n")
-            
+
             shareIds.forEachIndexed { index, shareId ->
                 val share = getShareRecord(shareId)
                 if (share != null) {
@@ -2097,9 +2219,9 @@ object BlockchainService {
                     summary.append("   Expires: ${share.expiryDate}\n\n")
                 }
             }
-            
+
             summary.toString()
-            
+
         } catch (e: Exception) {
             "Error getting summary: ${e.message}"
         }
