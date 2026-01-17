@@ -203,12 +203,9 @@ object EncryptionHelper {
      * @return Encrypted key as Base64 string
      */
     fun encryptKeyForBlockchain(aesKey: SecretKey, userPublicKey: String? = null): String {
-        // TODO: Implement RSA encryption using user's wallet public key
-        // For now, just encode to Base64
-        // In production, use: RSA.encrypt(aesKey, userPublicKey)
-        
-        Log.w(TAG, "WARNING: AES key is not encrypted with user's public key yet")
-        return keyToString(aesKey)
+        // Use the user's key for actual encryption (not RSA public key)
+        val userKey = SimpleKeyManager.getUserKey()
+        return encryptKeyForBlockchain(aesKey, userKey)
     }
     
     /**
@@ -219,7 +216,18 @@ object EncryptionHelper {
      * @return Decrypted AES key
      */
     fun decryptKeyFromBlockchain(encryptedKey: String, userPrivateKey: String? = null): SecretKey {
-        // Use SimpleKeyManager to get user's derived key
+        // Try to decode the Base64 string
+        val decoded = Base64.decode(encryptedKey, Base64.NO_WRAP)
+        
+        // Check if this is legacy format (raw key, 32 bytes) or new format (IV + encrypted key, 48 bytes)
+        if (decoded.size == 32) {
+            // Legacy format: raw AES key, just return it directly
+            Log.d(TAG, "Detected legacy key format (raw Base64), using directly")
+            return SecretKeySpec(decoded, "AES")
+        }
+        
+        // New format: IV (16 bytes) + encrypted key - decrypt with user key
+        Log.d(TAG, "Detected new key format (encrypted), decrypting with user key")
         val userKey = SimpleKeyManager.getUserKey()
         return decryptKeyFromBlockchain(encryptedKey, userKey)
     }

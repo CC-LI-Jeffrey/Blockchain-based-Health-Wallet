@@ -150,6 +150,7 @@ class ProfileActivity : AppCompatActivity() {
                 Log.d(TAG, "IPFS hash: $ipfsHash")
                 Log.d(TAG, "Hash length: ${ipfsHash.length}")
                 Log.d(TAG, "Timestamp: ${Date(personalInfoRef.lastUpdated.toLong() * 1000)}")
+                Log.d(TAG, "Has encryptedKey: ${personalInfoRef.encryptedKey.isNotEmpty()}")
                 Log.d(TAG, "Calling ApiClient.api.getFromIPFS()...")
                 
                 // Step 2: Fetch encrypted data from IPFS
@@ -170,13 +171,31 @@ class ProfileActivity : AppCompatActivity() {
                     throw Exception("Failed to retrieve data from IPFS: ${response.code()} - ${response.message()}")
                 }
                 
-                // Step 3: Parse JSON data
+                // Step 3: Decrypt the data
                 Log.d(TAG, "========================================")
-                Log.d(TAG, "Step 3: Parsing JSON")
+                Log.d(TAG, "Step 3: Decrypting data")
                 Log.d(TAG, "========================================")
-                val jsonData = response.body()!!.string()
-                Log.d(TAG, "Retrieved data from IPFS (${jsonData.length} bytes)")
-                Log.d(TAG, "JSON content: $jsonData")
+                val encryptedDataBase64 = response.body()!!.string()
+                Log.d(TAG, "Retrieved encrypted data from IPFS (${encryptedDataBase64.length} chars)")
+                
+                val jsonData = if (personalInfoRef.encryptedKey.isNotEmpty()) {
+                    // Use random key decryption
+                    Log.d(TAG, "Using random key decryption")
+                    val encryptedBytes = android.util.Base64.decode(encryptedDataBase64, android.util.Base64.NO_WRAP)
+                    val aesKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptKeyFromBlockchain(personalInfoRef.encryptedKey)
+                    com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                } else {
+                    // Fallback for old data without encryption (shouldn't happen with new contract)
+                    Log.d(TAG, "No encryptedKey found - using plain data")
+                    encryptedDataBase64
+                }
+                
+                Log.d(TAG, "Decrypted JSON length: ${jsonData.length}")
+                
+                // Step 4: Parse JSON data
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "Step 4: Parsing JSON")
+                Log.d(TAG, "========================================")
                 
                 val personalInfo = gson.fromJson(jsonData, PersonalInfo::class.java)
                 currentPersonalInfo = personalInfo
@@ -186,9 +205,9 @@ class ProfileActivity : AppCompatActivity() {
                 Log.d(TAG, "  - Email: ${personalInfo.email}")
                 Log.d(TAG, "  - HKID: ${personalInfo.hkid}")
                 
-                // Step 4: Display data
+                // Step 5: Display data
                 Log.d(TAG, "========================================")
-                Log.d(TAG, "Step 4: Displaying data in UI")
+                Log.d(TAG, "Step 5: Displaying data in UI")
                 Log.d(TAG, "========================================")
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
@@ -230,17 +249,21 @@ class ProfileActivity : AppCompatActivity() {
      * Display personal information in UI
      */
     private fun displayPersonalInfo(info: PersonalInfo) {
-        tvProfileName.text = "${info.firstName} ${info.lastName}"
-        tvProfileEmail.text = info.email
-        tvHKID.text = info.hkid
-        tvDOB.text = info.dateOfBirth
-        tvGender.text = info.gender
-        tvBloodType.text = info.bloodType
-        tvPhone.text = info.phone
-        tvAddress.text = info.address
-        tvEmergencyName.text = info.emergencyContact.name
-        tvEmergencyRelation.text = info.emergencyContact.relationship
-        tvEmergencyPhone.text = info.emergencyContact.phone
+        val notSet = "Not Set"
+        
+        // Show "Not Set" for empty fields
+        val fullName = "${info.firstName.ifEmpty { "" }} ${info.lastName.ifEmpty { "" }}".trim()
+        tvProfileName.text = fullName.ifEmpty { notSet }
+        tvProfileEmail.text = info.email.ifEmpty { notSet }
+        tvHKID.text = info.hkid.ifEmpty { notSet }
+        tvDOB.text = info.dateOfBirth.ifEmpty { notSet }
+        tvGender.text = info.gender.ifEmpty { notSet }
+        tvBloodType.text = info.bloodType.ifEmpty { notSet }
+        tvPhone.text = info.phone.ifEmpty { notSet }
+        tvAddress.text = info.address.ifEmpty { notSet }
+        tvEmergencyName.text = info.emergencyContact.name.ifEmpty { notSet }
+        tvEmergencyRelation.text = info.emergencyContact.relationship.ifEmpty { notSet }
+        tvEmergencyPhone.text = info.emergencyContact.phone.ifEmpty { notSet }
     }
     
     /**
@@ -370,21 +393,34 @@ class ProfileActivity : AppCompatActivity() {
                 
                 // Convert to JSON
                 val jsonData = gson.toJson(personalInfo)
-                Log.d(TAG, "Personal info JSON: $jsonData")
+                Log.d(TAG, "Personal info JSON length: ${jsonData.length}")
                 
-                // Upload JSON to IPFS
+                // Generate random key and encrypt data
+                val randomKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.generateAESKey()
+                val encryptedDataBase64 = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.encryptDataWithKey(
+                    jsonData,
+                    randomKey
+                )
+                
+                // Encrypt the random key for storage on blockchain
+                val encryptedKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.encryptKeyForBlockchain(randomKey)
+                
+                Log.d(TAG, "Encrypted data length: ${encryptedDataBase64.length}")
+                Log.d(TAG, "Encrypted key length: ${encryptedKey.length}")
+                
+                // Upload encrypted data to IPFS (send Base64 string as bytes)
                 val ipfsHash = withContext(Dispatchers.IO) {
-                    uploadJsonToIPFS(jsonData)
+                    uploadBytesToIPFS(encryptedDataBase64.toByteArray(Charsets.UTF_8))
                 }
                 
                 Log.d(TAG, "Uploaded to IPFS with hash: $ipfsHash")
                 progressDialog.setMessage("Storing on blockchain...")
                 
-                // Store IPFS hash on blockchain
+                // Store IPFS hash and encrypted key on blockchain
                 val dummyPublicKeyHash = "0x" + "0".repeat(64)
                 
                 val txHash = withContext(Dispatchers.IO) {
-                    BlockchainService.setPersonalInfo(ipfsHash, dummyPublicKeyHash)
+                    BlockchainService.setPersonalInfo(ipfsHash, dummyPublicKeyHash, encryptedKey)
                 }
                 
                 Log.d(TAG, "Stored on blockchain. Transaction: $txHash")
@@ -457,23 +493,36 @@ class ProfileActivity : AppCompatActivity() {
                 
                 // Step 2: Convert to JSON
                 val jsonData = gson.toJson(personalInfo)
-                Log.d(TAG, "Personal info JSON: $jsonData")
+                Log.d(TAG, "Personal info JSON length: ${jsonData.length}")
                 
-                // Step 3: Upload JSON to IPFS
+                // Generate random key and encrypt data
+                val randomKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.generateAESKey()
+                val encryptedDataBase64 = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.encryptDataWithKey(
+                    jsonData,
+                    randomKey
+                )
+                
+                // Encrypt the random key for storage on blockchain
+                val encryptedKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.encryptKeyForBlockchain(randomKey)
+                
+                Log.d(TAG, "Encrypted data length: ${encryptedDataBase64.length}")
+                Log.d(TAG, "Encrypted key length: ${encryptedKey.length}")
+                
+                // Step 3: Upload encrypted data to IPFS (send Base64 string as bytes)
                 val ipfsHash = withContext(Dispatchers.IO) {
-                    uploadJsonToIPFS(jsonData)
+                    uploadBytesToIPFS(encryptedDataBase64.toByteArray(Charsets.UTF_8))
                 }
                 
                 Log.d(TAG, "Uploaded to IPFS with hash: $ipfsHash")
                 progressDialog.setMessage("Storing on blockchain...")
                 
-                // Step 4: Store IPFS hash on blockchain
+                // Step 4: Store IPFS hash and encrypted key on blockchain
                 // For demo purposes, using a dummy public key hash
                 // In production, this would be the user's actual encryption public key hash
                 val dummyPublicKeyHash = "0x" + "0".repeat(64)  // 32 bytes of zeros
                 
                 val txHash = withContext(Dispatchers.IO) {
-                    BlockchainService.setPersonalInfo(ipfsHash, dummyPublicKeyHash)
+                    BlockchainService.setPersonalInfo(ipfsHash, dummyPublicKeyHash, encryptedKey)
                 }
                 
                 Log.d(TAG, "Stored on blockchain. Transaction: $txHash")
@@ -519,6 +568,30 @@ class ProfileActivity : AppCompatActivity() {
         val filePart = MultipartBody.Part.createFormData(
             "file",
             "personal_info.json",
+            requestBody
+        )
+        
+        // Upload to IPFS via backend
+        val response = ApiClient.api.uploadToIPFS(filePart)
+        
+        if (!response.isSuccessful || response.body()?.success != true) {
+            throw Exception("IPFS upload failed: ${response.body()?.error ?: response.code()}")
+        }
+        
+        return response.body()!!.ipfsHash!!
+    }
+    
+    /**
+     * Upload encrypted bytes to IPFS via backend
+     * @param encryptedData The encrypted byte array to upload
+     * @return IPFS hash
+     */
+    private suspend fun uploadBytesToIPFS(encryptedData: ByteArray): String {
+        // Create multipart request
+        val requestBody = encryptedData.toRequestBody("application/octet-stream".toMediaTypeOrNull())
+        val filePart = MultipartBody.Part.createFormData(
+            "file",
+            "encrypted_data.bin",
             requestBody
         )
         

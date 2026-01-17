@@ -45,7 +45,7 @@ object BlockchainService {
     // ============================================
     // HealthWallet V1 address = 0xed41D59378f36b04567DAB79077d8057eA3E70D6
     // HealthWallet V2 address = 0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B
-    private const val CONTRACT_ADDRESS = "0x1F10eF5097baEfA71d70c92bc13f11Eff504e14e"
+    private const val CONTRACT_ADDRESS = "0x3Be5C7f54C9c523115A8756D066e5EE546483319"
     
     // Sepolia RPC endpoints - using multiple public endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
@@ -145,7 +145,8 @@ object BlockchainService {
         val publicKeyHash: String,  // bytes32 as hex string
         val createdAt: BigInteger,
         val lastUpdated: BigInteger,
-        val exists: Boolean
+        val exists: Boolean,
+        val encryptedKey: String = ""  // Encrypted random AES key for this record
     )
     
     /**
@@ -273,11 +274,13 @@ object BlockchainService {
      * Set or update personal information (encrypted and stored on IPFS)
      * @param encryptedDataIpfsHash IPFS hash of encrypted personal data JSON
      * @param publicKeyHash Hash of user's public encryption key (bytes32)
+     * @param encryptedKey Encrypted random AES key for this record
      * @return Transaction hash
      */
     suspend fun setPersonalInfo(
         encryptedDataIpfsHash: String,
-        publicKeyHash: String  // Must be 32 bytes hex string (0x + 64 chars)
+        publicKeyHash: String,  // Must be 32 bytes hex string (0x + 64 chars)
+        encryptedKey: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
@@ -292,7 +295,8 @@ object BlockchainService {
             "setPersonalInfo",
             listOf(
                 Utf8String(encryptedDataIpfsHash),
-                org.web3j.abi.datatypes.generated.Bytes32(keyHashBytes)
+                org.web3j.abi.datatypes.generated.Bytes32(keyHashBytes),
+                Utf8String(encryptedKey)
             ),
             emptyList()
         )
@@ -329,7 +333,8 @@ object BlockchainService {
                     object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {},  // publicKeyHash
                     object : TypeReference<Uint256>() {},  // createdAt
                     object : TypeReference<Uint256>() {},  // lastUpdated
-                    object : TypeReference<Bool>() {}  // exists
+                    object : TypeReference<Bool>() {},  // exists
+                    object : TypeReference<Utf8String>() {}  // encryptedKey
                 )
             )
             
@@ -364,14 +369,15 @@ object BlockchainService {
             Log.d(TAG, "Decoding response (manual parsing due to tuple wrapper)...")
             
             // Manually decode the tuple fields from the hex response
-            // Response format: 
+            // Response format for NEW contract (with encryptedKey):
             // 0-64: offset to tuple (32 bytes)
-            // 64-128: offset to string (32 bytes)
+            // 64-128: offset to encryptedDataIpfsHash string (32 bytes)
             // 128-192: bytes32 publicKeyHash (32 bytes)
             // 192-256: uint256 createdAt (32 bytes)
             // 256-320: uint256 lastUpdated (32 bytes)
-            // 320-384: bool exists (32 bytes) <-- HERE!
-            // 384+: string length + data
+            // 320-384: bool exists (32 bytes)
+            // 384-448: offset to encryptedKey string (32 bytes)
+            // 448+: string lengths + data
             
             val cleanHex = result.substring(2) // Remove 0x prefix
             
@@ -382,56 +388,83 @@ object BlockchainService {
             Log.d(TAG, "exists hex: $existsHex")
             Log.d(TAG, "exists flag: $exists")
             
-            Log.d(TAG, "exists flag: $exists")
-            
             if (!exists) {
                 Log.w(TAG, "exists=false, no data stored")
                 return@withContext null
             }
             
-            // Manually parse the IPFS hash string from hex
-            // String starts at position 384 (after the 5 fixed fields)
-            // 384-448: string length (32 bytes)
-            // 448+: string content in hex
+            // Parse offsets for dynamic strings (offsets are relative to start of tuple data, which begins at position 64)
+            val tupleStart = 64 // First 32 bytes is the offset to the tuple itself
+            val ipfsHashOffsetHex = cleanHex.substring(tupleStart, tupleStart + 64)
+            val ipfsHashOffset = ipfsHashOffsetHex.toLong(16).toInt() * 2 + tupleStart
+            val encryptedKeyOffsetHex = cleanHex.substring(tupleStart + 320, tupleStart + 384)
+            val encryptedKeyOffset = encryptedKeyOffsetHex.toLong(16).toInt() * 2 + tupleStart
             
-            val stringLengthHex = cleanHex.substring(384, 448)
-            val stringLength = stringLengthHex.toLong(16).toInt() * 2 // Convert to hex char count
-            val stringDataStart = 448
-            val stringDataEnd = stringDataStart + stringLength
+            Log.d(TAG, "ipfsHashOffset: $ipfsHashOffset, encryptedKeyOffset: $encryptedKeyOffset, total length: ${cleanHex.length}")
             
-            if (stringDataEnd > cleanHex.length) {
-                Log.e(TAG, "String data out of bounds")
-                return@withContext null
-            }
-            
-            val stringHex = cleanHex.substring(stringDataStart, stringDataEnd)
-            val ipfsHash = stringHex.chunked(2)
+            // Parse IPFS hash string
+            val ipfsHashLengthHex = cleanHex.substring(ipfsHashOffset, ipfsHashOffset + 64)
+            val ipfsHashLength = ipfsHashLengthHex.toLong(16).toInt() * 2
+            val ipfsHashStart = ipfsHashOffset + 64
+            val ipfsHashEnd = ipfsHashStart + ipfsHashLength
+            val ipfsHashHex = cleanHex.substring(ipfsHashStart, ipfsHashEnd)
+            val ipfsHash = ipfsHashHex.chunked(2)
                 .map { it.toInt(16).toChar() }
                 .joinToString("")
             
-            Log.d(TAG, "Parsed IPFS hash: $ipfsHash")
-            
-            // Now decode using Web3j for the numeric fields only
-            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
-                result,
-                function.outputParameters
-            )
-            
-            if (decodedResult.size < 5) {
-                Log.e(TAG, "Invalid decoded result size: ${decodedResult.size}")
-                return@withContext null
+            // Parse encryptedKey string
+            val encryptedKey = try {
+                if (encryptedKeyOffset < cleanHex.length) {
+                    val encryptedKeyLengthHex = cleanHex.substring(encryptedKeyOffset, encryptedKeyOffset + 64)
+                    val encryptedKeyLength = encryptedKeyLengthHex.toLong(16).toInt() * 2
+                    val encryptedKeyStart = encryptedKeyOffset + 64
+                    val encryptedKeyEnd = encryptedKeyStart + encryptedKeyLength
+                    
+                    if (encryptedKeyEnd <= cleanHex.length) {
+                        val encryptedKeyHex = cleanHex.substring(encryptedKeyStart, encryptedKeyEnd)
+                        encryptedKeyHex.chunked(2)
+                            .map { it.toInt(16).toChar() }
+                            .joinToString("")
+                    } else {
+                        Log.w(TAG, "encryptedKey data exceeds response length")
+                        ""
+                    }
+                } else {
+                    Log.w(TAG, "encryptedKeyOffset beyond response length")
+                    ""
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse encryptedKey: ${e.message}")
+                ""
             }
             
-            // Extract numeric fields (skip string at index 0)
-            val publicKeyHash = Numeric.toHexString((decodedResult[1] as org.web3j.abi.datatypes.generated.Bytes32).value)
-            val createdAt = (decodedResult[2] as Uint256).value
-            val lastUpdated = (decodedResult[3] as Uint256).value
+            Log.d(TAG, "Parsed IPFS hash: $ipfsHash")
+            Log.d(TAG, "Parsed encryptedKey length: ${encryptedKey.length}")
+            
+            // Manually parse fixed-size fields from known positions
+            // Position in tuple (after first 32 bytes offset):
+            // 64-128: offset to encryptedDataIpfsHash (already parsed)
+            // 128-192: bytes32 publicKeyHash
+            // 192-256: uint256 createdAt
+            // 256-320: uint256 lastUpdated
+            // 320-384: bool exists (already parsed)
+            // 384-448: offset to encryptedKey (already parsed)
+            
+            val publicKeyHashHex = cleanHex.substring(128, 192)
+            val publicKeyHash = "0x$publicKeyHashHex"
+            
+            val createdAtHex = cleanHex.substring(192, 256)
+            val createdAt = BigInteger(createdAtHex, 16)
+            
+            val lastUpdatedHex = cleanHex.substring(256, 320)
+            val lastUpdated = BigInteger(lastUpdatedHex, 16)
             
             Log.d(TAG, "Successfully decoded PersonalInfoRef:")
             Log.d(TAG, "  - IPFS Hash: $ipfsHash")
             Log.d(TAG, "  - Public Key Hash: $publicKeyHash")
             Log.d(TAG, "  - Created At: $createdAt")
             Log.d(TAG, "  - Last Updated: $lastUpdated")
+            Log.d(TAG, "  - Has encryptedKey: ${encryptedKey.isNotEmpty()}")
             Log.d(TAG, "========================================")
             
             PersonalInfoRef(
@@ -439,7 +472,8 @@ object BlockchainService {
                 publicKeyHash = publicKeyHash,
                 createdAt = createdAt,
                 lastUpdated = lastUpdated,
-                exists = exists
+                exists = exists,
+                encryptedKey = encryptedKey
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting personal info", e)
