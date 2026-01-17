@@ -130,14 +130,21 @@ class ViewReportActivity : AppCompatActivity() {
                 
                 tvFilePath.text = "Decrypting file..."
                 
-                // 2. Decrypt file using category key
+                // 2. Decrypt file using random key
                 decryptedFile = withContext(Dispatchers.IO) {
                     val outputFile = File(cacheDir, "report_${System.currentTimeMillis()}.pdf")
-                    EncryptionHelper.decryptFileWithCategory(
-                        encryptedFile,
-                        BlockchainService.DataCategory.MEDICAL_REPORTS,
-                        outputFile
-                    )
+                    
+                    // Use the encryptedKey from the report
+                    val encryptedKey = currentReport?.encryptedKey ?: ""
+                    if (encryptedKey.isNotEmpty()) {
+                        EncryptionHelper.decryptDownloadedFile(
+                            encryptedFile,
+                            encryptedKey,
+                            outputFile
+                        )
+                    } else {
+                        throw Exception("No encryption key found for this report")
+                    }
                     
                     // Delete encrypted temp file
                     encryptedFile.delete()

@@ -15,9 +15,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
-import com.fyp.blockchainhealthwallet.blockchain.CategoryKeyManager
+import com.fyp.blockchainhealthwallet.blockchain.SimpleKeyManager
 import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
 import com.fyp.blockchainhealthwallet.network.ApiClient
+import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -182,11 +183,27 @@ class ReportsActivity : AppCompatActivity() {
                 responseBody.bytes()
             }
             
-            // 3. Decrypt metadata using category key (expects raw bytes with IV)
-            val decryptedJson = EncryptionHelper.decryptBytesWithCategory(
-                encryptedBytes,
-                BlockchainService.DataCategory.MEDICAL_REPORTS
-            )
+            // 3. Decrypt metadata using the appropriate method based on whether we have an encrypted key
+            val decryptedJson = if (reportRef.encryptedKey.isNotEmpty()) {
+                // NEW: Random key per record - decrypt using the encrypted key from blockchain
+                val userAddress = WalletManager.getAddress() ?: run {
+                    Log.e(TAG, "No wallet address available for decryption")
+                    return@withContext null
+                }
+                
+                val decryptedAesKey = EncryptionHelper.decryptKeyFromBlockchain(
+                    reportRef.encryptedKey,
+                    userAddress
+                )
+                
+                EncryptionHelper.decryptBytesWithKey(encryptedBytes, decryptedAesKey)
+            } else {
+                // OLD: Category-based encryption - use category key
+                EncryptionHelper.decryptBytesWithCategory(
+                    encryptedBytes,
+                    BlockchainService.DataCategory.MEDICAL_REPORTS
+                )
+            }
             
             // 4. Parse JSON metadata
             val json = JSONObject(decryptedJson)
@@ -212,7 +229,8 @@ class ReportsActivity : AppCompatActivity() {
                 description = description,
                 filePath = if (reportRef.hasFile) reportRef.encryptedFileIpfsHash else null,
                 ipfsHash = reportRef.encryptedDataIpfsHash,
-                timestamp = reportRef.createdAt.toLong() * 1000
+                timestamp = reportRef.createdAt.toLong() * 1000,
+                encryptedKey = reportRef.encryptedKey
             )
             
         } catch (e: Exception) {
@@ -292,6 +310,7 @@ class ReportsActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "ReportsActivity"
         private const val REQUEST_ADD_REPORT = 100
     }
 }

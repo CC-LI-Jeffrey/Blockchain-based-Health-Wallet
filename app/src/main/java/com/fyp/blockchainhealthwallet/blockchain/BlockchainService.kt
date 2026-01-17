@@ -45,7 +45,7 @@ object BlockchainService {
     // ============================================
     // HealthWallet V1 address = 0xed41D59378f36b04567DAB79077d8057eA3E70D6
     // HealthWallet V2 address = 0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B
-    private const val CONTRACT_ADDRESS = "0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B"
+    private const val CONTRACT_ADDRESS = "0x1F10eF5097baEfA71d70c92bc13f11Eff504e14e"
     
     // Sepolia RPC endpoints - using multiple public endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
@@ -181,7 +181,8 @@ object BlockchainService {
         val reportType: ReportType,
         val hasFile: Boolean,
         val reportDate: BigInteger,
-        val createdAt: BigInteger
+        val createdAt: BigInteger,
+        val encryptedKey: String  // Encrypted random AES key for this record
     )
     
     /**
@@ -934,7 +935,8 @@ object BlockchainService {
         encryptedFileIpfsHash: String,
         reportType: ReportType,
         hasFile: Boolean,
-        reportDate: BigInteger
+        reportDate: BigInteger,
+        encryptedKey: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
@@ -948,7 +950,8 @@ object BlockchainService {
                 Utf8String(encryptedFileIpfsHash),
                 Uint8(reportType.value.toLong()),  // Enum encoded as uint8
                 Bool(hasFile),
-                Uint256(reportDate)
+                Uint256(reportDate),
+                Utf8String(encryptedKey)  // NEW: Encrypted random key
             ),
             emptyList()
         )
@@ -972,7 +975,8 @@ object BlockchainService {
         encryptedFileIpfsHash: String,
         reportType: ReportType,
         hasFile: Boolean,
-        reportDate: BigInteger
+        reportDate: BigInteger,
+        encryptedKey: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
@@ -985,7 +989,8 @@ object BlockchainService {
                 Utf8String(encryptedFileIpfsHash),
                 Uint8(reportType.value.toLong()),
                 Bool(hasFile),
-                Uint256(reportDate)
+                Uint256(reportDate),
+                Utf8String(encryptedKey)
             ),
             emptyList()
         )
@@ -1175,15 +1180,16 @@ object BlockchainService {
             }
             
             // Manually decode the struct
-            // Struct layout:
-            // 0-31: offset to struct data (0x20 = 32)
-            // 32-63: id (uint256)
-            // 64-95: offset to encryptedDataIpfsHash (dynamic)
-            // 96-127: offset to encryptedFileIpfsHash (dynamic)
-            // 128-159: reportType (uint8 padded to 32 bytes)
-            // 160-191: hasFile (bool padded to 32 bytes)
-            // 192-223: reportDate (uint256)
-            // 224-255: createdAt (uint256)
+            // Decode NEW contract format (with encryptedKey)
+            // Struct layout (in hex positions, each field = 64 hex chars = 32 bytes):
+            // 0-63: id (uint256)
+            // 64-127: offset to encryptedDataIpfsHash (dynamic)
+            // 128-191: offset to encryptedFileIpfsHash (dynamic)
+            // 192-255: reportType (uint8 padded to 32 bytes)
+            // 256-319: hasFile (bool padded to 32 bytes)
+            // 320-383: reportDate (uint256)
+            // 384-447: createdAt (uint256)
+            // 448-511: offset to encryptedKey (dynamic)
             // Then the actual string data at their respective offsets
             
             val hex = result.removePrefix("0x")
@@ -1191,7 +1197,8 @@ object BlockchainService {
             // Skip the first 32 bytes (offset pointer to struct)
             val structData = hex.substring(64)
             
-            // Extract fields (each is 64 hex chars = 32 bytes)
+            Log.d(TAG, "Struct data length: ${structData.length}")
+            
             val idHex = structData.substring(0, 64)
             val dataIpfsOffsetHex = structData.substring(64, 128)
             val fileIpfsOffsetHex = structData.substring(128, 192)
@@ -1199,21 +1206,20 @@ object BlockchainService {
             val hasFileHex = structData.substring(256, 320)
             val reportDateHex = structData.substring(320, 384)
             val createdAtHex = structData.substring(384, 448)
+            val encryptedKeyOffsetHex = structData.substring(448, 512)
             
-            // Parse static values
             val id = BigInteger(idHex, 16)
             val reportTypeValue = BigInteger(reportTypeHex, 16).toInt()
             val hasFile = BigInteger(hasFileHex, 16) != BigInteger.ZERO
             val reportDate = BigInteger(reportDateHex, 16)
             val createdAt = BigInteger(createdAtHex, 16)
             
-            // Parse dynamic strings
-            val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2 // Convert to hex chars
+            val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2
             val fileIpfsOffset = BigInteger(fileIpfsOffsetHex, 16).toInt() * 2
+            val encryptedKeyOffset = BigInteger(encryptedKeyOffsetHex, 16).toInt() * 2
             
-            // String format: 32 bytes length, then data
             val dataIpfsLengthHex = structData.substring(dataIpfsOffset, dataIpfsOffset + 64)
-            val dataIpfsLength = BigInteger(dataIpfsLengthHex, 16).toInt() * 2 // Hex chars
+            val dataIpfsLength = BigInteger(dataIpfsLengthHex, 16).toInt() * 2
             val dataIpfsHex = structData.substring(dataIpfsOffset + 64, dataIpfsOffset + 64 + dataIpfsLength)
             val encryptedDataIpfsHash = String(dataIpfsHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
             
@@ -1222,9 +1228,13 @@ object BlockchainService {
             val fileIpfsHex = structData.substring(fileIpfsOffset + 64, fileIpfsOffset + 64 + fileIpfsLength)
             val encryptedFileIpfsHash = String(fileIpfsHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
             
+            val encryptedKeyLengthHex = structData.substring(encryptedKeyOffset, encryptedKeyOffset + 64)
+            val encryptedKeyLength = BigInteger(encryptedKeyLengthHex, 16).toInt() * 2
+            val encryptedKeyHex = structData.substring(encryptedKeyOffset + 64, encryptedKeyOffset + 64 + encryptedKeyLength)
+            val encryptedKey = String(encryptedKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+            
             val reportType = ReportType.values().getOrNull(reportTypeValue) ?: ReportType.OTHER
-
-            Log.d(TAG, "Decoded report: id=$id, type=$reportType, hasFile=$hasFile")
+            Log.d(TAG, "Decoded report: id=$id, type=$reportType, hasFile=$hasFile, encryptedKey length=${encryptedKey.length}")
             
             MedicalReportRef(
                 id = id,
@@ -1233,7 +1243,8 @@ object BlockchainService {
                 reportType = reportType,
                 hasFile = hasFile,
                 reportDate = reportDate,
-                createdAt = createdAt
+                createdAt = createdAt,
+                encryptedKey = encryptedKey
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting report ref", e)
