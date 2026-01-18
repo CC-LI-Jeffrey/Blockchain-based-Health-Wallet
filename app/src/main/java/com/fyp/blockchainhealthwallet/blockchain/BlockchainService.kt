@@ -45,7 +45,7 @@ object BlockchainService {
     // ============================================
     // HealthWallet V1 address = 0xed41D59378f36b04567DAB79077d8057eA3E70D6
     // HealthWallet V2 address = 0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B
-    private const val CONTRACT_ADDRESS = "0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B"
+    private const val CONTRACT_ADDRESS = "0xcF3299FF912254032522055DcCca157eDf90F0aB"
     
     // Sepolia RPC endpoints - using multiple public endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
@@ -139,13 +139,14 @@ object BlockchainService {
     
     /**
      * PersonalInfoRef - Reference to encrypted personal information on IPFS
+     * Public key now managed separately in UserCryptoProfile
      */
     data class PersonalInfoRef(
         val encryptedDataIpfsHash: String,
-        val publicKeyHash: String,  // bytes32 as hex string
         val createdAt: BigInteger,
         val lastUpdated: BigInteger,
-        val exists: Boolean
+        val exists: Boolean,
+        val encryptedKey: String = ""  // Encrypted random AES key for this record
     )
     
     /**
@@ -181,24 +182,27 @@ object BlockchainService {
         val reportType: ReportType,
         val hasFile: Boolean,
         val reportDate: BigInteger,
-        val createdAt: BigInteger
+        val createdAt: BigInteger,
+        val encryptedKey: String  // Encrypted random AES key for this record
     )
     
     /**
-     * ShareRecord - Data sharing record with cryptographic isolation per category
+     * ShareRecord - Per-record data sharing with RSA encryption
      */
     data class ShareRecord(
         val id: BigInteger,
+        val ownerAddress: String,
         val recipientAddress: String,
         val recipientNameHash: String,  // bytes32 as hex string
         val encryptedRecipientDataIpfsHash: String,
         val recipientType: RecipientType,
-        val sharedDataCategory: DataCategory,
+        val recordType: RecordType,  // Type of record being shared
+        val recordId: BigInteger,    // Specific record ID (0 for PersonalInfo)
         val shareDate: BigInteger,
         val expiryDate: BigInteger,
         val accessLevel: AccessLevel,
         val status: ShareStatus,
-        val encryptedCategoryKey: String
+        val encryptedRecordKey: String  // Record's AES key encrypted with recipient's RSA public key
     )
     
     /**
@@ -265,33 +269,131 @@ object BlockchainService {
     }
     
     // ============================================
-    // PERSONAL INFO FUNCTIONS - HealthWalletV2
+    // RSA PUBLIC KEY MANAGEMENT - HealthWalletV2.05
     // ============================================
     
     /**
-     * Set or update personal information (encrypted and stored on IPFS)
-     * @param encryptedDataIpfsHash IPFS hash of encrypted personal data JSON
-     * @param publicKeyHash Hash of user's public encryption key (bytes32)
+     * Set user's RSA public key for receiving encrypted shares
+     * @param publicKeyIpfsHash IPFS hash containing the Base64 RSA public key
+     * @param publicKeyHash SHA-256 hash of the public key for verification
      * @return Transaction hash
      */
-    suspend fun setPersonalInfo(
-        encryptedDataIpfsHash: String,
-        publicKeyHash: String  // Must be 32 bytes hex string (0x + 64 chars)
+    suspend fun setUserPublicKey(
+        publicKeyIpfsHash: String,
+        publicKeyHash: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
         
-        Log.d(TAG, "Setting personal info for user: $userAddress")
+        Log.d(TAG, "Setting public key for user: $userAddress")
+        Log.d(TAG, "Public key IPFS hash: $publicKeyIpfsHash")
+        Log.d(TAG, "Public key hash: $publicKeyHash")
         
         // Convert hex string to bytes32
         val keyHashBytes = Numeric.hexStringToByteArray(publicKeyHash)
         require(keyHashBytes.size == 32) { "publicKeyHash must be 32 bytes" }
         
         val function = org.web3j.abi.datatypes.Function(
+            "setUserPublicKey",
+            listOf(
+                Utf8String(publicKeyIpfsHash),
+                org.web3j.abi.datatypes.generated.Bytes32(keyHashBytes)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Get user's RSA public key IPFS hash from blockchain
+     * @param userAddress Address of the user
+     * @return IPFS hash of the public key, or empty string if not set
+     */
+    suspend fun getUserPublicKey(userAddress: String): String = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Getting public key for user: $userAddress")
+            
+            val function = org.web3j.abi.datatypes.Function(
+                "getUserPublicKey",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<Utf8String>() {})
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            val response = executeEthCallWithFallback(
+                encodedFunction = encodedFunction,
+                contractAddress = CONTRACT_ADDRESS,
+                fromAddress = null
+            )
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting public key: ${response.error.message}")
+                return@withContext ""
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                Log.w(TAG, "User has not set public key")
+                return@withContext ""
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.isEmpty()) {
+                return@withContext ""
+            }
+            
+            val ipfsHash = (decodedResult[0] as Utf8String).value
+            Log.d(TAG, "Retrieved public key IPFS hash: $ipfsHash")
+            ipfsHash
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception getting public key for $userAddress", e)
+            if (e.message?.contains("Public key not set") == true) {
+                Log.w(TAG, "User has not enabled receiving shares")
+                return@withContext ""
+            }
+            throw e
+        }
+    }
+
+    // ============================================
+    // PERSONAL INFO FUNCTIONS - HealthWalletV2
+    // ============================================
+    
+    /**
+     * Set or update personal information (encrypted and stored on IPFS)
+     * @param encryptedDataIpfsHash IPFS hash of encrypted personal data JSON
+     * @param encryptedKey Encrypted random AES key for this record
+     * @return Transaction hash
+     * Note: Public key managed separately via setUserPublicKey()
+     */
+    suspend fun setPersonalInfo(
+        encryptedDataIpfsHash: String,
+        encryptedKey: String
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        Log.d(TAG, "Setting personal info for user: $userAddress")
+        
+        val function = org.web3j.abi.datatypes.Function(
             "setPersonalInfo",
             listOf(
                 Utf8String(encryptedDataIpfsHash),
-                org.web3j.abi.datatypes.generated.Bytes32(keyHashBytes)
+                Utf8String(encryptedKey)
             ),
             emptyList()
         )
@@ -325,10 +427,10 @@ object BlockchainService {
                 listOf(Address(userAddress)),
                 listOf(
                     object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
-                    object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {},  // publicKeyHash
                     object : TypeReference<Uint256>() {},  // createdAt
                     object : TypeReference<Uint256>() {},  // lastUpdated
-                    object : TypeReference<Bool>() {}  // exists
+                    object : TypeReference<Bool>() {},  // exists
+                    object : TypeReference<Utf8String>() {}  // encryptedKey
                 )
             )
             
@@ -363,24 +465,22 @@ object BlockchainService {
             Log.d(TAG, "Decoding response (manual parsing due to tuple wrapper)...")
             
             // Manually decode the tuple fields from the hex response
-            // Response format: 
+            // Response format for NEW contract (without publicKeyHash):
             // 0-64: offset to tuple (32 bytes)
-            // 64-128: offset to string (32 bytes)
-            // 128-192: bytes32 publicKeyHash (32 bytes)
-            // 192-256: uint256 createdAt (32 bytes)
-            // 256-320: uint256 lastUpdated (32 bytes)
-            // 320-384: bool exists (32 bytes) <-- HERE!
-            // 384+: string length + data
+            // 64-128: offset to encryptedDataIpfsHash string (32 bytes)
+            // 128-192: uint256 createdAt (32 bytes)
+            // 192-256: uint256 lastUpdated (32 bytes)
+            // 256-320: bool exists (32 bytes)
+            // 320-384: offset to encryptedKey string (32 bytes)
+            // 384+: string lengths + data
             
             val cleanHex = result.substring(2) // Remove 0x prefix
             
-            // Parse exists flag at position 320-384
-            val existsHex = cleanHex.substring(320, 384)
+            // Parse exists flag at position 256-320
+            val existsHex = cleanHex.substring(256, 320)
             val exists = existsHex.trim('0') == "1"
             
             Log.d(TAG, "exists hex: $existsHex")
-            Log.d(TAG, "exists flag: $exists")
-            
             Log.d(TAG, "exists flag: $exists")
             
             if (!exists) {
@@ -388,57 +488,81 @@ object BlockchainService {
                 return@withContext null
             }
             
-            // Manually parse the IPFS hash string from hex
-            // String starts at position 384 (after the 5 fixed fields)
-            // 384-448: string length (32 bytes)
-            // 448+: string content in hex
+            // Parse offsets for dynamic strings (offsets are relative to start of tuple data, which begins at position 64)
+            val tupleStart = 64 // First 32 bytes is the offset to the tuple itself
+            val ipfsHashOffsetHex = cleanHex.substring(tupleStart, tupleStart + 64)
+            val ipfsHashOffset = ipfsHashOffsetHex.toLong(16).toInt() * 2 + tupleStart
+            val encryptedKeyOffsetHex = cleanHex.substring(tupleStart + 256, tupleStart + 320)
+            val encryptedKeyOffset = encryptedKeyOffsetHex.toLong(16).toInt() * 2 + tupleStart
             
-            val stringLengthHex = cleanHex.substring(384, 448)
-            val stringLength = stringLengthHex.toLong(16).toInt() * 2 // Convert to hex char count
-            val stringDataStart = 448
-            val stringDataEnd = stringDataStart + stringLength
+            Log.d(TAG, "ipfsHashOffset: $ipfsHashOffset, encryptedKeyOffset: $encryptedKeyOffset, total length: ${cleanHex.length}")
             
-            if (stringDataEnd > cleanHex.length) {
-                Log.e(TAG, "String data out of bounds")
-                return@withContext null
-            }
-            
-            val stringHex = cleanHex.substring(stringDataStart, stringDataEnd)
-            val ipfsHash = stringHex.chunked(2)
+            // Parse IPFS hash string
+            val ipfsHashLengthHex = cleanHex.substring(ipfsHashOffset, ipfsHashOffset + 64)
+            val ipfsHashLength = ipfsHashLengthHex.toLong(16).toInt() * 2
+            val ipfsHashStart = ipfsHashOffset + 64
+            val ipfsHashEnd = ipfsHashStart + ipfsHashLength
+            val ipfsHashHex = cleanHex.substring(ipfsHashStart, ipfsHashEnd)
+            val ipfsHash = ipfsHashHex.chunked(2)
                 .map { it.toInt(16).toChar() }
                 .joinToString("")
             
-            Log.d(TAG, "Parsed IPFS hash: $ipfsHash")
-            
-            // Now decode using Web3j for the numeric fields only
-            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
-                result,
-                function.outputParameters
-            )
-            
-            if (decodedResult.size < 5) {
-                Log.e(TAG, "Invalid decoded result size: ${decodedResult.size}")
-                return@withContext null
+            // Parse encryptedKey string
+            val encryptedKey = try {
+                if (encryptedKeyOffset < cleanHex.length) {
+                    val encryptedKeyLengthHex = cleanHex.substring(encryptedKeyOffset, encryptedKeyOffset + 64)
+                    val encryptedKeyLength = encryptedKeyLengthHex.toLong(16).toInt() * 2
+                    val encryptedKeyStart = encryptedKeyOffset + 64
+                    val encryptedKeyEnd = encryptedKeyStart + encryptedKeyLength
+                    
+                    if (encryptedKeyEnd <= cleanHex.length) {
+                        val encryptedKeyHex = cleanHex.substring(encryptedKeyStart, encryptedKeyEnd)
+                        encryptedKeyHex.chunked(2)
+                            .map { it.toInt(16).toChar() }
+                            .joinToString("")
+                    } else {
+                        Log.w(TAG, "encryptedKey data exceeds response length")
+                        ""
+                    }
+                } else {
+                    Log.w(TAG, "encryptedKeyOffset beyond response length")
+                    ""
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse encryptedKey: ${e.message}")
+                ""
             }
             
-            // Extract numeric fields (skip string at index 0)
-            val publicKeyHash = Numeric.toHexString((decodedResult[1] as org.web3j.abi.datatypes.generated.Bytes32).value)
-            val createdAt = (decodedResult[2] as Uint256).value
-            val lastUpdated = (decodedResult[3] as Uint256).value
+            Log.d(TAG, "Parsed IPFS hash: $ipfsHash")
+            Log.d(TAG, "Parsed encryptedKey length: ${encryptedKey.length}")
+            
+            // Manually parse fixed-size fields from known positions
+            // Position in tuple (after first 32 bytes offset):
+            // 64-128: offset to encryptedDataIpfsHash (already parsed)
+            // 128-192: uint256 createdAt
+            // 192-256: uint256 lastUpdated
+            // 256-320: bool exists (already parsed)
+            // 320-384: offset to encryptedKey (already parsed)
+            
+            val createdAtHex = cleanHex.substring(128, 192)
+            val createdAt = BigInteger(createdAtHex, 16)
+            
+            val lastUpdatedHex = cleanHex.substring(192, 256)
+            val lastUpdated = BigInteger(lastUpdatedHex, 16)
             
             Log.d(TAG, "Successfully decoded PersonalInfoRef:")
             Log.d(TAG, "  - IPFS Hash: $ipfsHash")
-            Log.d(TAG, "  - Public Key Hash: $publicKeyHash")
             Log.d(TAG, "  - Created At: $createdAt")
             Log.d(TAG, "  - Last Updated: $lastUpdated")
+            Log.d(TAG, "  - Has encryptedKey: ${encryptedKey.isNotEmpty()}")
             Log.d(TAG, "========================================")
             
             PersonalInfoRef(
                 encryptedDataIpfsHash = ipfsHash,
-                publicKeyHash = publicKeyHash,
                 createdAt = createdAt,
                 lastUpdated = lastUpdated,
-                exists = exists
+                exists = exists,
+                encryptedKey = encryptedKey
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting personal info", e)
@@ -934,7 +1058,8 @@ object BlockchainService {
         encryptedFileIpfsHash: String,
         reportType: ReportType,
         hasFile: Boolean,
-        reportDate: BigInteger
+        reportDate: BigInteger,
+        encryptedKey: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
@@ -948,7 +1073,8 @@ object BlockchainService {
                 Utf8String(encryptedFileIpfsHash),
                 Uint8(reportType.value.toLong()),  // Enum encoded as uint8
                 Bool(hasFile),
-                Uint256(reportDate)
+                Uint256(reportDate),
+                Utf8String(encryptedKey)  // NEW: Encrypted random key
             ),
             emptyList()
         )
@@ -972,7 +1098,8 @@ object BlockchainService {
         encryptedFileIpfsHash: String,
         reportType: ReportType,
         hasFile: Boolean,
-        reportDate: BigInteger
+        reportDate: BigInteger,
+        encryptedKey: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
@@ -985,7 +1112,8 @@ object BlockchainService {
                 Utf8String(encryptedFileIpfsHash),
                 Uint8(reportType.value.toLong()),
                 Bool(hasFile),
-                Uint256(reportDate)
+                Uint256(reportDate),
+                Utf8String(encryptedKey)
             ),
             emptyList()
         )
@@ -1175,15 +1303,16 @@ object BlockchainService {
             }
             
             // Manually decode the struct
-            // Struct layout:
-            // 0-31: offset to struct data (0x20 = 32)
-            // 32-63: id (uint256)
-            // 64-95: offset to encryptedDataIpfsHash (dynamic)
-            // 96-127: offset to encryptedFileIpfsHash (dynamic)
-            // 128-159: reportType (uint8 padded to 32 bytes)
-            // 160-191: hasFile (bool padded to 32 bytes)
-            // 192-223: reportDate (uint256)
-            // 224-255: createdAt (uint256)
+            // Decode NEW contract format (with encryptedKey)
+            // Struct layout (in hex positions, each field = 64 hex chars = 32 bytes):
+            // 0-63: id (uint256)
+            // 64-127: offset to encryptedDataIpfsHash (dynamic)
+            // 128-191: offset to encryptedFileIpfsHash (dynamic)
+            // 192-255: reportType (uint8 padded to 32 bytes)
+            // 256-319: hasFile (bool padded to 32 bytes)
+            // 320-383: reportDate (uint256)
+            // 384-447: createdAt (uint256)
+            // 448-511: offset to encryptedKey (dynamic)
             // Then the actual string data at their respective offsets
             
             val hex = result.removePrefix("0x")
@@ -1191,7 +1320,8 @@ object BlockchainService {
             // Skip the first 32 bytes (offset pointer to struct)
             val structData = hex.substring(64)
             
-            // Extract fields (each is 64 hex chars = 32 bytes)
+            Log.d(TAG, "Struct data length: ${structData.length}")
+            
             val idHex = structData.substring(0, 64)
             val dataIpfsOffsetHex = structData.substring(64, 128)
             val fileIpfsOffsetHex = structData.substring(128, 192)
@@ -1199,21 +1329,20 @@ object BlockchainService {
             val hasFileHex = structData.substring(256, 320)
             val reportDateHex = structData.substring(320, 384)
             val createdAtHex = structData.substring(384, 448)
+            val encryptedKeyOffsetHex = structData.substring(448, 512)
             
-            // Parse static values
             val id = BigInteger(idHex, 16)
             val reportTypeValue = BigInteger(reportTypeHex, 16).toInt()
             val hasFile = BigInteger(hasFileHex, 16) != BigInteger.ZERO
             val reportDate = BigInteger(reportDateHex, 16)
             val createdAt = BigInteger(createdAtHex, 16)
             
-            // Parse dynamic strings
-            val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2 // Convert to hex chars
+            val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2
             val fileIpfsOffset = BigInteger(fileIpfsOffsetHex, 16).toInt() * 2
+            val encryptedKeyOffset = BigInteger(encryptedKeyOffsetHex, 16).toInt() * 2
             
-            // String format: 32 bytes length, then data
             val dataIpfsLengthHex = structData.substring(dataIpfsOffset, dataIpfsOffset + 64)
-            val dataIpfsLength = BigInteger(dataIpfsLengthHex, 16).toInt() * 2 // Hex chars
+            val dataIpfsLength = BigInteger(dataIpfsLengthHex, 16).toInt() * 2
             val dataIpfsHex = structData.substring(dataIpfsOffset + 64, dataIpfsOffset + 64 + dataIpfsLength)
             val encryptedDataIpfsHash = String(dataIpfsHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
             
@@ -1222,9 +1351,13 @@ object BlockchainService {
             val fileIpfsHex = structData.substring(fileIpfsOffset + 64, fileIpfsOffset + 64 + fileIpfsLength)
             val encryptedFileIpfsHash = String(fileIpfsHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
             
+            val encryptedKeyLengthHex = structData.substring(encryptedKeyOffset, encryptedKeyOffset + 64)
+            val encryptedKeyLength = BigInteger(encryptedKeyLengthHex, 16).toInt() * 2
+            val encryptedKeyHex = structData.substring(encryptedKeyOffset + 64, encryptedKeyOffset + 64 + encryptedKeyLength)
+            val encryptedKey = String(encryptedKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+            
             val reportType = ReportType.values().getOrNull(reportTypeValue) ?: ReportType.OTHER
-
-            Log.d(TAG, "Decoded report: id=$id, type=$reportType, hasFile=$hasFile")
+            Log.d(TAG, "Decoded report: id=$id, type=$reportType, hasFile=$hasFile, encryptedKey length=${encryptedKey.length}")
             
             MedicalReportRef(
                 id = id,
@@ -1233,7 +1366,8 @@ object BlockchainService {
                 reportType = reportType,
                 hasFile = hasFile,
                 reportDate = reportDate,
-                createdAt = createdAt
+                createdAt = createdAt,
+                encryptedKey = encryptedKey
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting report ref", e)
@@ -1246,24 +1380,35 @@ object BlockchainService {
     // ============================================
     
     /**
-     * Share data with a recipient (healthcare provider, hospital, etc.)
-     * Each data category uses a different encryption key for cryptographic isolation
-     * @return Share ID
+     * Share specific record with a recipient using RSA encryption
+     * Per-record sharing model: share one specific record, not entire category
+     * @param recipientAddress Recipient's blockchain address
+     * @param recipientNameHash SHA-256 hash of recipient name (bytes32)
+     * @param encryptedRecipientDataIpfsHash IPFS hash of encrypted recipient details
+     * @param recipientType Type of recipient (DOCTOR, HOSPITAL, etc.)
+     * @param recordType Type of record being shared (PERSONAL_INFO, MEDICATION, etc.)
+     * @param recordId ID of the specific record (0 for PERSONAL_INFO)
+     * @param expiryDate Unix timestamp when share expires
+     * @param accessLevel Access level (VIEW_ONLY, FULL_ACCESS, etc.)
+     * @param encryptedRecordKey Record's AES key encrypted with recipient's RSA public key
+     * @return Transaction hash
      */
     suspend fun shareData(
         recipientAddress: String,
-        recipientNameHash: String,  // bytes32 hash of recipient name
+        recipientNameHash: String,
         encryptedRecipientDataIpfsHash: String,
         recipientType: RecipientType,
-        dataCategory: DataCategory,
-        expiryDate: BigInteger,  // Unix timestamp
+        recordType: RecordType,
+        recordId: BigInteger,
+        expiryDate: BigInteger,
         accessLevel: AccessLevel,
-        encryptedCategoryKey: String  // Category-specific key encrypted with recipient's public key
+        encryptedRecordKey: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
         
-        Log.d(TAG, "Sharing data with: $recipientAddress")
+        Log.d(TAG, "Sharing $recordType record with: $recipientAddress")
+        Log.d(TAG, "Record ID: $recordId, Expiry: $expiryDate")
         
         // Convert hex string to bytes32
         val nameHashBytes = Numeric.hexStringToByteArray(recipientNameHash)
@@ -1275,11 +1420,12 @@ object BlockchainService {
                 Address(recipientAddress),
                 org.web3j.abi.datatypes.generated.Bytes32(nameHashBytes),
                 Utf8String(encryptedRecipientDataIpfsHash),
-                Uint8(recipientType.value.toLong()),  // Enum as uint8
-                Uint8(dataCategory.value.toLong()),  // Enum as uint8
+                Uint8(recipientType.value.toLong()),
+                Uint8(recordType.value.toLong()),  // Changed from dataCategory
+                Uint256(recordId),  // New parameter
                 Uint256(expiryDate),
-                Uint8(accessLevel.value.toLong()),  // Enum as uint8
-                Utf8String(encryptedCategoryKey)
+                Uint8(accessLevel.value.toLong()),
+                Utf8String(encryptedRecordKey)  // Now contains record-specific key
             ),
             emptyList()
         )
@@ -1390,6 +1536,66 @@ object BlockchainService {
     }
     
     /**
+     * Get all share IDs received by a user (shares where user is recipient)
+     * @param userAddress Address of the recipient
+     * @return List of share IDs
+     */
+    suspend fun getReceivedShareIds(userAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Getting received shares for: $userAddress")
+            
+            val function = org.web3j.abi.datatypes.Function(
+                "getReceivedShareIds",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<DynamicArray<Uint256>>() {})
+            )
+            
+            val encodedFunction = FunctionEncoder.encode(function)
+            
+            // Set 'from' address to match user for auth check
+            val response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                    userAddress,
+                    CONTRACT_ADDRESS,
+                    encodedFunction
+                ),
+                org.web3j.protocol.core.DefaultBlockParameterName.LATEST
+            ).send()
+            
+            if (response.hasError()) {
+                Log.e(TAG, "Error getting received shares: ${response.error.message}")
+                return@withContext emptyList()
+            }
+            
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                Log.w(TAG, "No received shares found")
+                return@withContext emptyList()
+            }
+            
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+            
+            if (decodedResult.isEmpty()) {
+                return@withContext emptyList()
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val ids = (decodedResult[0] as DynamicArray<Uint256>).value
+            val shareIds = ids.map { it.value }
+            
+            Log.d(TAG, "Retrieved ${shareIds.size} received shares")
+            shareIds
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception getting received shares for $userAddress", e)
+            emptyList()
+        }
+    }
+    
+    /**
      * Get share record details (read-only)
      * @param shareId The share ID to retrieve
      * @param callerAddress Optional: Address of the caller (for auth check). If null, uses connected wallet.
@@ -1446,32 +1652,36 @@ object BlockchainService {
             val tupleOffset = BigInteger(cleanHex.substring(0, 64), 16).toInt() * 2
             Log.d(TAG, "Tuple offset: $tupleOffset")
 
-            // Struct fields (starting from tupleOffset):
+            // Struct fields (starting from tupleOffset) - HealthWalletV2.05:
             // 0-64: id (uint256)
-            // 64-128: recipientAddress (address)
-            // 128-192: recipientNameHash (bytes32)
-            // 192-256: offset to string 1 (encryptedRecipientDataIpfsHash) - relative to tuple start
-            // 256-320: recipientType (uint8)
-            // 320-384: sharedDataCategory (uint8)
-            // 384-448: shareDate (uint256)
-            // 448-512: expiryDate (uint256)
-            // 512-576: accessLevel (uint8)
-            // 576-640: status (uint8)
-            // 640-704: offset to string 2 (encryptedCategoryKey) - relative to tuple start
+            // 64-128: ownerAddress (address)
+            // 128-192: recipientAddress (address)
+            // 192-256: recipientNameHash (bytes32)
+            // 256-320: offset to string 1 (encryptedRecipientDataIpfsHash) - relative to tuple start
+            // 320-384: recipientType (uint8)
+            // 384-448: recordType (uint8)
+            // 448-512: recordId (uint256)
+            // 512-576: shareDate (uint256)
+            // 576-640: expiryDate (uint256)
+            // 640-704: accessLevel (uint8)
+            // 704-768: status (uint8)
+            // 768-832: offset to string 2 (encryptedRecordKey) - relative to tuple start
 
             val base = tupleOffset
             val id = BigInteger(cleanHex.substring(base, base + 64), 16)
-            val recipientAddress = "0x" + cleanHex.substring(base + 64 + 24, base + 128) // Address is last 20 bytes
-            val recipientNameHash = "0x" + cleanHex.substring(base + 128, base + 192)
-            val recipientType = cleanHex.substring(base + 256, base + 320).takeLast(2).toInt(16)
-            val sharedDataCategory = cleanHex.substring(base + 320, base + 384).takeLast(2).toInt(16)
-            val shareDate = BigInteger(cleanHex.substring(base + 384, base + 448), 16)
-            val expiryDate = BigInteger(cleanHex.substring(base + 448, base + 512), 16)
-            val accessLevel = cleanHex.substring(base + 512, base + 576).takeLast(2).toInt(16)
-            val status = cleanHex.substring(base + 576, base + 640).takeLast(2).toInt(16)
+            val ownerAddress = "0x" + cleanHex.substring(base + 64 + 24, base + 128) // Address is last 20 bytes
+            val recipientAddress = "0x" + cleanHex.substring(base + 128 + 24, base + 192) // Address is last 20 bytes
+            val recipientNameHash = "0x" + cleanHex.substring(base + 192, base + 256)
+            val recipientType = cleanHex.substring(base + 320, base + 384).takeLast(2).toInt(16)
+            val recordType = cleanHex.substring(base + 384, base + 448).takeLast(2).toInt(16)
+            val recordId = BigInteger(cleanHex.substring(base + 448, base + 512), 16)
+            val shareDate = BigInteger(cleanHex.substring(base + 512, base + 576), 16)
+            val expiryDate = BigInteger(cleanHex.substring(base + 576, base + 640), 16)
+            val accessLevel = cleanHex.substring(base + 640, base + 704).takeLast(2).toInt(16)
+            val status = cleanHex.substring(base + 704, base + 768).takeLast(2).toInt(16)
 
             // Parse first string - offset is relative to tuple start
-            val string1RelativeOffset = BigInteger(cleanHex.substring(base + 192, base + 256), 16).toInt() * 2
+            val string1RelativeOffset = BigInteger(cleanHex.substring(base + 256, base + 320), 16).toInt() * 2
             val string1AbsoluteOffset = base + string1RelativeOffset
             Log.d(TAG, "String1 relative offset: $string1RelativeOffset, absolute: $string1AbsoluteOffset")
 
@@ -1485,7 +1695,7 @@ object BlockchainService {
                 .joinToString("")
 
             // Parse second string - offset is relative to tuple start
-            val string2RelativeOffset = BigInteger(cleanHex.substring(base + 640, base + 704), 16).toInt() * 2
+            val string2RelativeOffset = BigInteger(cleanHex.substring(base + 768, base + 832), 16).toInt() * 2
             val string2AbsoluteOffset = base + string2RelativeOffset
             Log.d(TAG, "String2 relative offset: $string2RelativeOffset, absolute: $string2AbsoluteOffset")
 
@@ -1494,22 +1704,24 @@ object BlockchainService {
             Log.d(TAG, "String2 length: $string2Length chars")
 
             val string2Data = cleanHex.substring(string2AbsoluteOffset + 64, string2AbsoluteOffset + 64 + string2Length)
-            val encryptedCategoryKey = string2Data.chunked(2)
+            val encryptedRecordKey = string2Data.chunked(2)
                 .map { it.toInt(16).toChar() }
                 .joinToString("")
 
             val shareRecord = ShareRecord(
                 id = id,
+                ownerAddress = ownerAddress,
                 recipientAddress = recipientAddress,
                 recipientNameHash = recipientNameHash,
                 encryptedRecipientDataIpfsHash = encryptedRecipientDataIpfsHash,
                 recipientType = RecipientType.values().getOrNull(recipientType) ?: RecipientType.OTHER,
-                sharedDataCategory = DataCategory.values().getOrNull(sharedDataCategory) ?: DataCategory.ALL_DATA,
+                recordType = RecordType.values().getOrNull(recordType) ?: RecordType.PERSONAL_INFO,
+                recordId = recordId,
                 shareDate = shareDate,
                 expiryDate = expiryDate,
                 accessLevel = AccessLevel.values().getOrNull(accessLevel) ?: AccessLevel.VIEW_ONLY,
                 status = ShareStatus.values().getOrNull(status) ?: ShareStatus.EXPIRED,
-                encryptedCategoryKey = encryptedCategoryKey
+                encryptedRecordKey = encryptedRecordKey
             )
 
             Log.d(TAG, "Successfully retrieved share record $shareId")
@@ -1983,8 +2195,8 @@ object BlockchainService {
                     Log.e(TAG, "Current chain: $chainId, Expected: 11155111 (Sepolia)")
                 }
                 
-                // Estimate gas (500,000 gas units)
-                val gasLimit = "0x${BigInteger.valueOf(500000).toString(16)}"
+                // Estimate gas (800,000 gas units for large encrypted keys in shareData)
+                val gasLimit = "0x${BigInteger.valueOf(800000).toString(16)}"
                 val gasPrice = "0x${BigInteger.valueOf(20000000000).toString(16)}" // 20 Gwei
                 
                 Log.d(TAG, "Transaction details:")
@@ -1992,7 +2204,7 @@ object BlockchainService {
                 Log.d(TAG, "  To: $to")
                 Log.d(TAG, "  Data: ${data.take(66)}...") // Log first part of data
                 Log.d(TAG, "  Chain ID: $chainId")
-                Log.d(TAG, "  Gas Limit: $gasLimit (${BigInteger.valueOf(500000)})")
+                Log.d(TAG, "  Gas Limit: $gasLimit (${BigInteger.valueOf(800000)})")
                 Log.d(TAG, "  Gas Price: $gasPrice (20 Gwei)")
                 if (nonce != null) {
                     Log.d(TAG, "  Nonce: $nonce")
@@ -2164,7 +2376,14 @@ object BlockchainService {
 
             // Verify details
             val recipientMatches = share.recipientAddress.equals(expectedRecipient, ignoreCase = true)
-            val categoryMatches = share.sharedDataCategory == expectedCategory
+            // Map RecordType to DataCategory for comparison
+            val shareCategory = when (share.recordType) {
+                RecordType.PERSONAL_INFO -> DataCategory.PERSONAL_INFO
+                RecordType.MEDICATION -> DataCategory.MEDICATION_RECORDS
+                RecordType.VACCINATION -> DataCategory.VACCINATION_RECORDS
+                RecordType.MEDICAL_REPORT -> DataCategory.MEDICAL_REPORTS
+            }
+            val categoryMatches = shareCategory == expectedCategory
 
             val result = StringBuilder()
             result.append("✓ Share Found on Blockchain!\n\n")
@@ -2173,8 +2392,9 @@ object BlockchainService {
             result.append("Share Details:\n")
             result.append("• Recipient: ${share.recipientAddress}\n")
             result.append("  ${if (recipientMatches) "✓" else "✗"} Expected: $expectedRecipient\n\n")
-            result.append("• Category: ${share.sharedDataCategory.name}\n")
-            result.append("  ${if (categoryMatches) "✓" else "✗"} Expected: ${expectedCategory.name}\n\n")
+            result.append("• Record Type: ${share.recordType.name}\n")
+            result.append("  Record ID: ${share.recordId}\n")
+            result.append("  ${if (categoryMatches) "✓" else "✗"} Expected Category: ${expectedCategory.name}\n\n")
             result.append("• Status: ${share.status.name}\n")
             result.append("• Access Level: ${share.accessLevel.name}\n")
             result.append("• Share Date: ${share.shareDate}\n")
@@ -2213,7 +2433,8 @@ object BlockchainService {
                 if (share != null) {
                     summary.append("${index + 1}. Share ID: $shareId\n")
                     summary.append("   Recipient: ${share.recipientAddress.take(10)}...\n")
-                    summary.append("   Category: ${share.sharedDataCategory.name}\n")
+                    summary.append("   Record Type: ${share.recordType.name}\n")
+                    summary.append("   Record ID: ${share.recordId}\n")
                     summary.append("   Status: ${share.status.name}\n")
                     summary.append("   Expires: ${share.expiryDate}\n\n")
                 }

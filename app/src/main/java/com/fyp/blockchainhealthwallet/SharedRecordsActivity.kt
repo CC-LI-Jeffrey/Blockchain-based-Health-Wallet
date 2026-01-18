@@ -139,7 +139,7 @@ class SharedRecordsActivity : AppCompatActivity() {
             id = shareId.toString(),
             recipientName = blockchainShare.recipientAddress.take(10) + "...",
             recipientType = blockchainShare.recipientType.name,
-            sharedData = blockchainShare.sharedDataCategory.name,
+            sharedData = "${blockchainShare.recordType.name} (ID: ${blockchainShare.recordId})",
             shareDate = dateFormat.format(shareDate),
             shareTime = timeFormat.format(shareDate),
             expiryDate = dateFormat.format(expiryDate),

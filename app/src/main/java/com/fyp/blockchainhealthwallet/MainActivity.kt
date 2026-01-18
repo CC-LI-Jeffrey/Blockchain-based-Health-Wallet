@@ -16,6 +16,7 @@ import androidx.navigation.fragment.fragment
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.reown.appkit.ui.appKit
 import com.reown.appkit.ui.openAppKit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -140,6 +141,7 @@ class MainActivity : AppCompatActivity() {
                         is WalletManager.WalletConnectionState.Connected -> {
                             tvWalletStatus.text = "Connected: ${WalletManager.getFormattedAddress()}"
                             Log.d("MainActivity", "Wallet connected: ${state.address}")
+                            
                             Toast.makeText(
                                 this@MainActivity,
                                 "Wallet connected!\nTap button or address to view details",

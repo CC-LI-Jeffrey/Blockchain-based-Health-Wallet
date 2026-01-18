@@ -2,6 +2,7 @@ package com.fyp.blockchainhealthwallet.ui
 
 import android.app.ProgressDialog
 import android.content.Context
+import android.util.Base64
 import android.util.Log
 import android.widget.EditText
 import android.widget.Toast
@@ -9,22 +10,29 @@ import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.LifecycleCoroutineScope
 import com.fyp.blockchainhealthwallet.ShareRecordActivity
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
+import com.fyp.blockchainhealthwallet.blockchain.RSAHelper
+import com.fyp.blockchainhealthwallet.network.ApiClient
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.google.android.material.textfield.TextInputEditText
+import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.math.BigInteger
 
 /**
- * Helper class for blockchain-related UI operations (HealthWalletV2).
- * Provides dialogs and workflows for data sharing.
+ * Helper class for blockchain-related UI operations (HealthWalletV2.05).
+ * Provides dialogs and workflows for data sharing with RSA encryption.
  */
 object BlockchainHelper {
     
+    private const val TAG = "BlockchainHelper"
+    private val gson = Gson()
+    
     /**
-     * Show dialog to share data with a recipient (HealthWalletV2).
-     * Uses category-based sharing with cryptographic isolation.
+     * Show dialog to share data with a recipient (HealthWalletV2.05).
+     * Uses per-record sharing with RSA encryption.
      */
     fun showShareDataDialog(
         context: Context,
@@ -173,7 +181,7 @@ object BlockchainHelper {
         lifecycleScope.launch {
             try {
                 progressDialog = ProgressDialog(context).apply {
-                    setMessage("Preparing to share data...\nPlease wait...")
+                    setMessage("Preparing to share data...\\nPlease wait...")
                     setCancelable(false)
                     show()
                 }
@@ -182,51 +190,103 @@ object BlockchainHelper {
                 val userAddress = WalletManager.getAddress()
                     ?: throw Exception("Wallet not connected")
                 
-                // Step 1: Fetch the actual personal info from blockchain + IPFS
-                progressDialog?.setMessage("Fetching your personal info from IPFS...")
+                // Step 1: Get recipient's public key from blockchain
+                progressDialog?.setMessage("Checking recipient's public key...")
+                Log.d(TAG, "Step 1: Getting recipient's public key")
+                
+                val recipientPublicKeyIpfsHash = withContext(Dispatchers.IO) {
+                    BlockchainService.getUserPublicKey(recipientAddress)
+                }
+                
+                if (recipientPublicKeyIpfsHash.isEmpty()) {
+                    throw Exception("Recipient has not enabled receiving shares. They must set up their public key first.")
+                }
+                
+                Log.d(TAG, "Recipient public key IPFS hash: $recipientPublicKeyIpfsHash")
+                
+                // Step 2: Download recipient's public key from IPFS
+                progressDialog?.setMessage("Downloading recipient's public key...")
+                Log.d(TAG, "Step 2: Downloading public key from IPFS")
+                
+                val publicKeyResponse = withContext(Dispatchers.IO) {
+                    ApiClient.api.getFromIPFS(recipientPublicKeyIpfsHash)
+                }
+                
+                if (!publicKeyResponse.isSuccessful) {
+                    throw Exception("Failed to download recipient's public key from IPFS")
+                }
+                
+                val publicKeyJson = publicKeyResponse.body()?.string()
+                    ?: throw Exception("Empty public key response")
+                
+                val publicKeyData = gson.fromJson(publicKeyJson, com.google.gson.JsonObject::class.java)
+                val recipientPublicKeyBase64 = publicKeyData.get("publicKey")?.asString
+                    ?: throw Exception("No public key in IPFS data")
+                
+                Log.d(TAG, "Downloaded recipient public key, length: ${recipientPublicKeyBase64.length}")
+                
+                // Step 3: Get own personal info from blockchain
+                progressDialog?.setMessage("Fetching your personal info...")
+                Log.d(TAG, "Step 3: Getting personal info")
                 
                 val personalInfoRef = withContext(Dispatchers.IO) {
                     BlockchainService.getPersonalInfoRef(userAddress)
                 } ?: throw Exception("No personal info found. Please set your personal info first in Profile.")
                 
-                // The personal info is already stored on IPFS, we'll use that hash
                 val personalInfoIpfsHash = personalInfoRef.encryptedDataIpfsHash
+                Log.d(TAG, "Personal info IPFS hash: $personalInfoIpfsHash")
                 
-                Log.d("BlockchainHelper", "Using existing personal info IPFS hash: $personalInfoIpfsHash")
+                // Step 4: Decrypt own AES key
+                progressDialog?.setMessage("Preparing encryption keys...")
+                Log.d(TAG, "Step 4: Decrypting own AES key")
                 
-                // Step 2: Generate recipient name hash and category key
+                val encryptedAesKeyBase64 = personalInfoRef.encryptedKey
+                val aesKey: javax.crypto.SecretKey = withContext(Dispatchers.IO) {
+                    EncryptionHelper.decryptKeyFromBlockchain(encryptedAesKeyBase64)
+                }
+                
+                Log.d(TAG, "Decrypted AES key")
+                
+                // Step 5: Re-encrypt AES key with recipient's RSA public key
+                progressDialog?.setMessage("Encrypting with recipient's key...")
+                Log.d(TAG, "Step 5: Encrypting AES key with recipient's RSA public key")
+                
+                // Pass SecretKey directly to RSA encryption
+                val encryptedRecordKey: String = withContext(Dispatchers.IO) {
+                    RSAHelper.encryptKeyWithPublicKey(aesKey, recipientPublicKeyBase64)
+                }
+                
+                Log.d(TAG, "Encrypted record key length: ${encryptedRecordKey.length}")
+                
+                // Step 6: Generate recipient name hash
                 val recipientNameHash = "0x" + recipientName.hashCode().toString().padStart(64, '0').take(64)
                 
-                // TODO: In production, encrypt the category key with recipient's public key
-                // For now, using a placeholder (recipient won't be able to decrypt without proper key)
-                val categoryKey = "encrypted-category-key-" + System.currentTimeMillis()
+                // Step 7: Share data on blockchain
+                progressDialog?.setMessage("Sending to wallet...\\nPlease approve transaction")
+                Log.d(TAG, "Step 6: Sharing on blockchain")
                 
-                progressDialog?.setMessage("Sending to wallet...\nPlease approve transaction")
-                
-                // Step 3: Share data on blockchain with REAL IPFS hash
                 val txHash = withContext(Dispatchers.IO) {
                     BlockchainService.shareData(
                         recipientAddress = recipientAddress,
                         recipientNameHash = recipientNameHash,
-                        encryptedRecipientDataIpfsHash = personalInfoIpfsHash,  // REAL IPFS HASH!
+                        encryptedRecipientDataIpfsHash = personalInfoIpfsHash,
                         recipientType = recipientType,
-                        dataCategory = dataCategory,
+                        recordType = BlockchainService.RecordType.PERSONAL_INFO,
+                        recordId = BigInteger.ZERO,  // Personal info doesn't have ID
                         expiryDate = expiryTimestamp,
                         accessLevel = BlockchainService.AccessLevel.VIEW_ONLY,
-                        encryptedCategoryKey = categoryKey
+                        encryptedRecordKey = encryptedRecordKey
                     )
                 }
                 
                 progressDialog?.dismiss()
                 
-                // Log full transaction hash for verification
-                Log.d("BlockchainHelper", "Share transaction successful: $txHash")
-                Log.d("BlockchainHelper", "Shared ${dataCategory.name} with $recipientAddress")
+                Log.d(TAG, "✅ Share transaction successful: $txHash")
                 
                 // Show success
                 AlertDialog.Builder(context)
-                    .setTitle("Data Shared Successfully!")
-                    .setMessage("Recipient can now access your ${dataCategory.name.lowercase().replace('_', ' ')} until expiry.\n\nTransaction: ${txHash.take(10)}...\n\nFull TX: $txHash\n\nRefresh share list to see new share.")
+                    .setTitle("Profile Shared Successfully!")
+                    .setMessage("Recipient can now decrypt and view your personal profile using their private key.\\n\\nTransaction: ${txHash.take(10)}...\\n\\nFull TX: $txHash\\n\\nRefresh share list to see new share.")
                     .setPositiveButton("OK") { _, _ ->
                         // Refresh the share list if context is ShareRecordActivity
                         if (context is ShareRecordActivity) {
@@ -237,15 +297,17 @@ object BlockchainHelper {
                 
             } catch (e: Exception) {
                 progressDialog?.dismiss()
+                Log.e(TAG, "Error sharing data", e)
                 
                 val errorMessage = when {
                     e.message?.contains("user rejected", ignoreCase = true) == true -> 
                         "Transaction cancelled by user"
                     e.message?.contains("insufficient funds", ignoreCase = true) == true -> 
                         "Insufficient funds for gas fees"
-                    e.message?.contains("No auth", ignoreCase = true) == true ||
-                    e.message?.contains("execution reverted", ignoreCase = true) == true -> 
-                        "Account not set up. You must call setPersonalInfo() in the smart contract first before sharing data.\n\nUse Remix IDE to call setPersonalInfo() manually."
+                    e.message?.contains("not enabled receiving", ignoreCase = true) == true ->
+                        e.message ?: "Recipient setup error"
+                    e.message?.contains("No personal info", ignoreCase = true) == true ->
+                        "You must set up your personal profile first before sharing."
                     else -> "Error: ${e.message}"
                 }
                 

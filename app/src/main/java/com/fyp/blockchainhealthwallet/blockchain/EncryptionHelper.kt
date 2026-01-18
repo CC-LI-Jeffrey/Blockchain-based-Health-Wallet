@@ -14,27 +14,30 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * EncryptionHelper provides client-side AES-256 encryption for medical files.
- * 
+ *
  * ARCHITECTURE:
  * ============
- * This class works with CategoryKeyManager to provide per-category encryption.
- * 
+ * This class works with SimpleKeyManager to provide user-based encryption.
+ *
  * KEY TYPES:
- * - Category Key: Derived from wallet via CategoryKeyManager (deterministic)
- * - Random Key: Generated per-file for backward compatibility
- * 
- * RECOMMENDED FLOW (with CategoryKeyManager):
- * 1. User selects a file to upload
- * 2. Get category-specific key from CategoryKeyManager
- * 3. Encrypt file with category key
- * 4. Upload encrypted file to IPFS
- * 5. Store IPFS hash on blockchain (key can be re-derived from wallet)
- * 
- * LEGACY FLOW (random keys - NOT RECOMMENDED):
- * 1. Generate random AES key
- * 2. Encrypt file with random key
- * 3. Must store key somewhere (blockchain or local) - key loss = data loss
- * 
+ * - User Key: Derived from wallet via SimpleKeyManager (deterministic)
+ * - Record Key: Generated randomly per record, encrypted with user key
+ *
+ * ENCRYPTION FLOW:
+ * ================
+ * 1. User uploads data
+ * 2. Generate random AES key for this record
+ * 3. Encrypt data with random key
+ * 4. Encrypt random key with user's derived key
+ * 5. Store encrypted random key on blockchain
+ * 6. Upload encrypted data to IPFS
+ *
+ * DECRYPTION FLOW:
+ * ================
+ * 1. Get encrypted random key from blockchain
+ * 2. Decrypt random key with user's derived key
+ * 3. Use random key to decrypt data from IPFS
+ *
  * Security: Backend cannot read medical data even though it stores encrypted files on IPFS.
  */
 object EncryptionHelper {
@@ -200,12 +203,9 @@ object EncryptionHelper {
      * @return Encrypted key as Base64 string
      */
     fun encryptKeyForBlockchain(aesKey: SecretKey, userPublicKey: String? = null): String {
-        // TODO: Implement RSA encryption using user's wallet public key
-        // For now, just encode to Base64
-        // In production, use: RSA.encrypt(aesKey, userPublicKey)
-        
-        Log.w(TAG, "WARNING: AES key is not encrypted with user's public key yet")
-        return keyToString(aesKey)
+        // Use the user's key for actual encryption (not RSA public key)
+        val userKey = SimpleKeyManager.getUserKey()
+        return encryptKeyForBlockchain(aesKey, userKey)
     }
     
     /**
@@ -216,11 +216,20 @@ object EncryptionHelper {
      * @return Decrypted AES key
      */
     fun decryptKeyFromBlockchain(encryptedKey: String, userPrivateKey: String? = null): SecretKey {
-        // TODO: Implement RSA decryption using user's wallet private key
-        // For now, just decode from Base64
-        // In production, use: RSA.decrypt(encryptedKey, userPrivateKey)
+        // Try to decode the Base64 string
+        val decoded = Base64.decode(encryptedKey, Base64.NO_WRAP)
         
-        return stringToKey(encryptedKey)
+        // Check if this is legacy format (raw key, 32 bytes) or new format (IV + encrypted key, 48 bytes)
+        if (decoded.size == 32) {
+            // Legacy format: raw AES key, just return it directly
+            Log.d(TAG, "Detected legacy key format (raw Base64), using directly")
+            return SecretKeySpec(decoded, "AES")
+        }
+        
+        // New format: IV (16 bytes) + encrypted key - decrypt with user key
+        Log.d(TAG, "Detected new key format (encrypted), decrypting with user key")
+        val userKey = SimpleKeyManager.getUserKey()
+        return decryptKeyFromBlockchain(encryptedKey, userKey)
     }
     
     /**
@@ -258,12 +267,12 @@ object EncryptionHelper {
     }
     
     /**
-     * RECOMMENDED: Encrypt file using category-specific key from CategoryKeyManager
+     * RECOMMENDED: Encrypt file using user key from SimpleKeyManager
      * The key can be re-derived from wallet address, so no key storage needed!
      * 
      * @param sourceFile Original medical file to encrypt
      * @param outputDir Directory to save encrypted file  
-     * @param category The data category (determines which key to use)
+     * @param category The data category (kept for API compatibility)
      * @return Encrypted file (key is derived from wallet, not returned)
      */
     fun prepareFileForUploadWithCategory(
@@ -271,41 +280,129 @@ object EncryptionHelper {
         outputDir: File,
         category: BlockchainService.DataCategory
     ): File {
-        // Get category-specific key (deterministic, can be re-derived)
-        val categoryKey = CategoryKeyManager.getCategoryKey(category)
+        // Get user key from SimpleKeyManager
+        val userKey = SimpleKeyManager.getUserKey()
+
+        // Create encrypted file
+        val encryptedFileName = "${sourceFile.nameWithoutExtension}_encrypted_${System.currentTimeMillis()}"
+        val encryptedFile = File(outputDir, encryptedFileName)
+
+        // Encrypt the file with user key
+        encryptFile(sourceFile, encryptedFile, userKey)
+
+        Log.d(TAG, "File encrypted with user key")
+        Log.d(TAG, "File prepared for upload: ${encryptedFile.absolutePath}")
+
+        return encryptedFile
+    }
+    
+    /**
+     * NEW FLOW: Prepare file for upload with random AES key per record.
+     * The random key is encrypted with the user key and stored on blockchain.
+     * 
+     * @param sourceFile Original file to encrypt
+     * @param outputDir Directory to save encrypted file
+     * @param category The data category for key derivation
+     * @return Triple of (encrypted file, random AES key, encrypted random key for blockchain)
+     */
+    fun prepareFileForUploadWithRandomKey(
+        sourceFile: File,
+        outputDir: File,
+        category: BlockchainService.DataCategory
+    ): Triple<File, SecretKey, String> {
+        // Generate random AES key for this record
+        val randomKey = generateAESKey()
         
         // Create encrypted file
         val encryptedFileName = "${sourceFile.nameWithoutExtension}_encrypted_${System.currentTimeMillis()}"
         val encryptedFile = File(outputDir, encryptedFileName)
         
-        // Encrypt the file with category key
-        encryptFile(sourceFile, encryptedFile, categoryKey)
+        // Encrypt the file with random key
+        encryptFile(sourceFile, encryptedFile, randomKey)
         
-        Log.d(TAG, "File encrypted with ${category.name} key")
+        // Encrypt the random key with user key for storage on blockchain
+        val userKey = SimpleKeyManager.getUserKey()
+        val encryptedKeyForBlockchain = encryptKeyForBlockchain(randomKey, userKey)
+        
+        Log.d(TAG, "File encrypted with random key, key encrypted with user key")
         Log.d(TAG, "File prepared for upload: ${encryptedFile.absolutePath}")
         
-        return encryptedFile
+        return Triple(encryptedFile, randomKey, encryptedKeyForBlockchain)
     }
     
     /**
-     * Encrypt data (String/JSON) using category-specific key
+     * Encrypt an AES key with another key for storage on blockchain.
+     * 
+     * @param aesKey The AES key to encrypt
+     * @param encryptionKey The key to encrypt it with (e.g., category key)
+     * @return Base64 encoded encrypted key
+     */
+    private fun encryptKeyForBlockchain(aesKey: SecretKey, encryptionKey: SecretKey): String {
+        val cipher = Cipher.getInstance(ALGORITHM)
+        val iv = generateIV()
+        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey, IvParameterSpec(iv))
+        
+        val keyBytes = aesKey.encoded
+        val encryptedKeyBytes = cipher.doFinal(keyBytes)
+        
+        // Combine IV + encrypted key
+        val combined = ByteArray(iv.size + encryptedKeyBytes.size)
+        System.arraycopy(iv, 0, combined, 0, iv.size)
+        System.arraycopy(encryptedKeyBytes, 0, combined, iv.size, encryptedKeyBytes.size)
+        
+        return Base64.encodeToString(combined, Base64.NO_WRAP)
+    }
+    
+    /**
+     * Decrypt an AES key that was encrypted with encryptKeyForBlockchain.
+     * 
+     * @param encryptedKey Base64 encoded encrypted key from blockchain
+     * @param decryptionKey The key to decrypt it with (e.g., category key)
+     * @return The decrypted AES key
+     */
+    fun decryptKeyFromBlockchain(encryptedKey: String, decryptionKey: SecretKey): SecretKey {
+        val combined = Base64.decode(encryptedKey, Base64.NO_WRAP)
+        
+        // Extract IV and encrypted key
+        val iv = combined.copyOfRange(0, IV_SIZE)
+        val encryptedKeyBytes = combined.copyOfRange(IV_SIZE, combined.size)
+        
+        val cipher = Cipher.getInstance(ALGORITHM)
+        cipher.init(Cipher.DECRYPT_MODE, decryptionKey, IvParameterSpec(iv))
+        
+        val decryptedKeyBytes = cipher.doFinal(encryptedKeyBytes)
+        return SecretKeySpec(decryptedKeyBytes, "AES")
+    }
+    
+    /**
+     * Encrypt data (String/JSON) using user key
      * Returns the encrypted data as Base64 string
      * 
      * @param data The data to encrypt (e.g., JSON metadata)
-     * @param category The data category
+     * @param category The data category (kept for API compatibility)
      * @return Base64 encoded encrypted data (includes IV)
      */
     fun encryptDataWithCategory(
         data: String,
         category: BlockchainService.DataCategory
     ): String {
-        val categoryKey = CategoryKeyManager.getCategoryKey(category)
-        
+        val userKey = SimpleKeyManager.getUserKey()
+        return encryptDataWithKey(data, userKey)
+    }
+    
+    /**
+     * Encrypt data with a specific AES key.
+     * 
+     * @param data The string data to encrypt
+     * @param key The AES key to use
+     * @return Base64 encoded encrypted data (includes IV)
+     */
+    fun encryptDataWithKey(data: String, key: SecretKey): String {
         val iv = ByteArray(IV_SIZE)
         java.security.SecureRandom().nextBytes(iv)
         
         val cipher = Cipher.getInstance(ALGORITHM)
-        cipher.init(Cipher.ENCRYPT_MODE, categoryKey, IvParameterSpec(iv))
+        cipher.init(Cipher.ENCRYPT_MODE, key, IvParameterSpec(iv))
         
         val encryptedBytes = cipher.doFinal(data.toByteArray(Charsets.UTF_8))
         
@@ -321,14 +418,14 @@ object EncryptionHelper {
      * Decrypt data that was encrypted with encryptDataWithCategory()
      * 
      * @param encryptedDataBase64 The Base64 encrypted data (includes IV)
-     * @param category The data category
+     * @param category The data category (kept for API compatibility)
      * @return Decrypted string
      */
     fun decryptDataWithCategory(
         encryptedDataBase64: String,
         category: BlockchainService.DataCategory
     ): String {
-        val categoryKey = CategoryKeyManager.getCategoryKey(category)
+        val userKey = SimpleKeyManager.getUserKey()
         
         val combined = Base64.decode(encryptedDataBase64, Base64.NO_WRAP)
         
@@ -337,42 +434,64 @@ object EncryptionHelper {
         val encryptedBytes = combined.copyOfRange(IV_SIZE, combined.size)
         
         val cipher = Cipher.getInstance(ALGORITHM)
-        cipher.init(Cipher.DECRYPT_MODE, categoryKey, IvParameterSpec(iv))
+        cipher.init(Cipher.DECRYPT_MODE, userKey, IvParameterSpec(iv))
         
         val decryptedBytes = cipher.doFinal(encryptedBytes)
         return String(decryptedBytes, Charsets.UTF_8)
     }
     
     /**
-     * Decrypt raw bytes that were encrypted with category key
+     * Decrypt raw bytes that were encrypted with user key
      * Used when IPFS returns binary data instead of Base64 string
      * 
      * @param encryptedBytes The encrypted bytes (includes IV)
-     * @param category The data category
+     * @param category The data category (kept for API compatibility)
      * @return Decrypted string
      */
     fun decryptBytesWithCategory(
         encryptedBytes: ByteArray,
         category: BlockchainService.DataCategory
     ): String {
-        val categoryKey = CategoryKeyManager.getCategoryKey(category)
+        val userKey = SimpleKeyManager.getUserKey()
         
         // Extract IV and encrypted data
         val iv = encryptedBytes.copyOfRange(0, IV_SIZE)
         val ciphertext = encryptedBytes.copyOfRange(IV_SIZE, encryptedBytes.size)
         
         val cipher = Cipher.getInstance(ALGORITHM)
-        cipher.init(Cipher.DECRYPT_MODE, categoryKey, IvParameterSpec(iv))
+        cipher.init(Cipher.DECRYPT_MODE, userKey, IvParameterSpec(iv))
         
         val decryptedBytes = cipher.doFinal(ciphertext)
         return String(decryptedBytes, Charsets.UTF_8)
     }
     
     /**
-     * Decrypt a file that was encrypted with category key
+     * Decrypt bytes using a specific AES key (for random key per record)
+     * 
+     * @param encryptedBytes The encrypted data with IV prepended
+     * @param aesKey The AES key to use for decryption
+     * @return Decrypted string
+     */
+    fun decryptBytesWithKey(
+        encryptedBytes: ByteArray,
+        aesKey: SecretKey
+    ): String {
+        // Extract IV and encrypted data
+        val iv = encryptedBytes.copyOfRange(0, IV_SIZE)
+        val ciphertext = encryptedBytes.copyOfRange(IV_SIZE, encryptedBytes.size)
+        
+        val cipher = Cipher.getInstance(ALGORITHM)
+        cipher.init(Cipher.DECRYPT_MODE, aesKey, IvParameterSpec(iv))
+        
+        val decryptedBytes = cipher.doFinal(ciphertext)
+        return String(decryptedBytes, Charsets.UTF_8)
+    }
+    
+    /**
+     * Decrypt a file that was encrypted with user key
      * 
      * @param encryptedFile The encrypted file from IPFS
-     * @param category The data category used for encryption
+     * @param category The data category used for encryption (kept for API compatibility)
      * @param outputFile Where to save decrypted file
      */
     fun decryptFileWithCategory(
@@ -380,9 +499,9 @@ object EncryptionHelper {
         category: BlockchainService.DataCategory,
         outputFile: File
     ) {
-        val categoryKey = CategoryKeyManager.getCategoryKey(category)
-        decryptFile(encryptedFile, outputFile, categoryKey)
-        Log.d(TAG, "File decrypted with ${category.name} key")
+        val userKey = SimpleKeyManager.getUserKey()
+        decryptFile(encryptedFile, outputFile, userKey)
+        Log.d(TAG, "File decrypted with user key")
     }
 
     /**
@@ -397,7 +516,7 @@ object EncryptionHelper {
         encryptedKeyFromBlockchain: String,
         outputFile: File
     ) {
-        // Decrypt the AES key
+        // Decrypt the AES key using category key
         val aesKey = decryptKeyFromBlockchain(encryptedKeyFromBlockchain)
         
         // Decrypt the file

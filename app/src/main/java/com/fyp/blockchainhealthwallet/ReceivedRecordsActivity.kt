@@ -10,6 +10,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
+import com.fyp.blockchainhealthwallet.blockchain.RSAHelper
 import com.fyp.blockchainhealthwallet.databinding.ActivityReceivedRecordsBinding
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.google.gson.Gson
@@ -69,41 +71,34 @@ class ReceivedRecordsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val progressDialog = android.app.ProgressDialog(this@ReceivedRecordsActivity).apply {
-                    setMessage("Scanning blockchain for shares...")
+                    setMessage("Loading received shares...")
                     setCancelable(false)
                     show()
                 }
 
-                // Get the latest share ID from blockchain to know how many exist
-                val maxShareId = withContext(Dispatchers.IO) {
-                    // Try to get share IDs from a known address to find max ID
-                    // We'll scan first 100 shares (can be adjusted)
-                    100
+                receivedShares.clear()
+                Log.d(TAG, "Getting received shares for: $address")
+
+                // Use getReceivedShareIds() to directly get shares for this recipient (MUCH FASTER!)
+                val shareIds = withContext(Dispatchers.IO) {
+                    BlockchainService.getReceivedShareIds(address)
                 }
 
-                receivedShares.clear()
-                Log.d(TAG, "Scanning for shares where recipient = $address")
+                Log.d(TAG, "Found ${shareIds.size} share ID(s): $shareIds")
 
-                // Scan all possible share IDs
-                for (shareId in 1..maxShareId) {
+                // Fetch each share record
+                for (shareId in shareIds) {
                     try {
                         val share = withContext(Dispatchers.IO) {
-                            BlockchainService.getShareRecord(java.math.BigInteger.valueOf(shareId.toLong()))
+                            BlockchainService.getShareRecord(shareId, address)
                         }
 
                         share?.let {
-                            Log.d(TAG, "Share $shareId: recipient=${it.recipientAddress}, category=${it.sharedDataCategory}")
-                            // Check if this share is for current user
-                                if (it.recipientAddress.equals(address, ignoreCase = true)) {
-                                Log.d(TAG, "Found share $shareId for current user!")
-                                receivedShares.add(it)
-                            }
+                            Log.d(TAG, "Share ${shareId}: recordType=${it.recordType}, recordId=${it.recordId}, status=${it.status}")
+                            receivedShares.add(it)
                         }
                     } catch (e: Exception) {
-                        // Share doesn't exist, continue scanning
-                        if (shareId <= 10) { // Only log first 10 to avoid spam
-                            Log.d(TAG, "Share $shareId doesn't exist or error: ${e.message}")
-                        }
+                        Log.e(TAG, "Error loading share $shareId: ${e.message}")
                     }
                 }
 
@@ -112,15 +107,15 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                 if (receivedShares.isEmpty()) {
                     Log.d(TAG, "No shares found for address: $address")
                     showEmptyState()
-                    Toast.makeText(this@ReceivedRecordsActivity, "No shares found for your address", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@ReceivedRecordsActivity, "No shares received yet", Toast.LENGTH_LONG).show()
                 } else {
-                    Log.d(TAG, "Found ${receivedShares.size} shares for current user")
+                    Log.d(TAG, "Loaded ${receivedShares.size} share(s) successfully")
                     filterByCategory(null)
-                    Toast.makeText(this@ReceivedRecordsActivity, "Found ${receivedShares.size} share(s)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@ReceivedRecordsActivity, "Loaded ${receivedShares.size} share(s)", Toast.LENGTH_SHORT).show()
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error auto-discovering shares", e)
+                Log.e(TAG, "Error loading received shares", e)
                 showEmptyState()
                 Toast.makeText(this@ReceivedRecordsActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -202,7 +197,15 @@ class ReceivedRecordsActivity : AppCompatActivity() {
         val filteredShares = if (category == null) {
             receivedShares
         } else {
-            receivedShares.filter { it.sharedDataCategory == category }
+            // Map RecordType to DataCategory for filtering
+            receivedShares.filter {
+                when (it.recordType) {
+                    BlockchainService.RecordType.PERSONAL_INFO -> category == BlockchainService.DataCategory.PERSONAL_INFO
+                    BlockchainService.RecordType.MEDICATION -> category == BlockchainService.DataCategory.MEDICATION_RECORDS
+                    BlockchainService.RecordType.VACCINATION -> category == BlockchainService.DataCategory.VACCINATION_RECORDS
+                    BlockchainService.RecordType.MEDICAL_REPORT -> category == BlockchainService.DataCategory.MEDICAL_REPORTS
+                }
+            }
         }
 
         if (filteredShares.isEmpty()) {
@@ -225,13 +228,12 @@ class ReceivedRecordsActivity : AppCompatActivity() {
             false
         )
 
-        // Get category info (icon and title)
-        val (icon, title) = when (share.sharedDataCategory) {
-            BlockchainService.DataCategory.PERSONAL_INFO -> "👤" to "Personal Information"
-            BlockchainService.DataCategory.MEDICATION_RECORDS -> "💊" to "Medications"
-            BlockchainService.DataCategory.VACCINATION_RECORDS -> "💉" to "Vaccinations"
-            BlockchainService.DataCategory.MEDICAL_REPORTS -> "📄" to "Medical Reports"
-            else -> "📋" to "Unknown"
+        // Get category info (icon and title) based on record type
+        val (icon, title) = when (share.recordType) {
+            BlockchainService.RecordType.PERSONAL_INFO -> "👤" to "Personal Information"
+            BlockchainService.RecordType.MEDICATION -> "💊" to "Medications"
+            BlockchainService.RecordType.VACCINATION -> "💉" to "Vaccinations"
+            BlockchainService.RecordType.MEDICAL_REPORT -> "📄" to "Medical Reports"
         }
 
         // Set up card header
@@ -284,18 +286,93 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                 val ipfsHash = share.encryptedRecipientDataIpfsHash
                 Log.d(TAG, "Fetching IPFS data from: $ipfsHash")
 
-                val jsonData = withContext(Dispatchers.IO) {
+                // Step 1: Download encrypted data from IPFS
+                val encryptedJsonData = withContext(Dispatchers.IO) {
                     val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
                     response.body()?.string() ?: throw Exception("Empty IPFS response")
                 }
 
-                Log.d(TAG, "IPFS data received: ${jsonData.take(200)}...")
+                Log.d(TAG, "Encrypted IPFS data received, length: ${encryptedJsonData.length}")
 
                 container.removeAllViews()
 
-                when (share.sharedDataCategory) {
-                    BlockchainService.DataCategory.PERSONAL_INFO -> {
-                        val data = Gson().fromJson(jsonData, PersonalInfo::class.java)
+                when (share.recordType) {
+                    BlockchainService.RecordType.PERSONAL_INFO -> {
+                        // Step 2: Decrypt the record key using our RSA private key
+                        Log.d(TAG, "Decrypting personal info with RSA")
+                        addDataRow(container, "🔐 Decrypting", "Using your private key...")
+                        
+                        val encryptedRecordKey = share.encryptedRecordKey  // This is the AES key encrypted with our RSA public key
+                        Log.d(TAG, "Encrypted record key length: ${encryptedRecordKey.length}")
+                        Log.d(TAG, "Encrypted record key (first 50 chars): ${encryptedRecordKey.take(50)}")
+                        
+                        // Verify we have the right RSA key
+                        val currentPublicKeyHash = withContext(Dispatchers.IO) {
+                            try {
+                                RSAHelper.getPublicKeyHash()
+                            } catch (e: Exception) {
+                                Log.e(TAG, "No RSA key found for current user!", e)
+                                null
+                            }
+                        }
+                        Log.d(TAG, "Current user's public key hash: $currentPublicKeyHash")
+                        
+                        // Get the public key hash from blockchain
+                        val blockchainPublicKeyHash = withContext(Dispatchers.IO) {
+                            try {
+                                val userAddress = com.fyp.blockchainhealthwallet.wallet.WalletManager.getAddress()
+                                val ipfsHash = BlockchainService.getUserPublicKey(userAddress!!)
+                                // Download and hash it
+                                val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
+                                val publicKeyJson = response.body()?.string() ?: ""
+                                val publicKeyData = com.google.gson.Gson().fromJson(publicKeyJson, Map::class.java) as Map<String, String>
+                                val publicKeyBase64 = publicKeyData["publicKey"] ?: ""
+                                
+                                // Calculate hash
+                                val publicKeyBytes = android.util.Base64.decode(publicKeyBase64, android.util.Base64.NO_WRAP)
+                                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                                val hashBytes = digest.digest(publicKeyBytes)
+                                "0x" + hashBytes.joinToString("") { "%02x".format(it) }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error getting blockchain public key hash", e)
+                                null
+                            }
+                        }
+                        Log.d(TAG, "Blockchain stored public key hash: $blockchainPublicKeyHash")
+                        
+                        if (currentPublicKeyHash != blockchainPublicKeyHash) {
+                            Log.e(TAG, "⚠️ KEY MISMATCH! Your current RSA key doesn't match the one on blockchain!")
+                            Log.e(TAG, "Current:    $currentPublicKeyHash")
+                            Log.e(TAG, "Blockchain: $blockchainPublicKeyHash")
+                            withContext(Dispatchers.Main) {
+                                addDataRow(container, "❌ Error", "Your RSA key has changed since the share was created")
+                                addDataRow(container, "💡 Solution", "Ask the sender to share again with your new public key")
+                                Toast.makeText(this@ReceivedRecordsActivity, "Key mismatch - cannot decrypt", Toast.LENGTH_LONG).show()
+                            }
+                            return@launch
+                        }
+                        
+                        val aesKey: javax.crypto.SecretKey = withContext(Dispatchers.IO) {
+                            RSAHelper.decryptKeyWithPrivateKey(encryptedRecordKey)
+                        }
+                        
+                        Log.d(TAG, "Decrypted AES key")
+                        
+                        // Step 3: Decrypt the actual data using the AES key
+                        addDataRow(container, "🔓 Decrypting", "Decrypting data...")
+                        
+                        // Convert Base64 string to bytes if needed
+                        val encryptedBytes = android.util.Base64.decode(encryptedJsonData, android.util.Base64.NO_WRAP)
+                        
+                        val decryptedJsonData: String = withContext(Dispatchers.IO) {
+                            EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                        }
+                        
+                        Log.d(TAG, "Decrypted personal info, length: ${decryptedJsonData.length}")
+                        
+                        // Step 4: Parse and display the data
+                        container.removeAllViews()
+                        val data = Gson().fromJson(decryptedJsonData, PersonalInfo::class.java)
                         addDataRow(container, "👤 Name", "${data.firstName} ${data.lastName}")
                         addDataRow(container, "✉️ Email", data.email)
                         addDataRow(container, "📞 Phone", data.phone)
@@ -305,28 +382,27 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                         addDataRow(container, "🩸 Blood Type", data.bloodType)
                         addDataRow(container, "🏠 Address", data.address)
                         addDataRow(container, "🚨 Emergency Contact", "${data.emergencyContact.name} (${data.emergencyContact.relationship}) - ${data.emergencyContact.phone}")
+                        
+                        Log.d(TAG, "✅ Successfully decrypted and displayed personal info")
                     }
-                    BlockchainService.DataCategory.MEDICATION_RECORDS -> {
+                    BlockchainService.RecordType.MEDICATION -> {
                         // Parse as JSON object and display fields
-                        val dataMap = Gson().fromJson(jsonData, Map::class.java) as Map<String, Any>
+                        val dataMap = Gson().fromJson(encryptedJsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
                             addDataRow(container, "💊 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
                     }
-                    BlockchainService.DataCategory.VACCINATION_RECORDS -> {
-                        val dataMap = Gson().fromJson(jsonData, Map::class.java) as Map<String, Any>
+                    BlockchainService.RecordType.VACCINATION -> {
+                        val dataMap = Gson().fromJson(encryptedJsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
                             addDataRow(container, "💉 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
                     }
-                    BlockchainService.DataCategory.MEDICAL_REPORTS -> {
-                        val dataMap = Gson().fromJson(jsonData, Map::class.java) as Map<String, Any>
+                    BlockchainService.RecordType.MEDICAL_REPORT -> {
+                        val dataMap = Gson().fromJson(encryptedJsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
                             addDataRow(container, "📄 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
-                    }
-                    else -> {
-                        addDataRow(container, "📊 Data", jsonData)
                     }
                 }
 

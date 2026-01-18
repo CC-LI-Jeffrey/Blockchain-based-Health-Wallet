@@ -20,11 +20,14 @@ import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
 import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
 import com.fyp.blockchainhealthwallet.network.ApiClient
+import com.fyp.blockchainhealthwallet.network.ProgressRequestBody
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -52,7 +55,8 @@ class AddReportActivity : AppCompatActivity() {
     private var selectedFileUri: Uri? = null
     private var uploadedFileIpfsHash: String? = null  // For the actual file (PDF, image, etc.)
     private var uploadedMetadataIpfsHash: String? = null  // For report metadata (title, description, etc.)
-    // Note: encryptedKeyForBlockchain removed - keys are now derived from wallet via CategoryKeyManager
+    private var randomAESKey: javax.crypto.SecretKey? = null  // Random key for this record
+    private var encryptedKeyForBlockchain: String? = null  // Encrypted random key for blockchain storage
     private var progressDialog: ProgressDialog? = null
     
     // File picker launcher
@@ -198,22 +202,23 @@ class AddReportActivity : AppCompatActivity() {
                 // Create temporary file from URI
                 val tempFile = createTempFileFromUri(uri, fileName)
                 
-                // Encrypt file using CATEGORY KEY (deterministic, can be re-derived)
-                updateProgressDialog("Encrypting file with category key...")
-                val encryptedFile = withContext(Dispatchers.IO) {
-                    // Use MEDICAL_REPORTS category key for report files
-                    EncryptionHelper.prepareFileForUploadWithCategory(
+                // NEW FLOW: Encrypt file using RANDOM KEY per record
+                updateProgressDialog("Encrypting file with random key...")
+                val (encryptedFile, randomKey, encryptedKey) = withContext(Dispatchers.IO) {
+                    // Generate random AES key, encrypt file, encrypt key with category key
+                    EncryptionHelper.prepareFileForUploadWithRandomKey(
                         tempFile, 
                         cacheDir,
                         BlockchainService.DataCategory.MEDICAL_REPORTS
                     )
                 }
                 
+                // Store the random key and encrypted key
+                randomAESKey = randomKey
+                encryptedKeyForBlockchain = encryptedKey
+                
                 // Clean up original temp file
                 tempFile.delete()
-                
-                // Note: No need to save encryptedKey - it's derived from wallet via CategoryKeyManager
-                // The key can be re-derived using: CategoryKeyManager.getCategoryKey(DataCategory.MEDICAL_REPORTS)
                 
                 // Upload encrypted file to IPFS
                 uploadEncryptedFileToIPFS(encryptedFile)
@@ -238,11 +243,25 @@ class AddReportActivity : AppCompatActivity() {
         try {
             updateProgressDialog("Uploading encrypted file to IPFS...")
             
-            val requestFile = encryptedFile.asRequestBody("application/octet-stream".toMediaTypeOrNull())
+            val requestFile = ProgressRequestBody(
+                encryptedFile,
+                "application/octet-stream".toMediaTypeOrNull()
+            ) { progress ->
+                runOnUiThread {
+                    if (progress < 100) {
+                        updateProgressDialog("Uploading... ${progress}%")
+                    } else {
+                        updateProgressDialog("Upload complete, processing...")
+                    }
+                }
+            }
             val filePart = MultipartBody.Part.createFormData("file", encryptedFile.name, requestFile)
             
-            val response = withContext(Dispatchers.IO) {
-                ApiClient.api.uploadToIPFS(filePart)
+            // Add timeout for the upload operation
+            val response = withTimeout(240000) { // 4 minutes timeout
+                withContext(Dispatchers.IO) {
+                    ApiClient.api.uploadToIPFS(filePart)
+                }
             }
             
             // Clean up encrypted file
@@ -271,6 +290,18 @@ class AddReportActivity : AppCompatActivity() {
                 tvAttachedFile.visibility = View.GONE
                 uploadedFileIpfsHash = null
             }
+        } catch (e: TimeoutCancellationException) {
+            dismissProgressDialog()
+            Toast.makeText(
+                this,
+                "Upload timed out. Please check your connection and try again.",
+                Toast.LENGTH_LONG
+            ).show()
+            
+            // Clear file selection
+            selectedFileUri = null
+            tvAttachedFile.visibility = View.GONE
+            uploadedFileIpfsHash = null
         } catch (e: Exception) {
             dismissProgressDialog()
             e.printStackTrace()
@@ -477,7 +508,8 @@ class AddReportActivity : AppCompatActivity() {
                         encryptedFileIpfsHash = uploadedFileIpfsHash ?: "",  // Actual file (PDF, image) or empty if no file
                         reportType = reportType,
                         hasFile = uploadedFileIpfsHash != null,  // True only if file was uploaded
-                        reportDate = java.math.BigInteger.valueOf(System.currentTimeMillis() / 1000)  // Current timestamp
+                        reportDate = java.math.BigInteger.valueOf(System.currentTimeMillis() / 1000),  // Current timestamp
+                        encryptedKey = encryptedKeyForBlockchain ?: ""  // NEW: Encrypted random key
                     )
                 }
                 
@@ -574,12 +606,16 @@ class AddReportActivity : AppCompatActivity() {
     private suspend fun uploadEncryptedMetadata(jsonString: String): String? {
         return withContext(Dispatchers.IO) {
             try {
-                // Encrypt metadata using CATEGORY KEY (same as file encryption)
-                // This ensures metadata and file use the same MEDICAL_REPORTS key
-                val encryptedData = EncryptionHelper.encryptDataWithCategory(
-                    jsonString,
-                    BlockchainService.DataCategory.MEDICAL_REPORTS
-                )
+                // NEW FLOW: Encrypt metadata using the SAME RANDOM KEY as the file
+                val encryptedData = if (randomAESKey != null) {
+                    EncryptionHelper.encryptDataWithKey(jsonString, randomAESKey!!)
+                } else {
+                    // Fallback to category key if no random key (should not happen)
+                    EncryptionHelper.encryptDataWithCategory(
+                        jsonString,
+                        BlockchainService.DataCategory.MEDICAL_REPORTS
+                    )
+                }
                 
                 // Create encrypted file for upload (encryptedData is Base64 string)
                 val encryptedFile = File(cacheDir, "metadata_enc_${System.currentTimeMillis()}.bin")

@@ -14,7 +14,8 @@ data class Report(
     val description: String,
     val filePath: String? = null,
     val ipfsHash: String? = null,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val encryptedKey: String = ""
 ) : Parcelable
 
 enum class ReportType(val displayName: String) {
