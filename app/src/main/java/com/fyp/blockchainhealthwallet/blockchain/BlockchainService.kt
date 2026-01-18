@@ -139,10 +139,10 @@ object BlockchainService {
     
     /**
      * PersonalInfoRef - Reference to encrypted personal information on IPFS
+     * Public key now managed separately in UserCryptoProfile
      */
     data class PersonalInfoRef(
         val encryptedDataIpfsHash: String,
-        val publicKeyHash: String,  // bytes32 as hex string
         val createdAt: BigInteger,
         val lastUpdated: BigInteger,
         val exists: Boolean,
@@ -273,13 +273,12 @@ object BlockchainService {
     /**
      * Set or update personal information (encrypted and stored on IPFS)
      * @param encryptedDataIpfsHash IPFS hash of encrypted personal data JSON
-     * @param publicKeyHash Hash of user's public encryption key (bytes32)
      * @param encryptedKey Encrypted random AES key for this record
      * @return Transaction hash
+     * Note: Public key managed separately via setUserPublicKey()
      */
     suspend fun setPersonalInfo(
         encryptedDataIpfsHash: String,
-        publicKeyHash: String,  // Must be 32 bytes hex string (0x + 64 chars)
         encryptedKey: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
@@ -287,15 +286,10 @@ object BlockchainService {
         
         Log.d(TAG, "Setting personal info for user: $userAddress")
         
-        // Convert hex string to bytes32
-        val keyHashBytes = Numeric.hexStringToByteArray(publicKeyHash)
-        require(keyHashBytes.size == 32) { "publicKeyHash must be 32 bytes" }
-        
         val function = org.web3j.abi.datatypes.Function(
             "setPersonalInfo",
             listOf(
                 Utf8String(encryptedDataIpfsHash),
-                org.web3j.abi.datatypes.generated.Bytes32(keyHashBytes),
                 Utf8String(encryptedKey)
             ),
             emptyList()
@@ -330,7 +324,6 @@ object BlockchainService {
                 listOf(Address(userAddress)),
                 listOf(
                     object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
-                    object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {},  // publicKeyHash
                     object : TypeReference<Uint256>() {},  // createdAt
                     object : TypeReference<Uint256>() {},  // lastUpdated
                     object : TypeReference<Bool>() {},  // exists
@@ -369,20 +362,19 @@ object BlockchainService {
             Log.d(TAG, "Decoding response (manual parsing due to tuple wrapper)...")
             
             // Manually decode the tuple fields from the hex response
-            // Response format for NEW contract (with encryptedKey):
+            // Response format for NEW contract (without publicKeyHash):
             // 0-64: offset to tuple (32 bytes)
             // 64-128: offset to encryptedDataIpfsHash string (32 bytes)
-            // 128-192: bytes32 publicKeyHash (32 bytes)
-            // 192-256: uint256 createdAt (32 bytes)
-            // 256-320: uint256 lastUpdated (32 bytes)
-            // 320-384: bool exists (32 bytes)
-            // 384-448: offset to encryptedKey string (32 bytes)
-            // 448+: string lengths + data
+            // 128-192: uint256 createdAt (32 bytes)
+            // 192-256: uint256 lastUpdated (32 bytes)
+            // 256-320: bool exists (32 bytes)
+            // 320-384: offset to encryptedKey string (32 bytes)
+            // 384+: string lengths + data
             
             val cleanHex = result.substring(2) // Remove 0x prefix
             
-            // Parse exists flag at position 320-384
-            val existsHex = cleanHex.substring(320, 384)
+            // Parse exists flag at position 256-320
+            val existsHex = cleanHex.substring(256, 320)
             val exists = existsHex.trim('0') == "1"
             
             Log.d(TAG, "exists hex: $existsHex")
@@ -397,7 +389,7 @@ object BlockchainService {
             val tupleStart = 64 // First 32 bytes is the offset to the tuple itself
             val ipfsHashOffsetHex = cleanHex.substring(tupleStart, tupleStart + 64)
             val ipfsHashOffset = ipfsHashOffsetHex.toLong(16).toInt() * 2 + tupleStart
-            val encryptedKeyOffsetHex = cleanHex.substring(tupleStart + 320, tupleStart + 384)
+            val encryptedKeyOffsetHex = cleanHex.substring(tupleStart + 256, tupleStart + 320)
             val encryptedKeyOffset = encryptedKeyOffsetHex.toLong(16).toInt() * 2 + tupleStart
             
             Log.d(TAG, "ipfsHashOffset: $ipfsHashOffset, encryptedKeyOffset: $encryptedKeyOffset, total length: ${cleanHex.length}")
@@ -444,24 +436,19 @@ object BlockchainService {
             // Manually parse fixed-size fields from known positions
             // Position in tuple (after first 32 bytes offset):
             // 64-128: offset to encryptedDataIpfsHash (already parsed)
-            // 128-192: bytes32 publicKeyHash
-            // 192-256: uint256 createdAt
-            // 256-320: uint256 lastUpdated
-            // 320-384: bool exists (already parsed)
-            // 384-448: offset to encryptedKey (already parsed)
+            // 128-192: uint256 createdAt
+            // 192-256: uint256 lastUpdated
+            // 256-320: bool exists (already parsed)
+            // 320-384: offset to encryptedKey (already parsed)
             
-            val publicKeyHashHex = cleanHex.substring(128, 192)
-            val publicKeyHash = "0x$publicKeyHashHex"
-            
-            val createdAtHex = cleanHex.substring(192, 256)
+            val createdAtHex = cleanHex.substring(128, 192)
             val createdAt = BigInteger(createdAtHex, 16)
             
-            val lastUpdatedHex = cleanHex.substring(256, 320)
+            val lastUpdatedHex = cleanHex.substring(192, 256)
             val lastUpdated = BigInteger(lastUpdatedHex, 16)
             
             Log.d(TAG, "Successfully decoded PersonalInfoRef:")
             Log.d(TAG, "  - IPFS Hash: $ipfsHash")
-            Log.d(TAG, "  - Public Key Hash: $publicKeyHash")
             Log.d(TAG, "  - Created At: $createdAt")
             Log.d(TAG, "  - Last Updated: $lastUpdated")
             Log.d(TAG, "  - Has encryptedKey: ${encryptedKey.isNotEmpty()}")
@@ -469,7 +456,6 @@ object BlockchainService {
             
             PersonalInfoRef(
                 encryptedDataIpfsHash = ipfsHash,
-                publicKeyHash = publicKeyHash,
                 createdAt = createdAt,
                 lastUpdated = lastUpdated,
                 exists = exists,

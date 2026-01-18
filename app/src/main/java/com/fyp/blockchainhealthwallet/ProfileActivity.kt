@@ -124,7 +124,6 @@ class ProfileActivity : AppCompatActivity() {
                     Log.d(TAG, "PersonalInfoRef details:")
                     Log.d(TAG, "  - exists: ${personalInfoRef.exists}")
                     Log.d(TAG, "  - encryptedDataIpfsHash: ${personalInfoRef.encryptedDataIpfsHash}")
-                    Log.d(TAG, "  - publicKeyHash: ${personalInfoRef.publicKeyHash}")
                     Log.d(TAG, "  - createdAt: ${personalInfoRef.createdAt}")
                     Log.d(TAG, "  - lastUpdated: ${personalInfoRef.lastUpdated}")
                 }
@@ -417,10 +416,8 @@ class ProfileActivity : AppCompatActivity() {
                 progressDialog.setMessage("Storing on blockchain...")
                 
                 // Store IPFS hash and encrypted key on blockchain
-                val dummyPublicKeyHash = "0x" + "0".repeat(64)
-                
                 val txHash = withContext(Dispatchers.IO) {
-                    BlockchainService.setPersonalInfo(ipfsHash, dummyPublicKeyHash, encryptedKey)
+                    BlockchainService.setPersonalInfo(ipfsHash, encryptedKey)
                 }
                 
                 Log.d(TAG, "Stored on blockchain. Transaction: $txHash")
@@ -517,12 +514,8 @@ class ProfileActivity : AppCompatActivity() {
                 progressDialog.setMessage("Storing on blockchain...")
                 
                 // Step 4: Store IPFS hash and encrypted key on blockchain
-                // For demo purposes, using a dummy public key hash
-                // In production, this would be the user's actual encryption public key hash
-                val dummyPublicKeyHash = "0x" + "0".repeat(64)  // 32 bytes of zeros
-                
                 val txHash = withContext(Dispatchers.IO) {
-                    BlockchainService.setPersonalInfo(ipfsHash, dummyPublicKeyHash, encryptedKey)
+                    BlockchainService.setPersonalInfo(ipfsHash, encryptedKey)
                 }
                 
                 Log.d(TAG, "Stored on blockchain. Transaction: $txHash")
