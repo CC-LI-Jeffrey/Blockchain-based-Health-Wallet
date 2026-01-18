@@ -452,6 +452,30 @@
                 android:textSize="16sp"
                 app:backgroundTint="@color/primary"
                 app:cornerRadius="12dp" />
+
+            <!-- Enable Receive Shares Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEnableReceive"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:text="Enable Receive Shares"
+                android:textSize="16sp"
+                app:backgroundTint="@color/accent"
+                app:cornerRadius="12dp"
+                app:icon="@android:drawable/ic_lock_lock"
+                app:iconGravity="textStart" />
+
+            <!-- Receive Status Text -->
+            <TextView
+                android:id="@+id/tvReceiveStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="Not enabled"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
         </LinearLayout>
 
     </LinearLayout>
