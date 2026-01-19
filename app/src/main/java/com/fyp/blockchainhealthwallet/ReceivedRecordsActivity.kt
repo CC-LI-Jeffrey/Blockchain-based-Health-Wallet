@@ -8,6 +8,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
 import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
@@ -287,17 +288,22 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                 Log.d(TAG, "Fetching IPFS data from: $ipfsHash")
 
                 // Step 1: Download encrypted data from IPFS
-                val encryptedJsonData = withContext(Dispatchers.IO) {
-                    val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
-                    response.body()?.string() ?: throw Exception("Empty IPFS response")
+                val ipfsResponse = withContext(Dispatchers.IO) {
+                    com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
+                }
+                
+                if (!ipfsResponse.isSuccessful || ipfsResponse.body() == null) {
+                    throw Exception("Failed to download from IPFS")
                 }
 
-                Log.d(TAG, "Encrypted IPFS data received, length: ${encryptedJsonData.length}")
+                Log.d(TAG, "IPFS data downloaded successfully")
 
                 container.removeAllViews()
 
                 when (share.recordType) {
                     BlockchainService.RecordType.PERSONAL_INFO -> {
+                        val encryptedJsonData = ipfsResponse.body()!!.string()
+                        Log.d(TAG, "Encrypted IPFS data received, length: ${encryptedJsonData.length}")
                         // Step 2: Decrypt the record key using our RSA private key
                         Log.d(TAG, "Decrypting personal info with RSA")
                         addDataRow(container, "🔐 Decrypting", "Using your private key...")
@@ -387,21 +393,82 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                     }
                     BlockchainService.RecordType.MEDICATION -> {
                         // Parse as JSON object and display fields
+                        val encryptedJsonData = ipfsResponse.body()!!.string()
                         val dataMap = Gson().fromJson(encryptedJsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
                             addDataRow(container, "💊 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
                     }
                     BlockchainService.RecordType.VACCINATION -> {
+                        val encryptedJsonData = ipfsResponse.body()!!.string()
                         val dataMap = Gson().fromJson(encryptedJsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
                             addDataRow(container, "💉 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
                     }
                     BlockchainService.RecordType.MEDICAL_REPORT -> {
-                        val dataMap = Gson().fromJson(encryptedJsonData, Map::class.java) as Map<String, Any>
-                        dataMap.forEach { (key, value) ->
-                            addDataRow(container, "📄 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
+                        // For medical reports, show brief summary and "View Details" button
+                        lifecycleScope.launch {
+                            try {
+                                // Query report ref to get basic info
+                                val reportRef = withContext(Dispatchers.IO) {
+                                    BlockchainService.getReportRef(share.recordId)
+                                }
+                                
+                                if (reportRef != null) {
+                                    // Download and decrypt just to get title and type for preview
+                                    val metadataResponse = withContext(Dispatchers.IO) {
+                                        com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(reportRef.encryptedDataIpfsHash)
+                                    }
+                                    
+                                    if (metadataResponse.isSuccessful && metadataResponse.body() != null) {
+                                        val metadataBody = metadataResponse.body()!!
+                                        val contentType = metadataResponse.headers()["Content-Type"] ?: "application/octet-stream"
+                                        
+                                        val encryptedBytes = if (contentType.contains("text/plain") || contentType.contains("application/json")) {
+                                            android.util.Base64.decode(metadataBody.string(), android.util.Base64.NO_WRAP)
+                                        } else {
+                                            metadataBody.bytes()
+                                        }
+                                        
+                                        // Decrypt to get preview info
+                                        val aesKey = withContext(Dispatchers.IO) {
+                                            RSAHelper.decryptKeyWithPrivateKey(share.encryptedRecordKey)
+                                        }
+                                        
+                                        val decryptedJson = withContext(Dispatchers.IO) {
+                                            EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                                        }
+                                        
+                                        val data = org.json.JSONObject(decryptedJson)
+                                        
+                                        // Show brief summary
+                                        container.removeAllViews()
+                                        addDataRow(container, "📄 Title", data.optString("title", "N/A"))
+                                        addDataRow(container, "🏥 Type", data.optString("type", "N/A"))
+                                        addDataRow(container, "📅 Date", data.optString("date", "N/A"))
+                                        
+                                        // Add "View Full Details" button
+                                        val btnViewDetails = android.widget.Button(this@ReceivedRecordsActivity).apply {
+                                            text = "📋 View Full Details"
+                                            setBackgroundColor(ContextCompat.getColor(this@ReceivedRecordsActivity, R.color.primary))
+                                            setTextColor(ContextCompat.getColor(this@ReceivedRecordsActivity, android.R.color.white))
+                                            setPadding(32, 24, 32, 24)
+                                            setOnClickListener {
+                                                openReceivedReportDetails(share, reportRef, data, aesKey)
+                                            }
+                                        }
+                                        container.addView(btnViewDetails)
+                                        
+                                        Log.d(TAG, "✅ Successfully displayed medical report preview")
+                                    }
+                                } else {
+                                    addDataRow(container, "❌ Error", "Report not found")
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error loading medical report preview", e)
+                                addDataRow(container, "❌ Error", "Failed to load: ${e.message}")
+                            }
                         }
                     }
                 }
@@ -463,4 +530,30 @@ class ReceivedRecordsActivity : AppCompatActivity() {
     private fun hideEmptyState() {
         binding.emptyState.visibility = View.GONE
     }
+    
+    /**
+     * Open received report details in new activity
+     */
+    private fun openReceivedReportDetails(
+        share: BlockchainService.ShareRecord,
+        reportRef: BlockchainService.MedicalReportRef,
+        reportData: org.json.JSONObject,
+        aesKey: javax.crypto.SecretKey
+    ) {
+        val intent = android.content.Intent(this, ViewReceivedReportActivity::class.java).apply {
+            putExtra("SHARE_ID", share.id.toString())
+            putExtra("RECORD_ID", share.recordId.toString())
+            putExtra("TITLE", reportData.optString("title", "N/A"))
+            putExtra("TYPE", reportData.optString("type", "N/A"))
+            putExtra("DATE", reportData.optString("date", "N/A"))
+            putExtra("DOCTOR", reportData.optString("doctorName", "N/A"))
+            putExtra("HOSPITAL", reportData.optString("hospital", "N/A"))
+            putExtra("DESCRIPTION", reportData.optString("description", "N/A"))
+            putExtra("HAS_FILE", reportRef.hasFile)
+            putExtra("FILE_IPFS_HASH", reportRef.encryptedFileIpfsHash)
+            putExtra("ENCRYPTED_RECORD_KEY", share.encryptedRecordKey)
+        }
+        startActivity(intent)
+    }
 }
+

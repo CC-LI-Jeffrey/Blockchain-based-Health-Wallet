@@ -10,7 +10,8 @@ import androidx.recyclerview.widget.RecyclerView
 class ReportsAdapter(
     private var reports: List<Report>,
     private val onItemClick: (Report) -> Unit,
-    private val onDeleteClick: (Report) -> Unit
+    private val onDeleteClick: (Report) -> Unit,
+    private val onShareClick: (Report) -> Unit
 ) : RecyclerView.Adapter<ReportsAdapter.ReportViewHolder>() {
 
     inner class ReportViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -19,6 +20,7 @@ class ReportsAdapter(
         val tvReportDate: TextView = itemView.findViewById(R.id.tvReportDate)
         val tvDoctorName: TextView = itemView.findViewById(R.id.tvDoctorName)
         val tvHospital: TextView = itemView.findViewById(R.id.tvHospital)
+        val btnShareReport: ImageView = itemView.findViewById(R.id.btnShareReport)
         val btnDeleteReport: ImageView = itemView.findViewById(R.id.btnDeleteReport)
 
         fun bind(report: Report) {
@@ -30,6 +32,10 @@ class ReportsAdapter(
 
             itemView.setOnClickListener {
                 onItemClick(report)
+            }
+
+            btnShareReport.setOnClickListener {
+                onShareClick(report)
             }
 
             btnDeleteReport.setOnClickListener {
