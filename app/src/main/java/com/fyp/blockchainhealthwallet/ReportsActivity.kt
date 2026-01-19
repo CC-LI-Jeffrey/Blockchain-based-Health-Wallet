@@ -198,7 +198,7 @@ class ReportsActivity : AppCompatActivity() {
                 
                 EncryptionHelper.decryptBytesWithKey(encryptedBytes, decryptedAesKey)
             } else {
-                // OLD: Category-based encryption - use category key
+                // OLD: Legacy encryption - use wallet-derived user key directly
                 EncryptionHelper.decryptBytesWithCategory(
                     encryptedBytes,
                     BlockchainService.DataCategory.MEDICAL_REPORTS

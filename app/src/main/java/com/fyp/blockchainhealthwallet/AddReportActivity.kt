@@ -205,7 +205,7 @@ class AddReportActivity : AppCompatActivity() {
                 // NEW FLOW: Encrypt file using RANDOM KEY per record
                 updateProgressDialog("Encrypting file with random key...")
                 val (encryptedFile, randomKey, encryptedKey) = withContext(Dispatchers.IO) {
-                    // Generate random AES key, encrypt file, encrypt key with category key
+                    // Generate random AES key, encrypt file, encrypt key with user's wallet-derived key
                     EncryptionHelper.prepareFileForUploadWithRandomKey(
                         tempFile, 
                         cacheDir,
@@ -610,7 +610,7 @@ class AddReportActivity : AppCompatActivity() {
                 val encryptedData = if (randomAESKey != null) {
                     EncryptionHelper.encryptDataWithKey(jsonString, randomAESKey!!)
                 } else {
-                    // Fallback to category key if no random key (should not happen)
+                    // Fallback to wallet-derived user key if no random key (should not happen)
                     EncryptionHelper.encryptDataWithCategory(
                         jsonString,
                         BlockchainService.DataCategory.MEDICAL_REPORTS
