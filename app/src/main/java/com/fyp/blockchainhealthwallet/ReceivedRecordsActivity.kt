@@ -8,6 +8,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
 import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
@@ -287,70 +288,47 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                 Log.d(TAG, "Fetching IPFS data from: $ipfsHash")
 
                 // Step 1: Download encrypted data from IPFS
-                val encryptedJsonData = withContext(Dispatchers.IO) {
-                    val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
-                    response.body()?.string() ?: throw Exception("Empty IPFS response")
+                val ipfsResponse = withContext(Dispatchers.IO) {
+                    com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
+                }
+                
+                if (!ipfsResponse.isSuccessful || ipfsResponse.body() == null) {
+                    throw Exception("Failed to download from IPFS")
                 }
 
-                Log.d(TAG, "Encrypted IPFS data received, length: ${encryptedJsonData.length}")
+                Log.d(TAG, "IPFS data downloaded successfully")
 
                 container.removeAllViews()
 
                 when (share.recordType) {
                     BlockchainService.RecordType.PERSONAL_INFO -> {
-                        // Step 2: Decrypt the record key using our RSA private key
+                        // Query the personal info reference from blockchain using owner address
+                        Log.d(TAG, "Querying personal info ref for owner: ${share.ownerAddress}")
+                        
+                        val personalInfoRef = withContext(Dispatchers.IO) {
+                            BlockchainService.getPersonalInfoRef(share.ownerAddress)
+                        } ?: throw Exception("Personal info not found on blockchain")
+                        
+                        Log.d(TAG, "Personal info ref retrieved - IPFS: ${personalInfoRef.encryptedDataIpfsHash}")
+                        
+                        // Download encrypted personal info from IPFS
+                        val personalInfoResponse = withContext(Dispatchers.IO) {
+                            com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(personalInfoRef.encryptedDataIpfsHash)
+                        }
+                        
+                        if (!personalInfoResponse.isSuccessful || personalInfoResponse.body() == null) {
+                            throw Exception("Failed to download personal info from IPFS")
+                        }
+                        
+                        val encryptedJsonData = personalInfoResponse.body()!!.string()
+                        Log.d(TAG, "Encrypted IPFS data received, length: ${encryptedJsonData.length}")
+                        
+                        // Decrypt the record key using our RSA private key
                         Log.d(TAG, "Decrypting personal info with RSA")
                         addDataRow(container, "🔐 Decrypting", "Using your private key...")
                         
-                        val encryptedRecordKey = share.encryptedRecordKey  // This is the AES key encrypted with our RSA public key
+                        val encryptedRecordKey = share.encryptedRecordKey
                         Log.d(TAG, "Encrypted record key length: ${encryptedRecordKey.length}")
-                        Log.d(TAG, "Encrypted record key (first 50 chars): ${encryptedRecordKey.take(50)}")
-                        
-                        // Verify we have the right RSA key
-                        val currentPublicKeyHash = withContext(Dispatchers.IO) {
-                            try {
-                                RSAHelper.getPublicKeyHash()
-                            } catch (e: Exception) {
-                                Log.e(TAG, "No RSA key found for current user!", e)
-                                null
-                            }
-                        }
-                        Log.d(TAG, "Current user's public key hash: $currentPublicKeyHash")
-                        
-                        // Get the public key hash from blockchain
-                        val blockchainPublicKeyHash = withContext(Dispatchers.IO) {
-                            try {
-                                val userAddress = com.fyp.blockchainhealthwallet.wallet.WalletManager.getAddress()
-                                val ipfsHash = BlockchainService.getUserPublicKey(userAddress!!)
-                                // Download and hash it
-                                val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(ipfsHash)
-                                val publicKeyJson = response.body()?.string() ?: ""
-                                val publicKeyData = com.google.gson.Gson().fromJson(publicKeyJson, Map::class.java) as Map<String, String>
-                                val publicKeyBase64 = publicKeyData["publicKey"] ?: ""
-                                
-                                // Calculate hash
-                                val publicKeyBytes = android.util.Base64.decode(publicKeyBase64, android.util.Base64.NO_WRAP)
-                                val digest = java.security.MessageDigest.getInstance("SHA-256")
-                                val hashBytes = digest.digest(publicKeyBytes)
-                                "0x" + hashBytes.joinToString("") { "%02x".format(it) }
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error getting blockchain public key hash", e)
-                                null
-                            }
-                        }
-                        Log.d(TAG, "Blockchain stored public key hash: $blockchainPublicKeyHash")
-                        
-                        if (currentPublicKeyHash != blockchainPublicKeyHash) {
-                            Log.e(TAG, "⚠️ KEY MISMATCH! Your current RSA key doesn't match the one on blockchain!")
-                            Log.e(TAG, "Current:    $currentPublicKeyHash")
-                            Log.e(TAG, "Blockchain: $blockchainPublicKeyHash")
-                            withContext(Dispatchers.Main) {
-                                addDataRow(container, "❌ Error", "Your RSA key has changed since the share was created")
-                                addDataRow(container, "💡 Solution", "Ask the sender to share again with your new public key")
-                                Toast.makeText(this@ReceivedRecordsActivity, "Key mismatch - cannot decrypt", Toast.LENGTH_LONG).show()
-                            }
-                            return@launch
-                        }
                         
                         val aesKey: javax.crypto.SecretKey = withContext(Dispatchers.IO) {
                             RSAHelper.decryptKeyWithPrivateKey(encryptedRecordKey)
@@ -358,7 +336,7 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                         
                         Log.d(TAG, "Decrypted AES key")
                         
-                        // Step 3: Decrypt the actual data using the AES key
+                        // Decrypt the actual data using the AES key
                         addDataRow(container, "🔓 Decrypting", "Decrypting data...")
                         
                         // Convert Base64 string to bytes if needed
@@ -370,7 +348,7 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                         
                         Log.d(TAG, "Decrypted personal info, length: ${decryptedJsonData.length}")
                         
-                        // Step 4: Parse and display the data
+                        // Parse and display the data
                         container.removeAllViews()
                         val data = Gson().fromJson(decryptedJsonData, PersonalInfo::class.java)
                         addDataRow(container, "👤 Name", "${data.firstName} ${data.lastName}")
@@ -386,22 +364,144 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                         Log.d(TAG, "✅ Successfully decrypted and displayed personal info")
                     }
                     BlockchainService.RecordType.MEDICATION -> {
-                        // Parse as JSON object and display fields
-                        val dataMap = Gson().fromJson(encryptedJsonData, Map::class.java) as Map<String, Any>
+                        // Query the medication record from blockchain using recordId
+                        Log.d(TAG, "Querying medication record for recordId: ${share.recordId}")
+                        
+                        val medicationRef = withContext(Dispatchers.IO) {
+                            BlockchainService.getMedicationRef(share.recordId)
+                        } ?: throw Exception("Medication record not found on blockchain")
+                        
+                        Log.d(TAG, "Medication ref retrieved - IPFS: ${medicationRef.encryptedDataIpfsHash}")
+                        
+                        // Download encrypted medication data from IPFS
+                        val medicationResponse = withContext(Dispatchers.IO) {
+                            com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(medicationRef.encryptedDataIpfsHash)
+                        }
+                        
+                        if (!medicationResponse.isSuccessful || medicationResponse.body() == null) {
+                            throw Exception("Failed to download medication data from IPFS")
+                        }
+                        
+                        val encryptedJsonData = medicationResponse.body()!!.string()
+                        
+                        // Decrypt with RSA-encrypted AES key
+                        val aesKey = withContext(Dispatchers.IO) {
+                            RSAHelper.decryptKeyWithPrivateKey(share.encryptedRecordKey)
+                        }
+                        
+                        val encryptedBytes = android.util.Base64.decode(encryptedJsonData, android.util.Base64.NO_WRAP)
+                        val decryptedJsonData = withContext(Dispatchers.IO) {
+                            EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                        }
+                        
+                        // Display the data
+                        container.removeAllViews()
+                        val dataMap = Gson().fromJson(decryptedJsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
                             addDataRow(container, "💊 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
                     }
                     BlockchainService.RecordType.VACCINATION -> {
-                        val dataMap = Gson().fromJson(encryptedJsonData, Map::class.java) as Map<String, Any>
+                        // Query the vaccination record from blockchain using recordId
+                        Log.d(TAG, "Querying vaccination record for recordId: ${share.recordId}")
+                        
+                        val vaccinationRef = withContext(Dispatchers.IO) {
+                            BlockchainService.getVaccinationRef(share.recordId)
+                        } ?: throw Exception("Vaccination record not found on blockchain")
+                        
+                        Log.d(TAG, "Vaccination ref retrieved - IPFS: ${vaccinationRef.encryptedDataIpfsHash}")
+                        
+                        // Download encrypted vaccination data from IPFS
+                        val vaccinationResponse = withContext(Dispatchers.IO) {
+                            com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(vaccinationRef.encryptedDataIpfsHash)
+                        }
+                        
+                        if (!vaccinationResponse.isSuccessful || vaccinationResponse.body() == null) {
+                            throw Exception("Failed to download vaccination data from IPFS")
+                        }
+                        
+                        val encryptedJsonData = vaccinationResponse.body()!!.string()
+                        
+                        // Decrypt with RSA-encrypted AES key
+                        val aesKey = withContext(Dispatchers.IO) {
+                            RSAHelper.decryptKeyWithPrivateKey(share.encryptedRecordKey)
+                        }
+                        
+                        val encryptedBytes = android.util.Base64.decode(encryptedJsonData, android.util.Base64.NO_WRAP)
+                        val decryptedJsonData = withContext(Dispatchers.IO) {
+                            EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                        }
+                        
+                        // Display the data
+                        container.removeAllViews()
+                        val dataMap = Gson().fromJson(decryptedJsonData, Map::class.java) as Map<String, Any>
                         dataMap.forEach { (key, value) ->
                             addDataRow(container, "💉 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
                         }
                     }
                     BlockchainService.RecordType.MEDICAL_REPORT -> {
-                        val dataMap = Gson().fromJson(encryptedJsonData, Map::class.java) as Map<String, Any>
-                        dataMap.forEach { (key, value) ->
-                            addDataRow(container, "📄 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
+                        // For medical reports, show brief summary and "View Details" button
+                        lifecycleScope.launch {
+                            try {
+                                // Query report ref to get basic info
+                                val reportRef = withContext(Dispatchers.IO) {
+                                    BlockchainService.getReportRef(share.recordId)
+                                }
+                                
+                                if (reportRef != null) {
+                                    // Download and decrypt just to get title and type for preview
+                                    val metadataResponse = withContext(Dispatchers.IO) {
+                                        com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(reportRef.encryptedDataIpfsHash)
+                                    }
+                                    
+                                    if (metadataResponse.isSuccessful && metadataResponse.body() != null) {
+                                        val metadataBody = metadataResponse.body()!!
+                                        val contentType = metadataResponse.headers()["Content-Type"] ?: "application/octet-stream"
+                                        
+                                        val encryptedBytes = if (contentType.contains("text/plain") || contentType.contains("application/json")) {
+                                            android.util.Base64.decode(metadataBody.string(), android.util.Base64.NO_WRAP)
+                                        } else {
+                                            metadataBody.bytes()
+                                        }
+                                        
+                                        // Decrypt to get preview info
+                                        val aesKey = withContext(Dispatchers.IO) {
+                                            RSAHelper.decryptKeyWithPrivateKey(share.encryptedRecordKey)
+                                        }
+                                        
+                                        val decryptedJson = withContext(Dispatchers.IO) {
+                                            EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                                        }
+                                        
+                                        val data = org.json.JSONObject(decryptedJson)
+                                        
+                                        // Show brief summary
+                                        container.removeAllViews()
+                                        addDataRow(container, "📄 Title", data.optString("title", "N/A"))
+                                        addDataRow(container, "🏥 Type", data.optString("type", "N/A"))
+                                        addDataRow(container, "📅 Date", data.optString("date", "N/A"))
+                                        
+                                        // Add "View Full Details" button
+                                        val btnViewDetails = android.widget.Button(this@ReceivedRecordsActivity).apply {
+                                            text = "📋 View Full Details"
+                                            setBackgroundColor(ContextCompat.getColor(this@ReceivedRecordsActivity, R.color.primary))
+                                            setTextColor(ContextCompat.getColor(this@ReceivedRecordsActivity, android.R.color.white))
+                                            setPadding(32, 24, 32, 24)
+                                            setOnClickListener {
+                                                openReceivedReportDetails(share, reportRef, data, aesKey)
+                                            }
+                                        }
+                                        container.addView(btnViewDetails)
+                                        
+                                        Log.d(TAG, "✅ Successfully displayed medical report preview")
+                                    }
+                                } else {
+                                    addDataRow(container, "❌ Error", "Report not found")
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error loading medical report preview", e)
+                                addDataRow(container, "❌ Error", "Failed to load: ${e.message}")
+                            }
                         }
                     }
                 }
@@ -463,4 +563,30 @@ class ReceivedRecordsActivity : AppCompatActivity() {
     private fun hideEmptyState() {
         binding.emptyState.visibility = View.GONE
     }
+    
+    /**
+     * Open received report details in new activity
+     */
+    private fun openReceivedReportDetails(
+        share: BlockchainService.ShareRecord,
+        reportRef: BlockchainService.MedicalReportRef,
+        reportData: org.json.JSONObject,
+        aesKey: javax.crypto.SecretKey
+    ) {
+        val intent = android.content.Intent(this, ViewReceivedReportActivity::class.java).apply {
+            putExtra("SHARE_ID", share.id.toString())
+            putExtra("RECORD_ID", share.recordId.toString())
+            putExtra("TITLE", reportData.optString("title", "N/A"))
+            putExtra("TYPE", reportData.optString("type", "N/A"))
+            putExtra("DATE", reportData.optString("date", "N/A"))
+            putExtra("DOCTOR", reportData.optString("doctorName", "N/A"))
+            putExtra("HOSPITAL", reportData.optString("hospital", "N/A"))
+            putExtra("DESCRIPTION", reportData.optString("description", "N/A"))
+            putExtra("HAS_FILE", reportRef.hasFile)
+            putExtra("FILE_IPFS_HASH", reportRef.encryptedFileIpfsHash)
+            putExtra("ENCRYPTED_RECORD_KEY", share.encryptedRecordKey)
+        }
+        startActivity(intent)
+    }
 }
+

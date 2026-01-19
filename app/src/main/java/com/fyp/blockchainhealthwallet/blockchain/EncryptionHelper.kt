@@ -272,7 +272,7 @@ object EncryptionHelper {
      * 
      * @param sourceFile Original medical file to encrypt
      * @param outputDir Directory to save encrypted file  
-     * @param category The data category (kept for API compatibility)
+     * @param category Unused (kept for API compatibility) - user key is wallet-derived
      * @return Encrypted file (key is derived from wallet, not returned)
      */
     fun prepareFileForUploadWithCategory(
@@ -302,7 +302,7 @@ object EncryptionHelper {
      * 
      * @param sourceFile Original file to encrypt
      * @param outputDir Directory to save encrypted file
-     * @param category The data category for key derivation
+     * @param category Unused (kept for API compatibility) - user key is wallet-derived
      * @return Triple of (encrypted file, random AES key, encrypted random key for blockchain)
      */
     fun prepareFileForUploadWithRandomKey(
@@ -334,7 +334,7 @@ object EncryptionHelper {
      * Encrypt an AES key with another key for storage on blockchain.
      * 
      * @param aesKey The AES key to encrypt
-     * @param encryptionKey The key to encrypt it with (e.g., category key)
+     * @param encryptionKey The key to encrypt it with (user's wallet-derived key)
      * @return Base64 encoded encrypted key
      */
     private fun encryptKeyForBlockchain(aesKey: SecretKey, encryptionKey: SecretKey): String {
@@ -357,7 +357,7 @@ object EncryptionHelper {
      * Decrypt an AES key that was encrypted with encryptKeyForBlockchain.
      * 
      * @param encryptedKey Base64 encoded encrypted key from blockchain
-     * @param decryptionKey The key to decrypt it with (e.g., category key)
+     * @param decryptionKey The key to decrypt it with (user's wallet-derived key)
      * @return The decrypted AES key
      */
     fun decryptKeyFromBlockchain(encryptedKey: String, decryptionKey: SecretKey): SecretKey {
@@ -379,7 +379,7 @@ object EncryptionHelper {
      * Returns the encrypted data as Base64 string
      * 
      * @param data The data to encrypt (e.g., JSON metadata)
-     * @param category The data category (kept for API compatibility)
+     * @param category Unused (kept for API compatibility) - user key is wallet-derived
      * @return Base64 encoded encrypted data (includes IV)
      */
     fun encryptDataWithCategory(
@@ -418,7 +418,7 @@ object EncryptionHelper {
      * Decrypt data that was encrypted with encryptDataWithCategory()
      * 
      * @param encryptedDataBase64 The Base64 encrypted data (includes IV)
-     * @param category The data category (kept for API compatibility)
+     * @param category Unused (kept for API compatibility) - user key is wallet-derived
      * @return Decrypted string
      */
     fun decryptDataWithCategory(
@@ -445,7 +445,7 @@ object EncryptionHelper {
      * Used when IPFS returns binary data instead of Base64 string
      * 
      * @param encryptedBytes The encrypted bytes (includes IV)
-     * @param category The data category (kept for API compatibility)
+     * @param category Unused (kept for API compatibility) - user key is wallet-derived
      * @return Decrypted string
      */
     fun decryptBytesWithCategory(
@@ -516,7 +516,7 @@ object EncryptionHelper {
         encryptedKeyFromBlockchain: String,
         outputFile: File
     ) {
-        // Decrypt the AES key using category key
+        // Decrypt the AES key using user's wallet-derived key
         val aesKey = decryptKeyFromBlockchain(encryptedKeyFromBlockchain)
         
         // Decrypt the file

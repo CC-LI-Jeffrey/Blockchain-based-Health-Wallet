@@ -18,6 +18,7 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import kotlinx.coroutines.withContext
 import java.math.BigInteger
 
@@ -401,6 +402,191 @@ object BlockchainHelper {
                 
                 AlertDialog.Builder(context)
                     .setTitle("Transaction Failed")
+                    .setMessage(errorMessage)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
+    }
+    
+    /**
+     * Share a specific medical report with a recipient.
+     * Similar to shareData() but for per-record medical reports.
+     */
+    fun shareReport(
+        context: Context,
+        lifecycleScope: LifecycleCoroutineScope,
+        report: com.fyp.blockchainhealthwallet.Report,
+        recipientAddress: String,
+        recipientName: String,
+        recipientType: BlockchainService.RecipientType,
+        expiryTimestamp: BigInteger
+    ) {
+        var progressDialog: ProgressDialog? = null
+        
+        lifecycleScope.launch {
+            try {
+                progressDialog = ProgressDialog(context).apply {
+                    setMessage("Preparing to share report...\\nPlease wait...")
+                    setCancelable(false)
+                    show()
+                }
+                
+                // Get current user's address
+                val userAddress = WalletManager.getAddress()
+                    ?: throw Exception("Wallet not connected")
+                
+                // Step 1: Get recipient's public key from blockchain
+                progressDialog?.setMessage("Checking recipient's public key...")
+                Log.d(TAG, "Step 1: Getting recipient's public key")
+                
+                val recipientPublicKeyIpfsHash = withContext(Dispatchers.IO) {
+                    BlockchainService.getUserPublicKey(recipientAddress)
+                }
+                
+                if (recipientPublicKeyIpfsHash.isEmpty()) {
+                    throw Exception("Recipient has not enabled receiving shares. They must set up their public key first.")
+                }
+                
+                Log.d(TAG, "Recipient public key IPFS hash: $recipientPublicKeyIpfsHash")
+                
+                // Step 2: Download recipient's public key from IPFS
+                progressDialog?.setMessage("Downloading recipient's public key...")
+                Log.d(TAG, "Step 2: Downloading public key from IPFS")
+                
+                val publicKeyResponse = withContext(Dispatchers.IO) {
+                    ApiClient.api.getFromIPFS(recipientPublicKeyIpfsHash)
+                }
+                
+                if (!publicKeyResponse.isSuccessful) {
+                    throw Exception("Failed to download recipient's public key from IPFS")
+                }
+                
+                val publicKeyJson = publicKeyResponse.body()?.string()
+                    ?: throw Exception("Empty public key response")
+                
+                val publicKeyData = gson.fromJson(publicKeyJson, com.google.gson.JsonObject::class.java)
+                val recipientPublicKeyBase64 = publicKeyData.get("publicKey")?.asString
+                    ?: throw Exception("No public key in IPFS data")
+                
+                Log.d(TAG, "Downloaded recipient public key, length: ${recipientPublicKeyBase64.length}")
+                
+                // Step 3: Get report reference from blockchain
+                progressDialog?.setMessage("Fetching report from blockchain...")
+                Log.d(TAG, "Step 3: Getting report ref for ID: ${report.id}")
+                
+                val reportRef = withContext(Dispatchers.IO) {
+                    BlockchainService.getReportRef(report.id.toBigInteger())
+                } ?: throw Exception("Report not found on blockchain")
+                
+                Log.d(TAG, "Report IPFS hash: ${reportRef.encryptedDataIpfsHash}")
+                
+                // Step 4: Decrypt report's random AES key
+                progressDialog?.setMessage("Preparing encryption keys...")
+                Log.d(TAG, "Step 4: Decrypting report's AES key")
+                
+                val encryptedAesKeyBase64 = reportRef.encryptedKey
+                if (encryptedAesKeyBase64.isEmpty()) {
+                    throw Exception("Report has no encryption key - cannot share")
+                }
+                
+                val reportAesKey: javax.crypto.SecretKey = withContext(Dispatchers.IO) {
+                    EncryptionHelper.decryptKeyFromBlockchain(encryptedAesKeyBase64, userAddress)
+                }
+                
+                Log.d(TAG, "Decrypted report's AES key")
+                
+                // Step 5: Re-encrypt report's AES key with recipient's RSA public key
+                progressDialog?.setMessage("Encrypting with recipient's key...")
+                Log.d(TAG, "Step 5: Encrypting report's AES key with recipient's RSA public key")
+                
+                val encryptedRecordKey: String = withContext(Dispatchers.IO) {
+                    RSAHelper.encryptKeyWithPublicKey(reportAesKey, recipientPublicKeyBase64)
+                }
+                
+                Log.d(TAG, "Encrypted record key length: ${encryptedRecordKey.length}")
+                
+                // Step 6: Create recipient info JSON and upload to IPFS
+                progressDialog?.setMessage("Uploading recipient info...")
+                Log.d(TAG, "Step 6: Creating and uploading recipient info to IPFS")
+                
+                val recipientInfoJson = com.google.gson.JsonObject().apply {
+                    addProperty("name", recipientName)
+                    addProperty("type", recipientType.name)
+                }.toString()
+                
+                val recipientDataIpfsHash = withContext(Dispatchers.IO) {
+                    val ipfsResponse = ApiClient.api.uploadToIPFS(
+                        okhttp3.MultipartBody.Part.createFormData(
+                            "file",
+                            "recipient_info.json",
+                            okhttp3.RequestBody.create(
+                                "application/json".toMediaTypeOrNull(),
+                                recipientInfoJson
+                            )
+                        )
+                    )
+                    
+                    if (!ipfsResponse.isSuccessful) {
+                        throw Exception("Failed to upload recipient info to IPFS")
+                    }
+                    
+                    ipfsResponse.body()?.ipfsHash 
+                        ?: throw Exception("No IPFS hash in upload response")
+                }
+                
+                Log.d(TAG, "Recipient info uploaded to IPFS: $recipientDataIpfsHash")
+                
+                // Step 7: Generate recipient name hash
+                val recipientNameHash = "0x" + recipientName.hashCode().toString().padStart(64, '0').take(64)
+                
+                // Step 8: Share report on blockchain
+                progressDialog?.setMessage("Sending to wallet...\\nPlease approve transaction")
+                Log.d(TAG, "Step 8: Sharing report on blockchain")
+                
+                val txHash = withContext(Dispatchers.IO) {
+                    BlockchainService.shareData(
+                        recipientAddress = recipientAddress,
+                        recipientNameHash = recipientNameHash,
+                        encryptedRecipientDataIpfsHash = recipientDataIpfsHash,  // Recipient info IPFS
+                        recipientType = recipientType,
+                        recordType = BlockchainService.RecordType.MEDICAL_REPORT,  // ← Medical report type
+                        recordId = report.id.toBigInteger(),  // ← Report's actual ID
+                        expiryDate = expiryTimestamp,
+                        accessLevel = BlockchainService.AccessLevel.VIEW_ONLY,
+                        encryptedRecordKey = encryptedRecordKey  // RSA-encrypted AES key
+                    )
+                }
+                
+                progressDialog?.dismiss()
+                
+                Log.d(TAG, "✅ Share report transaction successful: $txHash")
+                
+                // Show success
+                AlertDialog.Builder(context)
+                    .setTitle("Report Shared Successfully!")
+                    .setMessage("Recipient can now decrypt and view your medical report.\\n\\nReport: ${report.title}\\n\\nTransaction: ${txHash.take(10)}...\\n\\nFull TX: $txHash")
+                    .setPositiveButton("OK", null)
+                    .show()
+                
+            } catch (e: Exception) {
+                progressDialog?.dismiss()
+                Log.e(TAG, "Error sharing report", e)
+                
+                val errorMessage = when {
+                    e.message?.contains("user rejected", ignoreCase = true) == true -> 
+                        "Transaction cancelled by user"
+                    e.message?.contains("insufficient funds", ignoreCase = true) == true -> 
+                        "Insufficient funds for gas fees"
+                    e.message?.contains("not enabled receiving", ignoreCase = true) == true ->
+                        e.message ?: "Recipient setup error"
+                    e.message?.contains("Report not found", ignoreCase = true) == true ->
+                        "Report not found on blockchain. Please try refreshing."
+                    else -> "Error: ${e.message}"
+                }
+                
+                AlertDialog.Builder(context)
+                    .setTitle("Share Failed")
                     .setMessage(errorMessage)
                     .setPositiveButton("OK", null)
                     .show()

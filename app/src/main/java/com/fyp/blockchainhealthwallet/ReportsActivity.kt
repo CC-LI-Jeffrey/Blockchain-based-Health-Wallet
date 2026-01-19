@@ -64,6 +64,9 @@ class ReportsActivity : AppCompatActivity() {
             },
             onDeleteClick = { report ->
                 showDeleteConfirmation(report)
+            },
+            onShareClick = { report ->
+                showShareReportDialog(report)
             }
         )
 
@@ -198,7 +201,7 @@ class ReportsActivity : AppCompatActivity() {
                 
                 EncryptionHelper.decryptBytesWithKey(encryptedBytes, decryptedAesKey)
             } else {
-                // OLD: Category-based encryption - use category key
+                // OLD: Legacy encryption - use wallet-derived user key directly
                 EncryptionHelper.decryptBytesWithCategory(
                     encryptedBytes,
                     BlockchainService.DataCategory.MEDICAL_REPORTS
@@ -299,6 +302,112 @@ class ReportsActivity : AppCompatActivity() {
     
     private fun showError(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun showShareReportDialog(report: Report) {
+        // Create input fields
+        val recipientAddressInput = android.widget.EditText(this).apply {
+            hint = "Recipient Wallet Address (0x...)"
+            setPadding(50, 20, 50, 20)
+        }
+        
+        val recipientNameInput = android.widget.EditText(this).apply {
+            hint = "Recipient Name (e.g., Dr. Smith)"
+            setPadding(50, 20, 50, 20)
+        }
+        
+        // Recipient type selection
+        val recipientTypes = arrayOf("Doctor", "Hospital", "Clinic", "Insurance", "Pharmacy", "Laboratory", "Other")
+        var selectedRecipientType = BlockchainService.RecipientType.DOCTOR
+        val recipientTypeInput = android.widget.Spinner(this).apply {
+            adapter = android.widget.ArrayAdapter(this@ReportsActivity, android.R.layout.simple_spinner_item, recipientTypes)
+            setPadding(50, 20, 50, 20)
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                    selectedRecipientType = when (position) {
+                        0 -> BlockchainService.RecipientType.DOCTOR
+                        1 -> BlockchainService.RecipientType.HOSPITAL
+                        2 -> BlockchainService.RecipientType.CLINIC
+                        3 -> BlockchainService.RecipientType.INSURANCE_COMPANY
+                        4 -> BlockchainService.RecipientType.PHARMACY
+                        5 -> BlockchainService.RecipientType.LABORATORY
+                        else -> BlockchainService.RecipientType.OTHER
+                    }
+                }
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            }
+        }
+        
+        val durationInput = android.widget.EditText(this).apply {
+            hint = "Duration in Days (e.g., 30)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setText("30")
+            setPadding(50, 20, 50, 20)
+        }
+        
+        // Create container layout
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(50, 40, 50, 40)
+            addView(android.widget.TextView(this@ReportsActivity).apply {
+                text = "Share: ${report.title}"
+                textSize = 16f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setPadding(0, 0, 0, 20)
+            })
+            addView(android.widget.TextView(this@ReportsActivity).apply {
+                text = "Type: ${report.reportType.displayName}"
+                setPadding(0, 0, 0, 10)
+            })
+            addView(android.widget.TextView(this@ReportsActivity).apply {
+                text = "Date: ${report.date}"
+                setPadding(0, 0, 0, 20)
+            })
+            addView(recipientAddressInput)
+            addView(recipientNameInput)
+            addView(android.widget.TextView(this@ReportsActivity).apply {
+                text = "Recipient Type"
+                setPadding(0, 20, 0, 10)
+            })
+            addView(recipientTypeInput)
+            addView(durationInput)
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("Share Medical Report")
+            .setView(container)
+            .setPositiveButton("Share") { _, _ ->
+                val recipientAddress = recipientAddressInput.text.toString().trim()
+                val recipientName = recipientNameInput.text.toString().trim()
+                val durationText = durationInput.text.toString().trim()
+                
+                if (recipientAddress.isEmpty() || recipientName.isEmpty() || durationText.isEmpty()) {
+                    Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                
+                val durationDays = durationText.toLongOrNull() ?: 0L
+                if (durationDays <= 0) {
+                    Toast.makeText(this, "Invalid duration", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                
+                // Calculate expiry timestamp
+                val expiryTimestamp = java.math.BigInteger.valueOf((System.currentTimeMillis() / 1000) + (durationDays * 24 * 60 * 60))
+                
+                // Share the report
+                com.fyp.blockchainhealthwallet.ui.BlockchainHelper.shareReport(
+                    this,
+                    lifecycleScope,
+                    report,
+                    recipientAddress,
+                    recipientName,
+                    selectedRecipientType,
+                    expiryTimestamp
+                )
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

@@ -43,9 +43,7 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    // HealthWallet V1 address = 0xed41D59378f36b04567DAB79077d8057eA3E70D6
-    // HealthWallet V2 address = 0x9BFD8A68543f4b7989d567588E8c3e7Cd4c65f9B
-    private const val CONTRACT_ADDRESS = "0xcF3299FF912254032522055DcCca157eDf90F0aB"
+    private const val CONTRACT_ADDRESS = "0x6cda9baF7254f16B6DcB803A41328fdDdD5d5014"
     
     // Sepolia RPC endpoints - using multiple public endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
