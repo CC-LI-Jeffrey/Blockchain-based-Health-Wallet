@@ -112,8 +112,17 @@ class SharedRecordsActivity : AppCompatActivity() {
         if (category == null) {
             filteredShareRecords.addAll(allShareRecords)
         } else {
+            // Map DataCategory to RecordType for filtering
+            val recordTypeFilter = when (category) {
+                BlockchainService.DataCategory.PERSONAL_INFO -> "PERSONAL_INFO"
+                BlockchainService.DataCategory.MEDICATION_RECORDS -> "MEDICATION"
+                BlockchainService.DataCategory.VACCINATION_RECORDS -> "VACCINATION"
+                BlockchainService.DataCategory.MEDICAL_REPORTS -> "MEDICAL_REPORT"
+                BlockchainService.DataCategory.ALL_DATA -> null
+            }
+            
             filteredShareRecords.addAll(allShareRecords.filter {
-                it.sharedData.contains(category.name, ignoreCase = true)
+                recordTypeFilter == null || it.sharedData.contains(recordTypeFilter, ignoreCase = true)
             })
         }
 
