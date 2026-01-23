@@ -89,7 +89,7 @@ class WalletInfoActivity : AppCompatActivity() {
                 tvWalletAddress.text = fullAddress
                 btnCopyAddress.isEnabled = true
 
-                // Update chain ID
+                // Update chain ID with warning for wrong network
                 val chainId = state.chainId
                 val chainName = when (chainId) {
                     "1" -> "Ethereum Mainnet"
@@ -97,7 +97,22 @@ class WalletInfoActivity : AppCompatActivity() {
                     "11155111" -> "Sepolia Testnet"
                     else -> "Chain ID: $chainId"
                 }
-                tvChainId.text = "$chainName ($chainId)"
+                
+                // Show warning if not on Sepolia
+                if (chainId != "11155111") {
+                    tvChainId.text = "⚠️ $chainName ($chainId) - WRONG NETWORK!"
+                    tvChainId.setTextColor(getColor(android.R.color.holo_red_dark))
+                    
+                    // Show alert dialog
+                    AlertDialog.Builder(this)
+                        .setTitle("⚠️ Wrong Network")
+                        .setMessage("You are currently on $chainName.\n\nThis app requires Sepolia Testnet.\n\nPlease switch to Sepolia in your wallet app.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                } else {
+                    tvChainId.text = "✅ $chainName ($chainId)"
+                    tvChainId.setTextColor(getColor(android.R.color.holo_green_dark))
+                }
 
                 // Update session info
                 val session = WalletManager.getActiveSession()

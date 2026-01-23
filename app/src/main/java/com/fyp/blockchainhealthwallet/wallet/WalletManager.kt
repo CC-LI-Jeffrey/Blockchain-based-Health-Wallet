@@ -282,8 +282,68 @@ object WalletManager : AppKit.ModalDelegate {
     
     override fun onSessionEvent(sessionEvent: Modal.Model.SessionEvent) {
         Log.d(TAG, "Session event received: ${sessionEvent.name}")
-        // SessionEvent contains event data emitted by the wallet during an active session
-        // This is for custom events, not for extracting session info
+        
+        // Handle chain changes
+        if (sessionEvent.name == "chainChanged") {
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "⚠️ CHAIN CHANGED EVENT DETECTED")
+            Log.d(TAG, "========================================")
+            
+            try {
+                // Update chain ID when wallet switches chains
+                val selectedChain = AppKit.getSelectedChain()
+                val newChainId = selectedChain?.chainReference ?: "1"
+                
+                Log.d(TAG, "New Chain ID: $newChainId")
+                Log.d(TAG, "Chain Name: ${selectedChain?.chainName}")
+                
+                _chainId.value = newChainId
+                
+                // Update connection state with new chain
+                val address = _walletAddress.value
+                if (address != null) {
+                    _connectionState.value = WalletConnectionState.Connected(address, newChainId)
+                    Log.d(TAG, "Updated connection state with new chain")
+                }
+                
+                // Warn if not on Sepolia
+                if (newChainId != "11155111") {
+                    Log.w(TAG, "⚠️ WARNING: Not on Sepolia testnet!")
+                    Log.w(TAG, "Current: $newChainId, Expected: 11155111")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling chain change: ${e.message}", e)
+            }
+        }
+        
+        // Handle account changes
+        if (sessionEvent.name == "accountsChanged") {
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "⚠️ ACCOUNT CHANGED EVENT DETECTED")
+            Log.d(TAG, "========================================")
+            
+            try {
+                val account = AppKit.getAccount()
+                if (account != null) {
+                    val newAddress = account.address
+                    Log.d(TAG, "New Address: $newAddress")
+                    
+                    _walletAddress.value = newAddress
+                    
+                    // Clear encryption keys since wallet changed
+                    SimpleKeyManager.clearCache()
+                    
+                    // Update connection state
+                    val chainId = _chainId.value ?: "11155111"
+                    _connectionState.value = WalletConnectionState.Connected(newAddress, chainId)
+                } else {
+                    Log.w(TAG, "Account changed but getAccount() returned null")
+                    clearSessionData()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling account change: ${e.message}", e)
+            }
+        }
     }
     
     override fun onProposalExpired(proposal: Modal.Model.ExpiredProposal) {
@@ -338,6 +398,9 @@ object WalletManager : AppKit.ModalDelegate {
                 _walletAddress.value = address
                 _chainId.value = chainId
                 _connectionState.value = WalletConnectionState.Connected(address, chainId)
+                
+                // Initialize encryption keys when wallet connects
+                SimpleKeyManager.clearCache()
                 
                 Log.d(TAG, "========================================")
                 Log.d(TAG, "CONNECTION STATE CHANGED TO CONNECTED")
@@ -418,5 +481,36 @@ object WalletManager : AppKit.ModalDelegate {
         }
         
         return chainId
+    }
+    
+    /**
+     * Verify current chain is Sepolia, return error message if not
+     */
+    fun verifySepoliaNetwork(): Pair<Boolean, String> {
+        try {
+            val selectedChain = AppKit.getSelectedChain()
+            val chainId = selectedChain?.chainReference ?: _chainId.value ?: "1"
+            
+            if (chainId == "11155111") {
+                return Pair(true, "Connected to Sepolia")
+            }
+            
+            val chainName = selectedChain?.chainName ?: "Unknown"
+            return Pair(false, "Wrong network! Currently on $chainName (Chain ID: $chainId). Please switch to Sepolia Testnet in your wallet.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error verifying network: ${e.message}")
+            return Pair(false, "Could not verify network. Please ensure you're connected to Sepolia Testnet.")
+        }
+    }
+    
+    /**
+     * Get current chain name for display
+     */
+    fun getChainName(): String {
+        return try {
+            AppKit.getSelectedChain()?.chainName ?: "Unknown"
+        } catch (e: Exception) {
+            "Unknown"
+        }
     }
 }

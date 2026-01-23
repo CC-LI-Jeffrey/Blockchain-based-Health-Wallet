@@ -2177,21 +2177,37 @@ object BlockchainService {
             var isResumed = false
             
             try {
-                // Get current chain ID
-                val chainId = WalletManager.getChainId() ?: "1"
+                // CRITICAL: Verify chain before sending transaction
+                val selectedChain = try {
+                    AppKit.getSelectedChain()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Cannot get selected chain from AppKit", e)
+                    null
+                }
+                
+                val chainId = selectedChain?.chainReference ?: WalletManager.getChainId() ?: "1"
                 
                 Log.d(TAG, "========================================")
-                Log.d(TAG, "⚠TRANSACTION DEBUG INFO")
+                Log.d(TAG, "⚠️ TRANSACTION DEBUG INFO")
                 Log.d(TAG, "========================================")
                 Log.d(TAG, "Wallet Address: $from")
                 Log.d(TAG, "Contract Address: $to")
                 Log.d(TAG, "Chain ID: $chainId (Sepolia = 11155111)")
                 Log.d(TAG, "Expected Chain: Sepolia (11155111)")
+                Log.d(TAG, "Chain Name: ${selectedChain?.chainName ?: "Unknown"}")
                 
+                // ENFORCE SEPOLIA NETWORK
                 if (chainId != "11155111") {
-                    Log.e(TAG, "Chain is not Sepolia")
-                    Log.e(TAG, "Current chain: $chainId, Expected: 11155111 (Sepolia)")
+                    val errorMsg = "Wrong network! Current: $chainId (${selectedChain?.chainName ?: "Unknown"}), Required: Sepolia (11155111). Please switch to Sepolia in your wallet."
+                    Log.e(TAG, errorMsg)
+                    if (!isResumed) {
+                        isResumed = true
+                        continuation.resumeWithException(Exception(errorMsg))
+                    }
+                    return@suspendCancellableCoroutine
                 }
+                
+                Log.d(TAG, "✅ Chain verification passed: Sepolia")
                 
                 // Estimate gas (800,000 gas units for large encrypted keys in shareData)
                 val gasLimit = "0x${BigInteger.valueOf(800000).toString(16)}"

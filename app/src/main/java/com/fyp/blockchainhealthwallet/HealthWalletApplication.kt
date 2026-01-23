@@ -80,31 +80,7 @@ class HealthWalletApplication : Application() {
     private fun setupChains() {
         val chains = mutableListOf<Modal.Model.Chain>()
         
-        // Create BOTH chains manually with NO required methods
-        // Ethereum Mainnet
-        val ethereumChain = Modal.Model.Chain(
-            chainNamespace = "eip155",
-            chainReference = "1",
-            chainName = "Ethereum",
-            requiredMethods = listOf(),  // NO required methods
-            optionalMethods = listOf(
-                "eth_sendTransaction",
-                "personal_sign",
-                "eth_signTypedData",
-                "eth_signTypedData_v4",
-                "eth_sign"
-            ),
-            events = listOf("chainChanged", "accountsChanged"),
-            token = Modal.Model.Token(
-                name = "Ether",
-                symbol = "ETH",
-                decimal = 18
-            ),
-            rpcUrl = "https://ethereum.publicnode.com",
-            blockExplorerUrl = "https://etherscan.io"
-        )
-        chains.add(ethereumChain)
-        
+        // ONLY ADD SEPOLIA - Remove mainnet to prevent wrong network transactions
         // Sepolia Testnet
         val sepoliaChain = Modal.Model.Chain(
             chainNamespace = "eip155",
@@ -129,13 +105,14 @@ class HealthWalletApplication : Application() {
         )
         chains.add(sepoliaChain)
         
-        // Set both chains
+        // Set chains in AppKit
         AppKit.setChains(chains)
         
         Log.d("AppKit", "========================================")
-        Log.d("AppKit", "✅ Custom Chains (NO required methods):")
-        Log.d("AppKit", "  1. Ethereum Mainnet (Chain ID: 1)")
-        Log.d("AppKit", "  2. Sepolia Testnet (Chain ID: 11155111)")
+        Log.d("AppKit", "✅ Configured Chains:")
+        Log.d("AppKit", "  1. Sepolia Testnet (Chain ID: 11155111) - DEFAULT")
+        Log.d("AppKit", "========================================")
+        Log.d("AppKit", "⚠️ NOTE: Only Sepolia enabled to prevent wrong network transactions")
         Log.d("AppKit", "========================================")
     }
 }
