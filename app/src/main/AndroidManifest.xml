@@ -51,6 +51,19 @@
             android:name=".MedicationActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
+        
+        <activity
+            android:name=".AddMedicationActivity"
+            android:exported="false"
+            android:label="Add Medication"
+            android:parentActivityName=".MedicationActivity" />
+        
+        <activity
+            android:name=".ViewMedicationActivity"
+            android:exported="false"
+            android:label="Medication Details"
+            android:parentActivityName=".MedicationActivity" />
+        
         <activity
             android:name=".VaccinationRecordActivity"
             android:exported="false"

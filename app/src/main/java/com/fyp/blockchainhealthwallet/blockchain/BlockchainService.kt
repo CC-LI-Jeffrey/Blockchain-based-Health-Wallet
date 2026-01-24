@@ -43,7 +43,7 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    private const val CONTRACT_ADDRESS = "0xDaaAB5AC16d55bb6D7858813CE2cBa24D74f3aB5"
+    private const val CONTRACT_ADDRESS = "0xf68ECe163bD9Ee965Aa401C60AAED604C0624B7c"
     
     // Sepolia RPC endpoints - using multiple public endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
@@ -153,6 +153,7 @@ object BlockchainService {
     data class MedicationRecordRef(
         val id: BigInteger,
         val encryptedDataIpfsHash: String,
+        val encryptedKey: String,
         val isActive: Boolean,
         val startDate: BigInteger,
         val endDate: BigInteger,
@@ -578,6 +579,7 @@ object BlockchainService {
      */
     suspend fun addMedication(
         encryptedDataIpfsHash: String,
+        encryptedKey: String,
         isActive: Boolean,
         startDate: BigInteger,
         endDate: BigInteger
@@ -591,6 +593,7 @@ object BlockchainService {
             "addMedication",
             listOf(
                 Utf8String(encryptedDataIpfsHash),
+                Utf8String(encryptedKey),
                 Bool(isActive),
                 Uint256(startDate),
                 Uint256(endDate)
@@ -614,6 +617,7 @@ object BlockchainService {
     suspend fun updateMedication(
         medicationId: BigInteger,
         encryptedDataIpfsHash: String,
+        encryptedKey: String,
         isActive: Boolean,
         startDate: BigInteger,
         endDate: BigInteger
@@ -626,6 +630,7 @@ object BlockchainService {
             listOf(
                 Uint256(medicationId),
                 Utf8String(encryptedDataIpfsHash),
+                Utf8String(encryptedKey),
                 Bool(isActive),
                 Uint256(startDate),
                 Uint256(endDate)
@@ -703,14 +708,7 @@ object BlockchainService {
             val function = org.web3j.abi.datatypes.Function(
                 "getMedicationRef",
                 listOf(Uint256(medicationId)),
-                listOf(
-                    object : TypeReference<Uint256>() {},  // id
-                    object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
-                    object : TypeReference<Bool>() {},  // isActive
-                    object : TypeReference<Uint256>() {},  // startDate
-                    object : TypeReference<Uint256>() {},  // endDate
-                    object : TypeReference<Uint256>() {}  // createdAt
-                )
+                emptyList() // Don't specify return type, we'll decode manually
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
@@ -734,22 +732,59 @@ object BlockchainService {
                 return@withContext null
             }
             
-            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
-                result,
-                function.outputParameters
-            )
+            // Manually decode the struct
+            // Struct layout (in hex positions, each field = 64 hex chars = 32 bytes):
+            // 0-63: id (uint256)
+            // 64-127: offset to encryptedDataIpfsHash (dynamic string)
+            // 128-191: offset to encryptedKey (dynamic string)
+            // 192-255: isActive (bool padded to 32 bytes)
+            // 256-319: startDate (uint256)
+            // 320-383: endDate (uint256)
+            // 384-447: createdAt (uint256)
+            // Then the actual string data at their respective offsets
             
-            if (decodedResult.size < 6) {
-                return@withContext null
-            }
+            val hex = result.removePrefix("0x")
+            
+            // Skip the first 32 bytes (offset pointer to struct)
+            val structData = hex.substring(64)
+            
+            val idHex = structData.substring(0, 64)
+            val dataIpfsOffsetHex = structData.substring(64, 128)
+            val encryptedKeyOffsetHex = structData.substring(128, 192)
+            val isActiveHex = structData.substring(192, 256)
+            val startDateHex = structData.substring(256, 320)
+            val endDateHex = structData.substring(320, 384)
+            val createdAtHex = structData.substring(384, 448)
+            
+            val id = BigInteger(idHex, 16)
+            val isActive = BigInteger(isActiveHex, 16) != BigInteger.ZERO
+            val startDate = BigInteger(startDateHex, 16)
+            val endDate = BigInteger(endDateHex, 16)
+            val createdAt = BigInteger(createdAtHex, 16)
+            
+            // Decode dynamic strings
+            val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2 // Convert to hex chars
+            val encryptedKeyOffset = BigInteger(encryptedKeyOffsetHex, 16).toInt() * 2
+            
+            // String format: 32 bytes length + actual string data
+            val dataIpfsLengthHex = structData.substring(dataIpfsOffset, dataIpfsOffset + 64)
+            val dataIpfsLength = BigInteger(dataIpfsLengthHex, 16).toInt() * 2 // Convert to hex chars
+            val dataIpfsDataHex = structData.substring(dataIpfsOffset + 64, dataIpfsOffset + 64 + dataIpfsLength)
+            val encryptedDataIpfsHash = String(dataIpfsDataHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+            
+            val encryptedKeyLengthHex = structData.substring(encryptedKeyOffset, encryptedKeyOffset + 64)
+            val encryptedKeyLength = BigInteger(encryptedKeyLengthHex, 16).toInt() * 2
+            val encryptedKeyDataHex = structData.substring(encryptedKeyOffset + 64, encryptedKeyOffset + 64 + encryptedKeyLength)
+            val encryptedKey = String(encryptedKeyDataHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
             
             MedicationRecordRef(
-                id = (decodedResult[0] as Uint256).value,
-                encryptedDataIpfsHash = (decodedResult[1] as Utf8String).value,
-                isActive = (decodedResult[2] as Bool).value,
-                startDate = (decodedResult[3] as Uint256).value,
-                endDate = (decodedResult[4] as Uint256).value,
-                createdAt = (decodedResult[5] as Uint256).value
+                id = id,
+                encryptedDataIpfsHash = encryptedDataIpfsHash,
+                encryptedKey = encryptedKey,
+                isActive = isActive,
+                startDate = startDate,
+                endDate = endDate,
+                createdAt = createdAt
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting medication ref", e)
