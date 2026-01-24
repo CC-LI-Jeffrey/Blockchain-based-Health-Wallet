@@ -8,6 +8,8 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.LifecycleCoroutineScope
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.ShareRecordActivity
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
 import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
@@ -609,4 +611,195 @@ object BlockchainHelper {
         }
         return true
     }
+    
+    /**
+     * Share vaccination record with recipient
+     */
+    fun shareVaccination(
+        activity: android.app.Activity,
+        vaccinationId: BigInteger,
+        recipientAddress: String,
+        recipientName: String,
+        recipientType: BlockchainService.RecipientType,
+        expiryTimestamp: BigInteger
+    ) {
+        var progressDialog: ProgressDialog? = null
+        
+        // Get lifecycle scope from activity
+        val lifecycleOwner = activity as? LifecycleOwner
+        if (lifecycleOwner == null) {
+            Toast.makeText(activity, "Cannot access lifecycle scope", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        lifecycleOwner.lifecycleScope.launch {
+            try {
+                progressDialog = ProgressDialog(activity).apply {
+                    setMessage("Preparing to share vaccination...\\nPlease wait...")
+                    setCancelable(false)
+                    show()
+                }
+                
+                // Get current user's address
+                val userAddress = WalletManager.getAddress()
+                    ?: throw Exception("Wallet not connected")
+                
+                // Step 1: Get recipient's public key from blockchain
+                progressDialog?.setMessage("Checking recipient's public key...")
+                Log.d(TAG, "Step 1: Getting recipient's public key")
+                
+                val recipientPublicKeyIpfsHash = withContext(Dispatchers.IO) {
+                    BlockchainService.getUserPublicKey(recipientAddress)
+                }
+                
+                if (recipientPublicKeyIpfsHash.isEmpty()) {
+                    throw Exception("Recipient has not enabled receiving shares. They must set up their public key first.")
+                }
+                
+                Log.d(TAG, "Recipient public key IPFS hash: $recipientPublicKeyIpfsHash")
+                
+                // Step 2: Download recipient's public key from IPFS
+                progressDialog?.setMessage("Downloading recipient's public key...")
+                Log.d(TAG, "Step 2: Downloading public key from IPFS")
+                
+                val publicKeyResponse = withContext(Dispatchers.IO) {
+                    ApiClient.api.getFromIPFS(recipientPublicKeyIpfsHash)
+                }
+                
+                if (!publicKeyResponse.isSuccessful) {
+                    throw Exception("Failed to download recipient's public key from IPFS")
+                }
+                
+                val publicKeyJson = publicKeyResponse.body()?.string()
+                    ?: throw Exception("Empty public key response")
+                
+                val publicKeyData = gson.fromJson(publicKeyJson, com.google.gson.JsonObject::class.java)
+                val recipientPublicKeyBase64 = publicKeyData.get("publicKey")?.asString
+                    ?: throw Exception("No public key in IPFS data")
+                
+                Log.d(TAG, "Downloaded recipient public key, length: ${recipientPublicKeyBase64.length}")
+                
+                // Step 3: Get vaccination reference from blockchain
+                progressDialog?.setMessage("Fetching vaccination from blockchain...")
+                Log.d(TAG, "Step 3: Getting vaccination ref for ID: $vaccinationId")
+                
+                val vaccinationRef = withContext(Dispatchers.IO) {
+                    BlockchainService.getVaccinationRef(vaccinationId)
+                } ?: throw Exception("Vaccination not found on blockchain")
+                
+                Log.d(TAG, "Vaccination IPFS hash: ${vaccinationRef.encryptedDataIpfsHash}")
+                
+                // Step 4: Decrypt vaccination's random AES key
+                progressDialog?.setMessage("Preparing encryption keys...")
+                Log.d(TAG, "Step 4: Decrypting vaccination's AES key")
+                
+                val encryptedAesKeyBase64 = vaccinationRef.encryptedKey
+                if (encryptedAesKeyBase64.isEmpty()) {
+                    throw Exception("Vaccination has no encryption key - cannot share")
+                }
+                
+                val vaccinationAesKey: javax.crypto.SecretKey = withContext(Dispatchers.IO) {
+                    EncryptionHelper.decryptKeyFromBlockchain(encryptedAesKeyBase64, userAddress)
+                }
+                
+                Log.d(TAG, "Decrypted vaccination's AES key")
+                
+                // Step 5: Re-encrypt vaccination's AES key with recipient's RSA public key
+                progressDialog?.setMessage("Encrypting with recipient's key...")
+                Log.d(TAG, "Step 5: Encrypting vaccination's AES key with recipient's RSA public key")
+                
+                val encryptedRecordKey: String = withContext(Dispatchers.IO) {
+                    RSAHelper.encryptKeyWithPublicKey(vaccinationAesKey, recipientPublicKeyBase64)
+                }
+                
+                Log.d(TAG, "Encrypted record key length: ${encryptedRecordKey.length}")
+                
+                // Step 6: Create recipient info JSON and upload to IPFS
+                progressDialog?.setMessage("Uploading recipient info...")
+                Log.d(TAG, "Step 6: Creating and uploading recipient info to IPFS")
+                
+                val recipientInfoJson = com.google.gson.JsonObject().apply {
+                    addProperty("name", recipientName)
+                    addProperty("type", recipientType.name)
+                }.toString()
+                
+                val recipientDataIpfsHash = withContext(Dispatchers.IO) {
+                    val ipfsResponse = ApiClient.api.uploadToIPFS(
+                        okhttp3.MultipartBody.Part.createFormData(
+                            "file",
+                            "recipient_info.json",
+                            okhttp3.RequestBody.create(
+                                "application/json".toMediaTypeOrNull(),
+                                recipientInfoJson
+                            )
+                        )
+                    )
+                    
+                    if (!ipfsResponse.isSuccessful) {
+                        throw Exception("Failed to upload recipient info to IPFS")
+                    }
+                    
+                    ipfsResponse.body()?.ipfsHash 
+                        ?: throw Exception("No IPFS hash in upload response")
+                }
+                
+                Log.d(TAG, "Recipient info uploaded to IPFS: $recipientDataIpfsHash")
+                
+                // Step 7: Generate recipient name hash
+                val recipientNameHash = "0x" + recipientName.hashCode().toString().padStart(64, '0').take(64)
+                
+                // Step 8: Share vaccination on blockchain
+                progressDialog?.setMessage("Sending to wallet...\\nPlease approve transaction")
+                Log.d(TAG, "Step 8: Sharing vaccination on blockchain")
+                
+                val txHash = withContext(Dispatchers.IO) {
+                    BlockchainService.shareData(
+                        recipientAddress = recipientAddress,
+                        recipientNameHash = recipientNameHash,
+                        encryptedRecipientDataIpfsHash = recipientDataIpfsHash,
+                        recipientType = recipientType,
+                        recordType = BlockchainService.RecordType.VACCINATION,
+                        recordId = vaccinationId,
+                        expiryDate = expiryTimestamp,
+                        accessLevel = BlockchainService.AccessLevel.VIEW_ONLY,
+                        encryptedRecordKey = encryptedRecordKey
+                    )
+                }
+                
+                progressDialog?.dismiss()
+                
+                Log.d(TAG, "✅ Share vaccination transaction successful: $txHash")
+                
+                // Show success
+                AlertDialog.Builder(activity)
+                    .setTitle("Vaccination Shared Successfully!")
+                    .setMessage("Recipient can now decrypt and view your vaccination record.\\n\\nTransaction: ${txHash.take(10)}...\\n\\nFull TX: $txHash")
+                    .setPositiveButton("OK", null)
+                    .show()
+                
+            } catch (e: Exception) {
+                progressDialog?.dismiss()
+                Log.e(TAG, "Error sharing vaccination", e)
+                
+                val errorMessage = when {
+                    e.message?.contains("user rejected", ignoreCase = true) == true -> 
+                        "Transaction cancelled by user"
+                    e.message?.contains("insufficient funds", ignoreCase = true) == true -> 
+                        "Insufficient funds for gas fees"
+                    e.message?.contains("not enabled receiving", ignoreCase = true) == true ->
+                        e.message ?: "Recipient setup error"
+                    e.message?.contains("not found", ignoreCase = true) == true ->
+                        "Vaccination not found on blockchain. Please try refreshing."
+                    else -> "Error: ${e.message}"
+                }
+                
+                AlertDialog.Builder(activity)
+                    .setTitle("Share Failed")
+                    .setMessage(errorMessage)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
+    }
+    
 }

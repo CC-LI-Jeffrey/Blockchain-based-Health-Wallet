@@ -3,6 +3,7 @@ package com.fyp.blockchainhealthwallet.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.fyp.blockchainhealthwallet.R
@@ -10,7 +11,8 @@ import com.fyp.blockchainhealthwallet.model.VaccinationRecord
 
 class VaccinationRecordAdapter(
     private val records: List<VaccinationRecord>,
-    private val onItemClick: (VaccinationRecord) -> Unit
+    private val onItemClick: (VaccinationRecord) -> Unit,
+    private val onShareClick: (VaccinationRecord) -> Unit
 ) : RecyclerView.Adapter<VaccinationRecordAdapter.VaccinationViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VaccinationViewHolder {
@@ -28,6 +30,7 @@ class VaccinationRecordAdapter(
     inner class VaccinationViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvDate: TextView = itemView.findViewById(R.id.tvDate)
         private val tvVaccineName: TextView = itemView.findViewById(R.id.tvVaccineName)
+        private val btnShareVaccination: ImageView = itemView.findViewById(R.id.btnShareVaccination)
 
         fun bind(record: VaccinationRecord) {
             tvDate.text = record.date
@@ -35,6 +38,10 @@ class VaccinationRecordAdapter(
 
             itemView.setOnClickListener {
                 onItemClick(record)
+            }
+            
+            btnShareVaccination.setOnClickListener {
+                onShareClick(record)
             }
         }
     }

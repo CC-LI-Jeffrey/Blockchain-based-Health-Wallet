@@ -397,18 +397,18 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                         // Parse the medication data
                         container.removeAllViews()
                         val dataMap = Gson().fromJson(decryptedJsonData, Map::class.java) as Map<String, Any>
-                        
+
                         // Show brief preview in a nicer format
                         val name = (dataMap["name"] as? String)?.takeIf { it.isNotBlank() } ?: "N/A"
                         val dosage = (dataMap["dosage"] as? String)?.takeIf { it.isNotBlank() } ?: "N/A"
                         val frequency = (dataMap["frequency"] as? String)?.takeIf { it.isNotBlank() } ?: "N/A"
                         val isActive = (dataMap["isActive"] as? Boolean) ?: true
-                        
+
                         addDataRow(container, "💊 Medication Name", name)
                         addDataRow(container, "💉 Dosage", dosage)
                         addDataRow(container, "⏰ Frequency", frequency)
                         addDataRow(container, "📊 Status", if (isActive) "✅ Active" else "⏸️ Completed")
-                        
+
                         // Create a button to view full details
                         val btnViewMedication = android.widget.Button(this@ReceivedRecordsActivity).apply {
                             text = "📋 View Full Medication Details"
@@ -420,7 +420,7 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                             }
                         }
                         container.addView(btnViewMedication)
-                        
+
                         Log.d(TAG, "✅ Successfully displayed medication preview")
                     }
                     BlockchainService.RecordType.VACCINATION -> {
@@ -454,11 +454,36 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                             EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
                         }
                         
+                        // Parse vaccination data
+                        val vaccinationData = org.json.JSONObject(decryptedJsonData)
+
                         // Display the data
                         container.removeAllViews()
-                        val dataMap = Gson().fromJson(decryptedJsonData, Map::class.java) as Map<String, Any>
-                        dataMap.forEach { (key, value) ->
-                            addDataRow(container, "💉 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
+                        addDataRow(container, "💉 Vaccine Name", vaccinationData.optString("vaccineName", "N/A"))
+                        addDataRow(container, "🏥 Manufacturer", vaccinationData.optString("manufacturer", "N/A"))
+                        addDataRow(container, "🌍 Country", vaccinationData.optString("country", "N/A"))
+                        addDataRow(container, "👨‍⚕️ Provider", vaccinationData.optString("provider", "N/A"))
+                        addDataRow(container, "📍 Location", vaccinationData.optString("location", "N/A"))
+                        addDataRow(container, "🔢 Batch Number", vaccinationData.optString("batchNumber", "N/A"))
+
+                        // Add "View Certificate" button if certificate exists
+                        if (!vaccinationRef.encryptedCertificateIpfsHash.isNullOrEmpty()) {
+                            val btnViewCertificate = android.widget.Button(this@ReceivedRecordsActivity).apply {
+                                text = "📄 View Certificate"
+                                setBackgroundColor(ContextCompat.getColor(this@ReceivedRecordsActivity, R.color.primary))
+                                setTextColor(ContextCompat.getColor(this@ReceivedRecordsActivity, android.R.color.white))
+                                setPadding(32, 24, 32, 24)
+                                setOnClickListener {
+                                    openReceivedVaccinationCertificate(
+                                        vaccinationRef.encryptedCertificateIpfsHash,
+                                        aesKey,
+                                        vaccinationData.optString("vaccineName", "Vaccination")
+                                    )
+                                }
+                            }
+                            container.addView(btnViewCertificate)
+
+                            Log.d(TAG, "✅ Added certificate viewing button")
                         }
                     }
                     BlockchainService.RecordType.MEDICAL_REPORT -> {
@@ -610,7 +635,7 @@ class ReceivedRecordsActivity : AppCompatActivity() {
         }
         startActivity(intent)
     }
-    
+
     /**
      * Open received medication details in new activity
      */
@@ -635,6 +660,107 @@ class ReceivedRecordsActivity : AppCompatActivity() {
             putExtra("CREATED_AT", ((dataMap["createdAt"] as? Number)?.toLong() ?: 0L))
         }
         startActivity(intent)
+    }
+
+    /**
+     * Download, decrypt, and view vaccination certificate (PDF/PNG)
+     * Same logic as VaccinationDetailActivity but using shared AES key
+     */
+    private fun openReceivedVaccinationCertificate(
+        certificateIpfsHash: String,
+        aesKey: javax.crypto.SecretKey,
+        vaccineName: String
+    ) {
+        lifecycleScope.launch {
+            try {
+                Toast.makeText(this@ReceivedRecordsActivity, "Loading certificate...", Toast.LENGTH_SHORT).show()
+
+                // Download encrypted certificate from IPFS
+                val encryptedFile = withContext(Dispatchers.IO) {
+                    val response = com.fyp.blockchainhealthwallet.network.ApiClient.api.getFromIPFS(certificateIpfsHash)
+                    if (!response.isSuccessful || response.body() == null) {
+                        throw Exception("Failed to download certificate from IPFS")
+                    }
+
+                    val tempFile = java.io.File(cacheDir, "shared_cert_${System.currentTimeMillis()}.enc")
+                    val fileBytes = response.body()!!.bytes()
+                    tempFile.writeBytes(fileBytes)
+                    tempFile
+                }
+
+                // Decrypt certificate using shared AES key
+                val decryptedFile = withContext(Dispatchers.IO) {
+                    val outputFile = java.io.File(cacheDir, "shared_cert_${System.currentTimeMillis()}.dat")
+
+                    // Decrypt to get the decrypted bytes
+                    val encryptedBytes = encryptedFile.readBytes()
+                    val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+                    val iv = encryptedBytes.copyOfRange(0, 16)
+                    val encryptedData = encryptedBytes.copyOfRange(16, encryptedBytes.size)
+
+                    cipher.init(javax.crypto.Cipher.DECRYPT_MODE, aesKey, javax.crypto.spec.IvParameterSpec(iv))
+                    val decryptedBytes = cipher.doFinal(encryptedData)
+
+                    outputFile.writeBytes(decryptedBytes)
+                    outputFile
+                }
+
+                // Clean up encrypted file
+                encryptedFile.delete()
+
+                // Detect file type and open appropriate viewer
+                val header = decryptedFile.inputStream().use { it.readBytes().take(10).toByteArray() }
+                Log.d(TAG, "Certificate header: ${header.joinToString(" ") { "%02x".format(it) }}")
+
+                val (fileType, extension) = when {
+                    header.size >= 4 && header[0] == 0x25.toByte() && header[1] == 0x50.toByte() -> Pair("PDF", "pdf")
+                    header.size >= 2 && header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() -> Pair("Image", "jpg")
+                    header.size >= 2 && header[0] == 0x89.toByte() && header[1] == 0x50.toByte() -> Pair("Image", "png")
+                    else -> Pair("Unknown", "dat")
+                }
+
+                // Rename file with correct extension
+                val correctFile = if (decryptedFile.extension != extension) {
+                    val renamed = java.io.File(decryptedFile.parent, "shared_cert_${System.currentTimeMillis()}.$extension")
+                    decryptedFile.copyTo(renamed, overwrite = true)
+                    decryptedFile.delete()
+                    renamed
+                } else {
+                    decryptedFile
+                }
+
+                // Open appropriate viewer
+                when (fileType) {
+                    "PDF" -> {
+                        val intent = android.content.Intent(this@ReceivedRecordsActivity, PdfViewerActivity::class.java)
+                        intent.putExtra("PDF_PATH", correctFile.absolutePath)
+                        intent.putExtra("TITLE", "$vaccineName Certificate")
+                        startActivity(intent)
+                    }
+                    "Image" -> {
+                        val intent = android.content.Intent(this@ReceivedRecordsActivity, ImageViewerActivity::class.java)
+                        intent.putExtra("IMAGE_PATH", correctFile.absolutePath)
+                        intent.putExtra("TITLE", "$vaccineName Certificate")
+                        startActivity(intent)
+                    }
+                    else -> {
+                        Toast.makeText(
+                            this@ReceivedRecordsActivity,
+                            "Unsupported file type",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading shared certificate", e)
+                Toast.makeText(
+                    this@ReceivedRecordsActivity,
+                    "Error loading certificate: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 }
 
