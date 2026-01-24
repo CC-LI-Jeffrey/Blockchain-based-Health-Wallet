@@ -80,16 +80,17 @@ object RSAHelper {
                 .setKeySize(KEY_SIZE)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
                 .setDigests(
-                    KeyProperties.DIGEST_SHA256
-                    // Removed SHA512 to ensure KeyStore uses SHA256 matching our transformation
+                    KeyProperties.DIGEST_SHA256,
+                    KeyProperties.DIGEST_SHA1  // Required for MGF1-SHA1 compatibility
                 )
-                .setUserAuthenticationRequired(false) // No biometric required for this prototype
+                .setUserAuthenticationRequired(false)
                 .build()
             
             Log.d(TAG, "KeyGenParameterSpec Details:")
             Log.d(TAG, "  - Key Size: $KEY_SIZE")
             Log.d(TAG, "  - Padding: RSA_OAEP")
-            Log.d(TAG, "  - Digests: SHA256 ONLY")
+            Log.d(TAG, "  - Digests: SHA256 (main) + SHA1 (for MGF1)")
+            Log.d(TAG, "  - Default OAEP: SHA256 digest with MGF1-SHA1")
             Log.d(TAG, "  - Purposes: ENCRYPT | DECRYPT")
             Log.d(TAG, "  - User Auth Required: false")
             
@@ -216,7 +217,20 @@ object RSAHelper {
             Log.d(TAG, "  - Algorithm: ${cipher.algorithm}")
             Log.d(TAG, "  - Provider: ${cipher.provider.name}")
             
-            cipher.init(Cipher.ENCRYPT_MODE, publicKey)
+            // CRITICAL: Match Android KeyStore's default OAEP parameters
+            // KeyStore uses SHA-256 digest with MGF1-SHA1 by default
+            val oaepParams = javax.crypto.spec.OAEPParameterSpec(
+                "SHA-256",
+                "MGF1",
+                java.security.spec.MGF1ParameterSpec.SHA1,  // Use SHA1 for MGF to match KeyStore
+                javax.crypto.spec.PSource.PSpecified.DEFAULT
+            )
+            Log.d(TAG, "  - Using OAEP parameters to match KeyStore:")
+            Log.d(TAG, "    * Digest: SHA-256")
+            Log.d(TAG, "    * MGF: MGF1")
+            Log.d(TAG, "    * MGF1 Digest: SHA1 (KeyStore default)")
+            
+            cipher.init(Cipher.ENCRYPT_MODE, publicKey, oaepParams)
             val params = cipher.parameters
             if (params != null) {
                 Log.d(TAG, "  - Parameters: ${params}")
@@ -301,26 +315,16 @@ object RSAHelper {
             }
             
             // Decrypt the AES key
+            // IMPORTANT: Use simple init without explicit OAEP parameters
+            // Let Android KeyStore use the same parameters as key generation
             val cipher = Cipher.getInstance(RSA_TRANSFORMATION)
             Log.d(TAG, "Cipher Details:")
             Log.d(TAG, "  - Algorithm: ${cipher.algorithm}")
             Log.d(TAG, "  - Provider: ${cipher.provider.name}")
             Log.d(TAG, "  - Transformation: $RSA_TRANSFORMATION")
+            Log.d(TAG, "  - Using KeyStore default OAEP parameters (matches key generation)")
             
-            // CRITICAL: Explicitly set OAEP parameters to match encryption
-            // Without this, KeyStore defaults to MGF1-SHA1, while software encryption uses MGF1-SHA256
-            val oaepParams = javax.crypto.spec.OAEPParameterSpec(
-                "SHA-256",
-                "MGF1",
-                java.security.spec.MGF1ParameterSpec.SHA256,
-                javax.crypto.spec.PSource.PSpecified.DEFAULT
-            )
-            Log.d(TAG, "  - Setting explicit OAEP parameters:")
-            Log.d(TAG, "    * Digest: SHA-256")
-            Log.d(TAG, "    * MGF: MGF1")
-            Log.d(TAG, "    * MGF1 Digest: SHA-256")
-            
-            cipher.init(Cipher.DECRYPT_MODE, privateKey, oaepParams)
+            cipher.init(Cipher.DECRYPT_MODE, privateKey)
             
             val params = cipher.parameters
             if (params != null) {
@@ -350,7 +354,34 @@ object RSAHelper {
             Log.d(TAG, "  - Last 10 bytes: ${encryptedKeyBytes.takeLast(10).joinToString(",")}")
             
             Log.d(TAG, "Calling cipher.doFinal()...")
-            val decryptedKeyBytes = cipher.doFinal(encryptedKeyBytes)
+            
+            // Try decryption - if it fails, try with alternate MGF parameters
+            val decryptedKeyBytes = try {
+                cipher.doFinal(encryptedKeyBytes)
+            } catch (e: Exception) {
+                Log.w(TAG, "Decryption failed with KeyStore defaults, trying MGF1-SHA256...")
+                
+                // Retry with MGF1-SHA256 (for data encrypted with software provider defaults)
+                val oaepParamsSHA256 = javax.crypto.spec.OAEPParameterSpec(
+                    "SHA-256",
+                    "MGF1",
+                    java.security.spec.MGF1ParameterSpec.SHA256,
+                    javax.crypto.spec.PSource.PSpecified.DEFAULT
+                )
+                
+                val cipher2 = Cipher.getInstance(RSA_TRANSFORMATION)
+                cipher2.init(Cipher.DECRYPT_MODE, privateKey, oaepParamsSHA256)
+                
+                try {
+                    Log.d(TAG, "Retrying with MGF1-SHA256...")
+                    cipher2.doFinal(encryptedKeyBytes)
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Both decryption attempts failed")
+                    Log.e(TAG, "  - MGF1-SHA1 (KeyStore default): ${e.message}")
+                    Log.e(TAG, "  - MGF1-SHA256 (software default): ${e2.message}")
+                    throw e  // Throw original exception
+                }
+            }
             
             Log.d(TAG, "Decrypted data details:")
             Log.d(TAG, "  - Decrypted bytes length: ${decryptedKeyBytes.size} bytes")
@@ -429,8 +460,25 @@ object RSAHelper {
      */
     fun ensureKeyPairExists(): String {
         return if (hasKeyPair()) {
-            Log.d(TAG, "RSA key pair already exists")
-            getPublicKey()
+            // Check if key is compatible with current OAEP configuration
+            try {
+                Log.d(TAG, "Checking key compatibility...")
+                // Try a test encryption/decryption to verify key works
+                val testKey = javax.crypto.KeyGenerator.getInstance("AES").apply {
+                    init(256)
+                }.generateKey()
+                
+                val publicKeyBase64 = getPublicKey()
+                val encrypted = encryptKeyWithPublicKey(testKey, publicKeyBase64)
+                decryptKeyWithPrivateKey(encrypted)
+                
+                Log.d(TAG, "✅ Existing RSA key pair is compatible")
+                publicKeyBase64
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Existing key incompatible with current OAEP config: ${e.message}")
+                Log.w(TAG, "Regenerating RSA key pair...")
+                regenerateKeyPair()
+            }
         } else {
             Log.d(TAG, "Generating new RSA key pair")
             generateKeyPair()

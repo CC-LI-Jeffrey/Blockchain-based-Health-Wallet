@@ -43,7 +43,7 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    private const val CONTRACT_ADDRESS = "0x6cda9baF7254f16B6DcB803A41328fdDdD5d5014"
+    private const val CONTRACT_ADDRESS = "0xDaaAB5AC16d55bb6D7858813CE2cBa24D74f3aB5"
     
     // Sepolia RPC endpoints - using multiple public endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"

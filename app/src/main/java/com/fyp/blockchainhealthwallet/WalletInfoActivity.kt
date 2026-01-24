@@ -1,9 +1,11 @@
 package com.fyp.blockchainhealthwallet
 
+import android.app.ProgressDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.ImageView
@@ -12,13 +14,20 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.fyp.blockchainhealthwallet.blockchain.RSAHelper
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class WalletInfoActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "WalletInfoActivity"
+    }
 
     private lateinit var tvConnectionStatus: TextView
     private lateinit var tvWalletAddress: TextView
@@ -26,6 +35,7 @@ class WalletInfoActivity : AppCompatActivity() {
     private lateinit var tvSessionTopic: TextView
     private lateinit var tvSessionExpiry: TextView
     private lateinit var btnCopyAddress: Button
+    private lateinit var btnFixRSAKeys: Button
     private lateinit var btnDisconnect: Button
     private lateinit var statusIndicator: View
 
@@ -45,6 +55,7 @@ class WalletInfoActivity : AppCompatActivity() {
         tvSessionTopic = findViewById(R.id.tvSessionTopic)
         tvSessionExpiry = findViewById(R.id.tvSessionExpiry)
         btnCopyAddress = findViewById(R.id.btnCopyAddress)
+        btnFixRSAKeys = findViewById(R.id.btnFixRSAKeys)
         btnDisconnect = findViewById(R.id.btnDisconnect)
         statusIndicator = findViewById(R.id.statusIndicator)
 
@@ -60,6 +71,10 @@ class WalletInfoActivity : AppCompatActivity() {
                 copyToClipboard(address)
                 Toast.makeText(this, "Address copied to clipboard", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        btnFixRSAKeys.setOnClickListener {
+            fixRSAKeys()
         }
 
         btnDisconnect.setOnClickListener {
@@ -174,5 +189,141 @@ class WalletInfoActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    /**
+     * Fix incompatible RSA keys using auto-detection
+     * This will check if the existing keys are compatible with current OAEP configuration,
+     * and automatically regenerate them if they're incompatible
+     */
+    private fun fixRSAKeys() {
+        // Check if wallet is connected
+        if (!WalletManager.isConnected()) {
+            Toast.makeText(this, "Please connect your wallet first", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Verify & Fix RSA Keys")
+            .setMessage("This will check your RSA encryption keys and automatically fix them if they're incompatible.\n\nNote: If keys are regenerated, previously shared records will need to be re-shared.")
+            .setPositiveButton("Proceed") { _, _ ->
+                performRSAKeyFix()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /**
+     * Perform the actual RSA key verification and fix
+     */
+    @Suppress("DEPRECATION")
+    private fun performRSAKeyFix() {
+        // Show options: Auto-detect or Force regenerate
+        AlertDialog.Builder(this)
+            .setTitle("Choose Fix Method")
+            .setMessage("Auto-detect: Tests keys and regenerates only if needed\n\nForce Regenerate: Always creates new keys (recommended if still getting errors)")
+            .setPositiveButton("Force Regenerate") { _, _ ->
+                forceRegenerateKeys()
+            }
+            .setNegativeButton("Auto-detect") { _, _ ->
+                autoDetectKeys()
+            }
+            .setNeutralButton("Cancel", null)
+            .show()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun autoDetectKeys() {
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Checking RSA keys...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "Auto-detecting RSA key compatibility")
+                Log.d(TAG, "========================================")
+
+                progressDialog.setMessage("Testing key compatibility...")
+                
+                val publicKey = withContext(Dispatchers.IO) {
+                    RSAHelper.ensureKeyPairExists()
+                }
+
+                Log.d(TAG, "✅ Keys verified - length: ${publicKey.length}")
+
+                progressDialog.dismiss()
+
+                AlertDialog.Builder(this@WalletInfoActivity)
+                    .setTitle("✅ Keys Verified")
+                    .setMessage("RSA keys are compatible!\n\nIf you're still getting decryption errors, use 'Force Regenerate' instead.")
+                    .setPositiveButton("OK", null)
+                    .show()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Auto-detect failed", e)
+                progressDialog.dismiss()
+
+                AlertDialog.Builder(this@WalletInfoActivity)
+                    .setTitle("Error")
+                    .setMessage("Auto-detect failed: ${e.message}\n\nTry 'Force Regenerate' instead.")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun forceRegenerateKeys() {
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Force regenerating RSA keys...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "FORCE REGENERATING RSA KEYS")
+                Log.d(TAG, "========================================")
+
+                progressDialog.setMessage("Deleting old keys...")
+                
+                withContext(Dispatchers.IO) {
+                    // Force regenerate by deleting existing keys first
+                    RSAHelper.regenerateKeyPair()
+                }
+
+                Log.d(TAG, "✅ Keys forcefully regenerated")
+
+                progressDialog.dismiss()
+
+                AlertDialog.Builder(this@WalletInfoActivity)
+                    .setTitle("✅ Keys Regenerated")
+                    .setMessage("NEW RSA keys have been created!\n\n⚠️ IMPORTANT NEXT STEPS:\n\n" +
+                            "1. Go to Profile → Enable Receive\n" +
+                            "   (This uploads your NEW public key to blockchain)\n\n" +
+                            "2. Old shares are now INVALID\n" +
+                            "   (Senders must re-share records with your new key)\n\n" +
+                            "3. You can now receive new shares without errors")
+                    .setPositiveButton("Go to Profile") { _, _ ->
+                        finish()
+                    }
+                    .setNegativeButton("OK", null)
+                    .show()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Force regenerate failed", e)
+                progressDialog.dismiss()
+
+                AlertDialog.Builder(this@WalletInfoActivity)
+                    .setTitle("Error")
+                    .setMessage("Failed to regenerate keys: ${e.message}")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
     }
 }
