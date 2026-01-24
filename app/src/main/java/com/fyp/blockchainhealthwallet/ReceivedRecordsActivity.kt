@@ -394,12 +394,34 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                             EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
                         }
                         
-                        // Display the data
+                        // Parse the medication data
                         container.removeAllViews()
                         val dataMap = Gson().fromJson(decryptedJsonData, Map::class.java) as Map<String, Any>
-                        dataMap.forEach { (key, value) ->
-                            addDataRow(container, "💊 ${key.replaceFirstChar { it.uppercase() }}", value.toString())
+                        
+                        // Show brief preview in a nicer format
+                        val name = (dataMap["name"] as? String)?.takeIf { it.isNotBlank() } ?: "N/A"
+                        val dosage = (dataMap["dosage"] as? String)?.takeIf { it.isNotBlank() } ?: "N/A"
+                        val frequency = (dataMap["frequency"] as? String)?.takeIf { it.isNotBlank() } ?: "N/A"
+                        val isActive = (dataMap["isActive"] as? Boolean) ?: true
+                        
+                        addDataRow(container, "💊 Medication Name", name)
+                        addDataRow(container, "💉 Dosage", dosage)
+                        addDataRow(container, "⏰ Frequency", frequency)
+                        addDataRow(container, "📊 Status", if (isActive) "✅ Active" else "⏸️ Completed")
+                        
+                        // Create a button to view full details
+                        val btnViewMedication = android.widget.Button(this@ReceivedRecordsActivity).apply {
+                            text = "📋 View Full Medication Details"
+                            setBackgroundColor(ContextCompat.getColor(this@ReceivedRecordsActivity, R.color.medication))
+                            setTextColor(ContextCompat.getColor(this@ReceivedRecordsActivity, android.R.color.white))
+                            setPadding(32, 24, 32, 24)
+                            setOnClickListener {
+                                openReceivedMedicationDetails(share, dataMap)
+                            }
                         }
+                        container.addView(btnViewMedication)
+                        
+                        Log.d(TAG, "✅ Successfully displayed medication preview")
                     }
                     BlockchainService.RecordType.VACCINATION -> {
                         // Query the vaccination record from blockchain using recordId
@@ -585,6 +607,32 @@ class ReceivedRecordsActivity : AppCompatActivity() {
             putExtra("HAS_FILE", reportRef.hasFile)
             putExtra("FILE_IPFS_HASH", reportRef.encryptedFileIpfsHash)
             putExtra("ENCRYPTED_RECORD_KEY", share.encryptedRecordKey)
+        }
+        startActivity(intent)
+    }
+    
+    /**
+     * Open received medication details in new activity
+     */
+    private fun openReceivedMedicationDetails(
+        share: BlockchainService.ShareRecord,
+        dataMap: Map<String, Any>
+    ) {
+        val intent = android.content.Intent(this, ViewReceivedMedicationActivity::class.java).apply {
+            putExtra("SHARE_ID", share.id.toString())
+            putExtra("OWNER_ADDRESS", share.ownerAddress)
+            putExtra("MEDICATION_NAME", (dataMap["name"] as? String)?.takeIf { it.isNotBlank() } ?: "")
+            putExtra("DOSAGE", (dataMap["dosage"] as? String)?.takeIf { it.isNotBlank() } ?: "")
+            putExtra("FREQUENCY", (dataMap["frequency"] as? String)?.takeIf { it.isNotBlank() } ?: "")
+            putExtra("ROUTE", (dataMap["route"] as? String)?.takeIf { it.isNotBlank() } ?: "")
+            putExtra("IS_ACTIVE", (dataMap["isActive"] as? Boolean) ?: true)
+            putExtra("START_DATE", ((dataMap["startDate"] as? Number)?.toLong() ?: 0L))
+            putExtra("END_DATE", ((dataMap["endDate"] as? Number)?.toLong() ?: 0L))
+            putExtra("PURPOSE", (dataMap["purpose"] as? String)?.takeIf { it.isNotBlank() } ?: "")
+            putExtra("DOCTOR", (dataMap["prescribingDoctor"] as? String)?.takeIf { it.isNotBlank() } ?: "")
+            putExtra("PHARMACY", (dataMap["pharmacy"] as? String)?.takeIf { it.isNotBlank() } ?: "")
+            putExtra("NOTES", (dataMap["notes"] as? String)?.takeIf { it.isNotBlank() } ?: "")
+            putExtra("CREATED_AT", ((dataMap["createdAt"] as? Number)?.toLong() ?: 0L))
         }
         startActivity(intent)
     }

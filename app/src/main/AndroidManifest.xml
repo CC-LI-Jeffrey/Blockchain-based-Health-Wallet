@@ -123,6 +123,11 @@
             android:label="Received Report"
             android:parentActivityName=".ReceivedRecordsActivity" />
         <activity
+            android:name=".ViewReceivedMedicationActivity"
+            android:exported="false"
+            android:label="Received Medication"
+            android:parentActivityName=".ReceivedRecordsActivity" />
+        <activity
             android:name=".ShareRecordDetailActivity"
             android:exported="false"
             android:label="Share Details" />

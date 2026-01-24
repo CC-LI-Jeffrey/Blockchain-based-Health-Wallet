@@ -5,7 +5,6 @@
     android:layout_height="match_parent"
     android:background="@color/background">
 
-    <!-- AppBar -->
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -16,12 +15,10 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="@color/primary"
-            app:title="Medication Details"
-            app:titleTextColor="@android:color/white"
-            app:navigationIcon="@drawable/ic_arrow_back" />
+            app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
+            app:title="Shared Medication" />
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Scrollable Content -->
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -34,30 +31,31 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Edit Mode Toggle -->
-            <LinearLayout
-                android:id="@+id/layoutEditToggle"
+            <!-- Share Information Card -->
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                android:gravity="end"
-                android:orientation="horizontal">
+                app:cardBackgroundColor="@color/primary_light"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnEdit"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="wrap_content"
+                <TextView
+                    android:id="@+id/tvShareInfo"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Edit"
-                    app:icon="@android:drawable/ic_menu_edit" />
-            </LinearLayout>
+                    android:padding="12dp"
+                    android:text="Shared by: 0x123...\nShare ID: 1"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+            </com.google.android.material.card.MaterialCardView>
 
             <!-- Medication Name -->
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="Medication Name"
+                android:layout_marginBottom="12dp"
+                android:hint="Medication Name *"
                 app:boxBackgroundMode="outline"
                 app:startIconDrawable="@drawable/ic_medication">
 
@@ -66,15 +64,15 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:enabled="false"
-                    android:inputType="textCapWords" />
+                    android:inputType="text" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <!-- Dosage -->
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="Dosage"
+                android:layout_marginBottom="12dp"
+                android:hint="Dosage *"
                 app:boxBackgroundMode="outline">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -89,8 +87,8 @@
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="Frequency"
+                android:layout_marginBottom="12dp"
+                android:hint="Frequency *"
                 app:boxBackgroundMode="outline">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -105,8 +103,8 @@
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="Route"
+                android:layout_marginBottom="12dp"
+                android:hint="Route of Administration"
                 app:boxBackgroundMode="outline">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -117,49 +115,11 @@
                     android:inputType="text" />
             </com.google.android.material.textfield.TextInputLayout>
 
-            <!-- Start Date -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="Start Date"
-                app:boxBackgroundMode="outline"
-                app:startIconDrawable="@drawable/ic_calendar">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etStartDate"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:clickable="false"
-                    android:enabled="false"
-                    android:focusable="false"
-                    android:inputType="none" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <!-- End Date -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="End Date"
-                app:boxBackgroundMode="outline"
-                app:startIconDrawable="@drawable/ic_calendar">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etEndDate"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:clickable="false"
-                    android:enabled="false"
-                    android:focusable="false"
-                    android:inputType="none" />
-            </com.google.android.material.textfield.TextInputLayout>
-
             <!-- Active Status -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="12dp"
                 app:cardCornerRadius="8dp"
                 app:cardElevation="2dp">
 
@@ -174,6 +134,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Currently Active"
+                        android:textColor="@color/text_primary"
                         android:textSize="16sp" />
 
                     <com.google.android.material.switchmaterial.SwitchMaterial
@@ -184,12 +145,48 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Purpose/Reason -->
+            <!-- Start Date -->
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="Purpose / Reason"
+                android:layout_marginBottom="12dp"
+                android:hint="Start Date"
+                app:boxBackgroundMode="outline"
+                app:startIconDrawable="@drawable/ic_calendar">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etStartDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:enabled="false"
+                    android:focusable="false"
+                    android:inputType="none" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- End Date -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:hint="End Date (Optional)"
+                app:boxBackgroundMode="outline"
+                app:startIconDrawable="@drawable/ic_calendar">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etEndDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:enabled="false"
+                    android:focusable="false"
+                    android:inputType="none" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Purpose -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:hint="Purpose / Condition"
                 app:boxBackgroundMode="outline">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -197,17 +194,14 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:enabled="false"
-                    android:gravity="top"
-                    android:inputType="textMultiLine"
-                    android:lines="3"
-                    android:maxLines="5" />
+                    android:inputType="text" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <!-- Prescribing Doctor -->
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="12dp"
                 android:hint="Prescribing Doctor"
                 app:boxBackgroundMode="outline">
 
@@ -216,15 +210,15 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:enabled="false"
-                    android:inputType="textCapWords" />
+                    android:inputType="text" />
             </com.google.android.material.textfield.TextInputLayout>
 
-            <!-- Pharmacy/Source -->
+            <!-- Pharmacy -->
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="Pharmacy / Source"
+                android:layout_marginBottom="12dp"
+                android:hint="Pharmacy"
                 app:boxBackgroundMode="outline">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -232,7 +226,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:enabled="false"
-                    android:inputType="textCapWords" />
+                    android:inputType="text" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <!-- Notes -->
@@ -263,25 +257,6 @@
                 android:text="Created: "
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
-
-            <!-- Save Button (Hidden by default) -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnSaveChanges"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="Save Changes to Blockchain"
-                android:visibility="gone" />
-
-            <!-- Share Button -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnShareMedication"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Share This Medication"
-                android:textColor="@color/primary" />
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

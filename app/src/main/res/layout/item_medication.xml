@@ -62,6 +62,17 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
+        <!-- Share Button -->
+        <ImageView
+            android:id="@+id/btnShareMedication"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Share medication"
+            android:padding="4dp"
+            android:src="@drawable/ic_share" />
+
         <!-- Status Badge -->
         <TextView
             android:id="@+id/tvStatus"

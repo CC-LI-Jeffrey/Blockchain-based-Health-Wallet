@@ -70,8 +70,27 @@ class MedicationActivity : AppCompatActivity() {
         recyclerView = findViewById(R.id.recyclerViewMedication)
         recyclerView.layoutManager = LinearLayoutManager(this)
         
-        adapter = MedicationAdapter(medications)
+        adapter = MedicationAdapter(
+            medications = medications,
+            onShareClick = { medication ->
+                showShareMedicationDialog(medication)
+            }
+        )
         recyclerView.adapter = adapter
+    }
+    
+    private fun showShareMedicationDialog(medication: Medication) {
+        if (medication.id == null) {
+            Toast.makeText(this, "Cannot share medication: ID not found", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        com.fyp.blockchainhealthwallet.ui.MedicationShareHelper.showShareMedicationDialog(
+            context = this,
+            lifecycleScope = lifecycleScope,
+            medicationId = medication.id,
+            medicationName = medication.name
+        )
     }
     
     private fun updateCounts() {

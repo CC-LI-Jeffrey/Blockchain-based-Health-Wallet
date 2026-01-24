@@ -91,6 +91,7 @@ class ViewMedicationActivity : AppCompatActivity() {
         tvCreatedAt = findViewById(R.id.tvCreatedAt)
         btnEdit = findViewById(R.id.btnEdit)
         btnSaveChanges = findViewById(R.id.btnSaveChanges)
+        val btnShareMedication = findViewById<MaterialButton>(R.id.btnShareMedication)
 
         btnEdit.setOnClickListener {
             toggleEditMode()
@@ -98,6 +99,10 @@ class ViewMedicationActivity : AppCompatActivity() {
 
         btnSaveChanges.setOnClickListener {
             saveChanges()
+        }
+
+        btnShareMedication.setOnClickListener {
+            showShareMedicationDialog()
         }
 
         etStartDate.setOnClickListener {
@@ -356,6 +361,15 @@ class ViewMedicationActivity : AppCompatActivity() {
         val encryptedKey: String = EncryptionHelper.encryptKeyForBlockchain(randomKey)
 
         return Pair(ipfsHash, encryptedKey)
+    }
+
+    private fun showShareMedicationDialog() {
+        com.fyp.blockchainhealthwallet.ui.MedicationShareHelper.showShareMedicationDialog(
+            context = this,
+            lifecycleScope = lifecycleScope,
+            medicationId = medicationId!!,
+            medicationName = etMedicationName.text.toString()
+        )
     }
 
     private fun updateProgressDialog(message: String) {
