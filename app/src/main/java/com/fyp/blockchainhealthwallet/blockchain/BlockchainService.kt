@@ -43,7 +43,7 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    private const val CONTRACT_ADDRESS = "0xDaaAB5AC16d55bb6D7858813CE2cBa24D74f3aB5"
+    private const val CONTRACT_ADDRESS = "0xfDa308729bfA50E27ecD8e3fFC6533f237DF345B"
     
     // Sepolia RPC endpoints - using multiple public endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
@@ -167,7 +167,8 @@ object BlockchainService {
         val encryptedDataIpfsHash: String,
         val encryptedCertificateIpfsHash: String,
         val vaccinationDate: BigInteger,
-        val createdAt: BigInteger
+        val createdAt: BigInteger,
+        val encryptedKey: String  // Encrypted random AES key for this record
     )
     
     /**
@@ -863,15 +864,22 @@ object BlockchainService {
     // ============================================
     // VACCINATION FUNCTIONS - HealthWalletV2
     // ============================================
+    // VACCINATION FUNCTIONS - HealthWalletV2
+    // ============================================
     
     /**
      * Add a vaccination record (encrypted and stored on IPFS)
-     * @return Vaccination ID
+     * @param encryptedDataIpfsHash IPFS hash of encrypted vaccination data JSON
+     * @param encryptedCertificateIpfsHash IPFS hash of encrypted certificate file
+     * @param vaccinationDate Unix timestamp of vaccination date
+     * @param encryptedKey Encrypted random AES key for this record
+     * @return Transaction hash
      */
     suspend fun addVaccination(
         encryptedDataIpfsHash: String,
         encryptedCertificateIpfsHash: String,
-        vaccinationDate: BigInteger
+        vaccinationDate: BigInteger,
+        encryptedKey: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
@@ -883,7 +891,8 @@ object BlockchainService {
             listOf(
                 Utf8String(encryptedDataIpfsHash),
                 Utf8String(encryptedCertificateIpfsHash),
-                Uint256(vaccinationDate)
+                Uint256(vaccinationDate),
+                Utf8String(encryptedKey)
             ),
             emptyList()
         )
@@ -900,12 +909,19 @@ object BlockchainService {
     
     /**
      * Update an existing vaccination record
+     * @param vaccinationId ID of the vaccination record
+     * @param encryptedDataIpfsHash IPFS hash of encrypted vaccination data JSON
+     * @param encryptedCertificateIpfsHash IPFS hash of encrypted certificate file
+     * @param vaccinationDate Unix timestamp of vaccination date
+     * @param encryptedKey Encrypted random AES key for this record
+     * @return Transaction hash
      */
     suspend fun updateVaccination(
         vaccinationId: BigInteger,
         encryptedDataIpfsHash: String,
         encryptedCertificateIpfsHash: String,
-        vaccinationDate: BigInteger
+        vaccinationDate: BigInteger,
+        encryptedKey: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
@@ -916,7 +932,8 @@ object BlockchainService {
                 Uint256(vaccinationId),
                 Utf8String(encryptedDataIpfsHash),
                 Utf8String(encryptedCertificateIpfsHash),
-                Uint256(vaccinationDate)
+                Uint256(vaccinationDate),
+                Utf8String(encryptedKey)
             ),
             emptyList()
         )
@@ -986,25 +1003,19 @@ object BlockchainService {
      */
     suspend fun getVaccinationRef(vaccinationId: BigInteger): VaccinationRecordRef? = withContext(Dispatchers.IO) {
         try {
-            val fromAddress = WalletManager.getAddress()
+            val userAddress = getUserAddress()
 
             val function = org.web3j.abi.datatypes.Function(
                 "getVaccinationRef",
                 listOf(Uint256(vaccinationId)),
-                listOf(
-                    object : TypeReference<Uint256>() {},  // id
-                    object : TypeReference<Utf8String>() {},  // encryptedDataIpfsHash
-                    object : TypeReference<Utf8String>() {},  // encryptedCertificateIpfsHash
-                    object : TypeReference<Uint256>() {},  // vaccinationDate
-                    object : TypeReference<Uint256>() {}  // createdAt
-                )
+                emptyList() // Don't specify return type, we'll decode manually
             )
             
             val encodedFunction = FunctionEncoder.encode(function)
             
             val response = web3j.ethCall(
                 org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
-                    fromAddress,  // Set from address for auth
+                    userAddress,  // Pass user address for access control
                     CONTRACT_ADDRESS,
                     encodedFunction
                 ),
@@ -1017,25 +1028,70 @@ object BlockchainService {
             }
             
             val result = response.value
+            Log.d(TAG, "📦 Raw response for vaccination $vaccinationId: $result")
+            Log.d(TAG, "📐 Response length: ${result?.length}")
+
             if (result.isNullOrEmpty() || result == "0x") {
+                Log.w(TAG, "Empty response for vaccination $vaccinationId")
                 return@withContext null
             }
             
-            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
-                result,
-                function.outputParameters
-            )
+            // Manually decode the struct
+            // Struct layout (in hex positions, each field = 64 hex chars = 32 bytes):
+            // 0-63: id (uint256)
+            // 64-127: offset to encryptedDataIpfsHash (dynamic)
+            // 128-191: offset to encryptedCertificateIpfsHash (dynamic)
+            // 192-255: vaccinationDate (uint256)
+            // 256-319: createdAt (uint256)
+            // 320-383: offset to encryptedKey (dynamic)
+            // Then the actual string data at their respective offsets
             
-            if (decodedResult.size < 5) {
-                return@withContext null
-            }
+            val hex = result.removePrefix("0x")
+            
+            // Skip the first 32 bytes (offset pointer to struct)
+            val structData = hex.substring(64)
+            
+            Log.d(TAG, "Struct data length: ${structData.length}")
+            
+            val idHex = structData.substring(0, 64)
+            val dataIpfsOffsetHex = structData.substring(64, 128)
+            val certIpfsOffsetHex = structData.substring(128, 192)
+            val vaccinationDateHex = structData.substring(192, 256)
+            val createdAtHex = structData.substring(256, 320)
+            val encryptedKeyOffsetHex = structData.substring(320, 384)
+            
+            val id = BigInteger(idHex, 16)
+            val vaccinationDate = BigInteger(vaccinationDateHex, 16)
+            val createdAt = BigInteger(createdAtHex, 16)
+            
+            val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2
+            val certIpfsOffset = BigInteger(certIpfsOffsetHex, 16).toInt() * 2
+            val encryptedKeyOffset = BigInteger(encryptedKeyOffsetHex, 16).toInt() * 2
+            
+            val dataIpfsLengthHex = structData.substring(dataIpfsOffset, dataIpfsOffset + 64)
+            val dataIpfsLength = BigInteger(dataIpfsLengthHex, 16).toInt() * 2
+            val dataIpfsHex = structData.substring(dataIpfsOffset + 64, dataIpfsOffset + 64 + dataIpfsLength)
+            val encryptedDataIpfsHash = String(dataIpfsHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+            
+            val certIpfsLengthHex = structData.substring(certIpfsOffset, certIpfsOffset + 64)
+            val certIpfsLength = BigInteger(certIpfsLengthHex, 16).toInt() * 2
+            val certIpfsHex = structData.substring(certIpfsOffset + 64, certIpfsOffset + 64 + certIpfsLength)
+            val encryptedCertificateIpfsHash = String(certIpfsHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+            
+            val encryptedKeyLengthHex = structData.substring(encryptedKeyOffset, encryptedKeyOffset + 64)
+            val encryptedKeyLength = BigInteger(encryptedKeyLengthHex, 16).toInt() * 2
+            val encryptedKeyHex = structData.substring(encryptedKeyOffset + 64, encryptedKeyOffset + 64 + encryptedKeyLength)
+            val encryptedKey = String(encryptedKeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+            
+            Log.d(TAG, "Decoded vaccination: id=$id, date=$vaccinationDate, encryptedKey length=${encryptedKey.length}")
             
             VaccinationRecordRef(
-                id = (decodedResult[0] as Uint256).value,
-                encryptedDataIpfsHash = (decodedResult[1] as Utf8String).value,
-                encryptedCertificateIpfsHash = (decodedResult[2] as Utf8String).value,
-                vaccinationDate = (decodedResult[3] as Uint256).value,
-                createdAt = (decodedResult[4] as Uint256).value
+                id = id,
+                encryptedDataIpfsHash = encryptedDataIpfsHash,
+                encryptedCertificateIpfsHash = encryptedCertificateIpfsHash,
+                vaccinationDate = vaccinationDate,
+                createdAt = createdAt,
+                encryptedKey = encryptedKey
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting vaccination ref", e)

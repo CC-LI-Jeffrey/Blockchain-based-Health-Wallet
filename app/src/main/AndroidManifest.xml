@@ -56,6 +56,10 @@
             android:exported="false"
             android:label="疫苗紀錄" />
         <activity
+            android:name=".AddVaccinationActivity"
+            android:exported="false"
+            android:parentActivityName=".VaccinationRecordActivity" />
+        <activity
             android:name=".VaccinationDetailActivity"
             android:exported="false"
             android:label="疫苗紀錄詳情" />

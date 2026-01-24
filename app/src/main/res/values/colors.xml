@@ -41,4 +41,8 @@
     
     <!-- Card Shadow -->
     <color name="shadow">#1A000000</color>
+    
+    <!-- Info Colors -->
+    <color name="info_background">#E3F2FD</color>
+    <color name="info_text">#1976D2</color>
 </resources>
