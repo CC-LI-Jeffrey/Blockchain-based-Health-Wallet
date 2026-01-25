@@ -45,4 +45,10 @@
     <!-- Info Colors -->
     <color name="info_background">#E3F2FD</color>
     <color name="info_text">#1976D2</color>
+    
+    <!-- ZXing Barcode Scanner Colors -->
+    <color name="zxing_custom_viewfinder_mask">#60000000</color>
+    <color name="zxing_custom_viewfinder_laser">#FF6C63FF</color>
+    <color name="zxing_custom_result_view">#90000000</color>
+    <color name="zxing_custom_possible_result_points">#C06C63FF</color>
 </resources>

@@ -214,6 +214,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, AccessLogActivity::class.java))
         }
 
+        findViewById<CardView>(R.id.cardMyWalletQR).setOnClickListener {
+            showMyWalletQR()
+        }
+
         findViewById<CardView>(R.id.cardSettings).setOnClickListener {
             navigateToSettings()
         }
@@ -221,5 +225,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun navigateToSettings() {
         startActivity(Intent(this, SettingsActivity::class.java))
+    }
+
+    private fun showMyWalletQR() {
+        val address = WalletManager.getAddress()
+        if (address == null) {
+            Toast.makeText(this, "Please connect your wallet first", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Launch QR code display with wallet address
+        val intent = Intent(this, QRCodeDisplayActivity::class.java).apply {
+            putExtra("WALLET_ADDRESS", address)
+            putExtra("TITLE", "My Wallet Address")
+        }
+        startActivity(intent)
     }
 }

@@ -63,4 +63,15 @@
     <!-- Actions -->
     <string name="logout">Logout</string>
     <string name="version_info">Version 1.0 - Blockchain Health Wallet</string>
+
+    <!-- Recipient Types -->
+    <string-array name="recipient_types">
+        <item>Doctor</item>
+        <item>Hospital</item>
+        <item>Clinic</item>
+        <item>Insurance Company</item>
+        <item>Pharmacy</item>
+        <item>Laboratory</item>
+        <item>Other</item>
+    </string-array>
 </resources>

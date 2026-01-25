@@ -96,6 +96,10 @@ class ShareRecordDetailActivity : AppCompatActivity() {
             finish()
         }
 
+        binding.btnShowQRCode.setOnClickListener {
+            showQRCode()
+        }
+
         binding.btnRevokeAccess.setOnClickListener {
             showRevokeConfirmationDialog()
         }
@@ -107,6 +111,30 @@ class ShareRecordDetailActivity : AppCompatActivity() {
                 Toast.LENGTH_SHORT
             ).show()
         }
+    }
+
+    private fun showQRCode() {
+        val shareId = intent.getStringExtra("SHARE_ID") ?: ""
+        val sharedData = intent.getStringExtra("SHARED_DATA") ?: ""
+        val expiryDate = intent.getStringExtra("EXPIRY_DATE") ?: ""
+        
+        // Get recipient address from intent (need to pass this when opening ShareRecordDetailActivity)
+        val recipientAddress = intent.getStringExtra("RECIPIENT_ADDRESS") ?: ""
+        
+        // Parse expiry date to timestamp
+        val expiryTimestamp = try {
+            val dateFormat = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
+            expiryDate.let { dateFormat.parse(it)?.time ?: 0L }
+        } catch (e: Exception) {
+            0L
+        }
+        
+        val qrIntent = android.content.Intent(this, QRCodeDisplayActivity::class.java)
+        qrIntent.putExtra("SHARE_ID", shareId)
+        qrIntent.putExtra("RECIPIENT_ADDRESS", recipientAddress)
+        qrIntent.putExtra("RECORD_TYPE", sharedData)
+        qrIntent.putExtra("EXPIRY_DATE", expiryTimestamp)
+        startActivity(qrIntent)
     }
 
     private fun showRevokeConfirmationDialog() {

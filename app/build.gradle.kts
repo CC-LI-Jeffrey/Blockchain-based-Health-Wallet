@@ -88,6 +88,13 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation(libs.kotlinx.coroutines.android)
 
+    // QR Code Generation and Scanning
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0") {
+        isTransitive = false
+    }
+    implementation("androidx.appcompat:appcompat:1.7.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

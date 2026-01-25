@@ -4,6 +4,7 @@ import android.app.ProgressDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -35,6 +36,7 @@ class WalletInfoActivity : AppCompatActivity() {
     private lateinit var tvSessionTopic: TextView
     private lateinit var tvSessionExpiry: TextView
     private lateinit var btnCopyAddress: Button
+    private lateinit var btnShowQR: Button
     private lateinit var btnFixRSAKeys: Button
     private lateinit var btnDisconnect: Button
     private lateinit var statusIndicator: View
@@ -55,6 +57,7 @@ class WalletInfoActivity : AppCompatActivity() {
         tvSessionTopic = findViewById(R.id.tvSessionTopic)
         tvSessionExpiry = findViewById(R.id.tvSessionExpiry)
         btnCopyAddress = findViewById(R.id.btnCopyAddress)
+        btnShowQR = findViewById(R.id.btnShowQR)
         btnFixRSAKeys = findViewById(R.id.btnFixRSAKeys)
         btnDisconnect = findViewById(R.id.btnDisconnect)
         statusIndicator = findViewById(R.id.statusIndicator)
@@ -71,6 +74,10 @@ class WalletInfoActivity : AppCompatActivity() {
                 copyToClipboard(address)
                 Toast.makeText(this, "Address copied to clipboard", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        btnShowQR.setOnClickListener {
+            showWalletQRCode()
         }
 
         btnFixRSAKeys.setOnClickListener {
@@ -325,5 +332,20 @@ class WalletInfoActivity : AppCompatActivity() {
                     .show()
             }
         }
+    }
+
+    private fun showWalletQRCode() {
+        val address = WalletManager.getAddress()
+        if (address == null) {
+            Toast.makeText(this, "Wallet not connected", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Launch QR code display activity with wallet address
+        val intent = Intent(this, QRCodeDisplayActivity::class.java).apply {
+            putExtra("WALLET_ADDRESS", address)
+            putExtra("TITLE", "My Wallet Address")
+        }
+        startActivity(intent)
     }
 }

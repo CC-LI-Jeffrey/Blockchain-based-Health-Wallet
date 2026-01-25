@@ -36,7 +36,11 @@ class ShareRecordActivity : AppCompatActivity() {
         }
 
         binding.cardShareNew.setOnClickListener {
-            com.fyp.blockchainhealthwallet.ui.BlockchainHelper.showShareDataDialog(this, lifecycleScope)
+            startActivity(Intent(this, RecordSelectorActivity::class.java))
+        }
+
+        binding.cardQRCodeSharing.setOnClickListener {
+            startActivity(Intent(this, SharedRecordsActivity::class.java))
         }
     }
 

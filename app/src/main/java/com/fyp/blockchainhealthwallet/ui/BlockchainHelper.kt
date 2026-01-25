@@ -2,6 +2,7 @@ package com.fyp.blockchainhealthwallet.ui
 
 import android.app.ProgressDialog
 import android.content.Context
+import android.content.Intent
 import android.util.Base64
 import android.util.Log
 import android.widget.EditText
@@ -41,10 +42,45 @@ object BlockchainHelper {
         context: Context,
         lifecycleScope: LifecycleCoroutineScope
     ) {
+        // Show QR code option dialog first
+        AlertDialog.Builder(context)
+            .setTitle("Share Health Data")
+            .setMessage("How would you like to share?")
+            .setPositiveButton("Manual Input") { _, _ ->
+                showManualShareDialog(context, lifecycleScope)
+            }
+            .setNegativeButton("Scan Recipient QR") { _, _ ->
+                scanRecipientQRCode(context, lifecycleScope)
+            }
+            .setNeutralButton("Cancel", null)
+            .show()
+    }
+
+    private fun scanRecipientQRCode(context: Context, lifecycleScope: LifecycleCoroutineScope) {
+        if (context is androidx.appcompat.app.AppCompatActivity) {
+            val intent = Intent(context, com.fyp.blockchainhealthwallet.QRScannerActivity::class.java)
+            context.startActivityForResult(intent, 1001) // QR_SCAN_REQUEST_CODE
+            
+            Toast.makeText(context, "Scan the recipient's wallet QR code", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showManualShareDialog(
+        context: Context,
+        lifecycleScope: LifecycleCoroutineScope
+    ) {
         // Create input fields
         val recipientAddressInput = EditText(context).apply {
             hint = "Recipient Wallet Address (0x...)"
             setPadding(50, 20, 50, 20)
+        }
+        
+        // Add QR scan button for recipient address
+        val scanQRButton = android.widget.Button(context).apply {
+            text = "📷 Scan QR Code"
+            setOnClickListener {
+                scanRecipientQRCode(context, lifecycleScope)
+            }
         }
         
         val recipientNameInput = EditText(context).apply {
@@ -117,6 +153,7 @@ object BlockchainHelper {
                 setPadding(0, 0, 0, 20)
             })
             addView(recipientAddressInput)
+            addView(scanQRButton)
             addView(recipientNameInput)
             addView(android.widget.TextView(context).apply {
                 text = "Recipient Type"
@@ -153,13 +190,12 @@ object BlockchainHelper {
                 // Calculate expiry timestamp (current time + duration)
                 val expiryTimestamp = BigInteger.valueOf((System.currentTimeMillis() / 1000) + (durationDays * 24 * 60 * 60))
                 
-                shareData(
+                sharePersonalInfo(
                     context,
                     lifecycleScope,
                     recipientAddress,
                     recipientName,
                     selectedRecipientType,
-                    selectedCategory,
                     expiryTimestamp
                 )
             }
@@ -170,13 +206,12 @@ object BlockchainHelper {
     /**
      * Share data with recipient on blockchain (HealthWalletV2).
      */
-    private fun shareData(
+    fun sharePersonalInfo(
         context: Context,
         lifecycleScope: LifecycleCoroutineScope,
         recipientAddress: String,
         recipientName: String,
         recipientType: BlockchainService.RecipientType,
-        dataCategory: BlockchainService.DataCategory,
         expiryTimestamp: BigInteger
     ) {
         var progressDialog: ProgressDialog? = null
@@ -288,12 +323,11 @@ object BlockchainHelper {
                 
                 // Show success
                 AlertDialog.Builder(context)
-                    .setTitle("Profile Shared Successfully!")
-                    .setMessage("Recipient can now decrypt and view your personal profile using their private key.\\n\\nTransaction: ${txHash.take(10)}...\\n\\nFull TX: $txHash\\n\\nRefresh share list to see new share.")
+                    .setTitle("Personal Info Shared Successfully!")
+                    .setMessage("Recipient can now decrypt and view your personal information using their private key.\\n\\nTransaction: ${txHash.take(10)}...\\n\\nFull TX: $txHash")
                     .setPositiveButton("OK") { _, _ ->
-                        // Refresh the share list if context is ShareRecordActivity
-                        if (context is ShareRecordActivity) {
-                            context.recreate()
+                        if (context is android.app.Activity) {
+                            context.finish()
                         }
                     }
                     .show()
@@ -317,7 +351,11 @@ object BlockchainHelper {
                 AlertDialog.Builder(context)
                     .setTitle("Transaction Failed")
                     .setMessage(errorMessage)
-                    .setPositiveButton("OK", null)
+                    .setPositiveButton("OK") { _, _ ->
+                        if (context is android.app.Activity) {
+                            context.finish()
+                        }
+                    }
                     .show()
             }
         }
@@ -405,7 +443,11 @@ object BlockchainHelper {
                 AlertDialog.Builder(context)
                     .setTitle("Transaction Failed")
                     .setMessage(errorMessage)
-                    .setPositiveButton("OK", null)
+                    .setPositiveButton("OK") { _, _ ->
+                        if (context is android.app.Activity) {
+                            context.finish()
+                        }
+                    }
                     .show()
             }
         }
@@ -568,7 +610,11 @@ object BlockchainHelper {
                 AlertDialog.Builder(context)
                     .setTitle("Report Shared Successfully!")
                     .setMessage("Recipient can now decrypt and view your medical report.\\n\\nReport: ${report.title}\\n\\nTransaction: ${txHash.take(10)}...\\n\\nFull TX: $txHash")
-                    .setPositiveButton("OK", null)
+                    .setPositiveButton("OK") { _, _ ->
+                        if (context is android.app.Activity) {
+                            context.finish()
+                        }
+                    }
                     .show()
                 
             } catch (e: Exception) {
@@ -590,7 +636,11 @@ object BlockchainHelper {
                 AlertDialog.Builder(context)
                     .setTitle("Share Failed")
                     .setMessage(errorMessage)
-                    .setPositiveButton("OK", null)
+                    .setPositiveButton("OK") { _, _ ->
+                        if (context is android.app.Activity) {
+                            context.finish()
+                        }
+                    }
                     .show()
             }
         }
@@ -774,7 +824,9 @@ object BlockchainHelper {
                 AlertDialog.Builder(activity)
                     .setTitle("Vaccination Shared Successfully!")
                     .setMessage("Recipient can now decrypt and view your vaccination record.\\n\\nTransaction: ${txHash.take(10)}...\\n\\nFull TX: $txHash")
-                    .setPositiveButton("OK", null)
+                    .setPositiveButton("OK") { _, _ ->
+                        activity.finish()
+                    }
                     .show()
                 
             } catch (e: Exception) {
@@ -796,7 +848,9 @@ object BlockchainHelper {
                 AlertDialog.Builder(activity)
                     .setTitle("Share Failed")
                     .setMessage(errorMessage)
-                    .setPositiveButton("OK", null)
+                    .setPositiveButton("OK") { _, _ ->
+                        activity.finish()
+                    }
                     .show()
             }
         }

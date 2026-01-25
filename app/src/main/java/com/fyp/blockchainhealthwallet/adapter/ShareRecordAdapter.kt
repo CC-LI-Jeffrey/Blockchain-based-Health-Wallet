@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.fyp.blockchainhealthwallet.R
@@ -11,7 +12,8 @@ import com.fyp.blockchainhealthwallet.model.ShareRecord
 
 class ShareRecordAdapter(
     private val shareRecords: List<ShareRecord>,
-    private val onItemClick: (ShareRecord) -> Unit
+    private val onItemClick: (ShareRecord) -> Unit,
+    private val onQRClick: (ShareRecord) -> Unit
 ) : RecyclerView.Adapter<ShareRecordAdapter.ShareRecordViewHolder>() {
 
     inner class ShareRecordViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -21,6 +23,7 @@ class ShareRecordAdapter(
         val tvShareDate: TextView = itemView.findViewById(R.id.tvShareDate)
         val tvExpiryDate: TextView = itemView.findViewById(R.id.tvExpiryDate)
         val tvStatus: TextView = itemView.findViewById(R.id.tvStatus)
+        val btnQRCode: ImageButton = itemView.findViewById(R.id.btnQRCode)
 
         fun bind(shareRecord: ShareRecord) {
             tvRecipientName.text = shareRecord.recipientName
@@ -48,6 +51,10 @@ class ShareRecordAdapter(
 
             itemView.setOnClickListener {
                 onItemClick(shareRecord)
+            }
+
+            btnQRCode.setOnClickListener {
+                onQRClick(shareRecord)
             }
         }
     }

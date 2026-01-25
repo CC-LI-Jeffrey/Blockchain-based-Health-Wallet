@@ -139,7 +139,7 @@ object MedicationShareHelper {
     /**
      * Share medication record with recipient on blockchain.
      */
-    private fun shareMedication(
+    fun shareMedication(
         context: Context,
         lifecycleScope: LifecycleCoroutineScope,
         medicationId: BigInteger,
@@ -259,7 +259,11 @@ object MedicationShareHelper {
                 AlertDialog.Builder(context)
                     .setTitle("Medication Shared Successfully!")
                     .setMessage("\"$medicationName\" has been shared with $recipientName.\n\nRecipient can now decrypt and view this medication record using their private key.\n\nTransaction: ${txHash.take(10)}...")
-                    .setPositiveButton("OK", null)
+                    .setPositiveButton("OK") { _, _ ->
+                        if (context is android.app.Activity) {
+                            context.finish()
+                        }
+                    }
                     .show()
                 
             } catch (e: Exception) {
@@ -281,7 +285,11 @@ object MedicationShareHelper {
                 AlertDialog.Builder(context)
                     .setTitle("Share Failed")
                     .setMessage(errorMessage)
-                    .setPositiveButton("OK", null)
+                    .setPositiveButton("OK") { _, _ ->
+                        if (context is android.app.Activity) {
+                            context.finish()
+                        }
+                    }
                     .show()
             }
         }

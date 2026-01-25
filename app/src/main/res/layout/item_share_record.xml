@@ -61,7 +61,17 @@
                 android:paddingStart="12dp"
                 android:paddingEnd="12dp"
                 android:paddingTop="4dp"
-                android:paddingBottom="4dp" />
+                android:paddingBottom="4dp"
+                android:layout_marginEnd="8dp" />
+
+            <ImageButton
+                android:id="@+id/btnQRCode"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_qr_code"
+                android:contentDescription="Show QR Code"
+                app:tint="@color/primary" />
 
         </LinearLayout>
 

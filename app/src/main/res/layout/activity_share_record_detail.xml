@@ -325,6 +325,17 @@
                 android:padding="16dp">
 
                 <Button
+                    android:id="@+id/btnShowQRCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Show QR Code"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:backgroundTint="#2196F3"
+                    app:cornerRadius="8dp"
+                    android:layout_marginBottom="8dp" />
+
+                <Button
                     android:id="@+id/btnRevokeAccess"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

@@ -1,5 +1,7 @@
 package com.fyp.blockchainhealthwallet
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -7,6 +9,7 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -26,6 +29,18 @@ class ReceivedRecordsActivity : AppCompatActivity() {
     private lateinit var binding: ActivityReceivedRecordsBinding
     private var selectedCategory: BlockchainService.DataCategory? = null
     private val receivedShares = mutableListOf<BlockchainService.ShareRecord>()
+
+    // QR Scanner result launcher
+    private val qrScannerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val scannedData = result.data?.getStringExtra("SCAN_RESULT")
+            if (scannedData != null) {
+                handleQRCodeResult(scannedData)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -130,7 +145,7 @@ class ReceivedRecordsActivity : AppCompatActivity() {
 
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Import Received Share")
-            .setMessage("To view shares someone sent you, enter the Share ID they provided:")
+            .setMessage("To view shares someone sent you, enter the Share ID or scan a QR code:")
             .setView(input)
             .setPositiveButton("Import") { _, _ ->
                 val shareIdText = input.text.toString()
@@ -138,12 +153,72 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                     importShareById(shareIdText, recipientAddress)
                 }
             }
+            .setNeutralButton("Scan QR Code") { _, _ ->
+                startQRScanner(recipientAddress)
+            }
             .setNegativeButton("Cancel") { dialog, _ ->
                 dialog.dismiss()
                 finish()
             }
             .setCancelable(false)
             .show()
+    }
+
+    private fun startQRScanner(recipientAddress: String) {
+        // Launch our custom QR scanner activity
+        val scannerIntent = Intent(this, QRScannerActivity::class.java)
+        qrScannerLauncher.launch(scannerIntent)
+    }
+
+    private fun handleQRCodeResult(qrContent: String) {
+        try {
+            // Parse QR code JSON data
+            val jsonData = org.json.JSONObject(qrContent)
+            
+            // Validate it's a Health Wallet share
+            if (jsonData.optString("type") != "HEALTH_WALLET_SHARE") {
+                Toast.makeText(this, "Invalid QR code. Please scan a Health Wallet share QR code.", Toast.LENGTH_LONG).show()
+                val address = WalletManager.getAddress()
+                if (address != null) {
+                    showImportShareDialog(address)
+                }
+                return
+            }
+            
+            val shareId = jsonData.optString("shareId")
+            val recipientAddress = jsonData.optString("recipientAddress")
+            val currentAddress = WalletManager.getAddress()
+            
+            // Verify the share is for this recipient
+            if (!recipientAddress.equals(currentAddress, ignoreCase = true)) {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Wrong Recipient")
+                    .setMessage("This share is not for your wallet address.\\n\\nShare recipient: $recipientAddress\\nYour address: $currentAddress")
+                    .setPositiveButton("OK") { _, _ ->
+                        if (currentAddress != null) {
+                            showImportShareDialog(currentAddress)
+                        }
+                    }
+                    .show()
+                return
+            }
+            
+            // Import the share
+            if (shareId.isNotBlank() && currentAddress != null) {
+                importShareById(shareId, currentAddress)
+            } else {
+                Toast.makeText(this, "Invalid QR code data", Toast.LENGTH_SHORT).show()
+                showImportShareDialog(currentAddress ?: "")
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing QR code", e)
+            Toast.makeText(this, "Invalid QR code format", Toast.LENGTH_SHORT).show()
+            val address = WalletManager.getAddress()
+            if (address != null) {
+                showImportShareDialog(address)
+            }
+        }
     }
 
     private fun importShareById(shareIdText: String, recipientAddress: String) {

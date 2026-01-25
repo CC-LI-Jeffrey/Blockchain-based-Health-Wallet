@@ -121,14 +121,30 @@
                     android:textColor="@color/text_secondary"
                     android:fontFamily="monospace" />
 
-                <Button
-                    android:id="@+id/btnCopyAddress"
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="Copy Address"
-                    android:textAllCaps="false"
-                    style="@style/Widget.Material3.Button.TonalButton" />
+                    android:orientation="horizontal"
+                    android:gravity="start">
+
+                    <Button
+                        android:id="@+id/btnCopyAddress"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="8dp"
+                        android:text="Copy Address"
+                        android:textAllCaps="false"
+                        style="@style/Widget.Material3.Button.TonalButton" />
+
+                    <Button
+                        android:id="@+id/btnShowQR"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📱 Show QR Code"
+                        android:textAllCaps="false"
+                        style="@style/Widget.Material3.Button.TonalButton" />
+                </LinearLayout>
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 

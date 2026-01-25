@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Biometric authentication permission -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
@@ -145,6 +146,27 @@
             android:name=".ShareRecordDetailActivity"
             android:exported="false"
             android:label="Share Details" />
+        <activity
+            android:name=".QRCodeDisplayActivity"
+            android:exported="false"
+            android:label="Share QR Code"
+            android:parentActivityName=".ShareRecordDetailActivity" />
+        <activity
+            android:name=".QRScannerActivity"
+            android:exported="false"
+            android:label="Scan QR Code"
+            android:screenOrientation="portrait"
+            android:parentActivityName=".ReceivedRecordsActivity" />
+        <activity
+            android:name=".RecordSelectorActivity"
+            android:exported="false"
+            android:label="Select Record"
+            android:parentActivityName=".ShareRecordActivity" />
+        <activity
+            android:name=".ShareFormActivity"
+            android:exported="false"
+            android:label="Share Record"
+            android:parentActivityName=".RecordSelectorActivity" />
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
