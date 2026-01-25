@@ -364,7 +364,7 @@ class VaccinationRecordActivity : AppCompatActivity() {
     }
 
     private fun openVaccinationDetail(record: VaccinationRecord) {
-        val intent = Intent(this, VaccinationDetailActivity::class.java).apply {
+        val intent = Intent(this, ViewVaccinationActivity::class.java).apply {
             // Display fields
             putExtra("RECORD_ID", record.id)
             putExtra("DATE", record.date)
@@ -389,6 +389,10 @@ class VaccinationRecordActivity : AppCompatActivity() {
             // Blockchain fields
             if (record.blockchainId != null) {
                 putExtra("BLOCKCHAIN_ID", record.blockchainId.toLong())
+            }
+            val createdAt = record.createdAt
+            if (createdAt != null && createdAt > 0) {
+                putExtra("CREATED_AT", createdAt)
             }
             putExtra("IS_ON_BLOCKCHAIN", record.isOnBlockchain)
             putExtra("IS_ENCRYPTED", record.isEncrypted)

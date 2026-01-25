@@ -409,14 +409,14 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                         addDataRow(container, "⏰ Frequency", frequency)
                         addDataRow(container, "📊 Status", if (isActive) "✅ Active" else "⏸️ Completed")
 
-                        // Create a button to view full details
+                        // Create a button to view full details (matching reports/vaccination style)
                         val btnViewMedication = android.widget.Button(this@ReceivedRecordsActivity).apply {
-                            text = "📋 View Full Medication Details"
-                            setBackgroundColor(ContextCompat.getColor(this@ReceivedRecordsActivity, R.color.medication))
+                            text = "VIEW FULL DETAILS"
+                            setBackgroundColor(ContextCompat.getColor(this@ReceivedRecordsActivity, R.color.primary))
                             setTextColor(ContextCompat.getColor(this@ReceivedRecordsActivity, android.R.color.white))
                             setPadding(32, 24, 32, 24)
                             setOnClickListener {
-                                openReceivedMedicationDetails(share, dataMap)
+                                openReceivedMedicationDetails(share, dataMap, aesKey)
                             }
                         }
                         container.addView(btnViewMedication)
@@ -457,34 +457,25 @@ class ReceivedRecordsActivity : AppCompatActivity() {
                         // Parse vaccination data
                         val vaccinationData = org.json.JSONObject(decryptedJsonData)
 
-                        // Display the data
+                        // Show brief summary
                         container.removeAllViews()
                         addDataRow(container, "💉 Vaccine Name", vaccinationData.optString("vaccineName", "N/A"))
                         addDataRow(container, "🏥 Manufacturer", vaccinationData.optString("manufacturer", "N/A"))
-                        addDataRow(container, "🌍 Country", vaccinationData.optString("country", "N/A"))
-                        addDataRow(container, "👨‍⚕️ Provider", vaccinationData.optString("provider", "N/A"))
-                        addDataRow(container, "📍 Location", vaccinationData.optString("location", "N/A"))
-                        addDataRow(container, "🔢 Batch Number", vaccinationData.optString("batchNumber", "N/A"))
-
-                        // Add "View Certificate" button if certificate exists
-                        if (!vaccinationRef.encryptedCertificateIpfsHash.isNullOrEmpty()) {
-                            val btnViewCertificate = android.widget.Button(this@ReceivedRecordsActivity).apply {
-                                text = "📄 View Certificate"
-                                setBackgroundColor(ContextCompat.getColor(this@ReceivedRecordsActivity, R.color.primary))
-                                setTextColor(ContextCompat.getColor(this@ReceivedRecordsActivity, android.R.color.white))
-                                setPadding(32, 24, 32, 24)
-                                setOnClickListener {
-                                    openReceivedVaccinationCertificate(
-                                        vaccinationRef.encryptedCertificateIpfsHash,
-                                        aesKey,
-                                        vaccinationData.optString("vaccineName", "Vaccination")
-                                    )
-                                }
+                        addDataRow(container, "📅 Vaccination Date", java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(vaccinationRef.vaccinationDate.toLong() * 1000)))
+                        
+                        // Add "View Full Details" button
+                        val btnViewDetails = android.widget.Button(this@ReceivedRecordsActivity).apply {
+                            text = "📋 View Full Details"
+                            setBackgroundColor(ContextCompat.getColor(this@ReceivedRecordsActivity, R.color.primary))
+                            setTextColor(ContextCompat.getColor(this@ReceivedRecordsActivity, android.R.color.white))
+                            setPadding(32, 24, 32, 24)
+                            setOnClickListener {
+                                openReceivedVaccinationDetails(share, vaccinationRef, vaccinationData, aesKey)
                             }
-                            container.addView(btnViewCertificate)
-
-                            Log.d(TAG, "✅ Added certificate viewing button")
                         }
+                        container.addView(btnViewDetails)
+
+                        Log.d(TAG, "✅ Vaccination preview loaded")
                     }
                     BlockchainService.RecordType.MEDICAL_REPORT -> {
                         // For medical reports, show brief summary and "View Details" button
@@ -641,8 +632,13 @@ class ReceivedRecordsActivity : AppCompatActivity() {
      */
     private fun openReceivedMedicationDetails(
         share: BlockchainService.ShareRecord,
-        dataMap: Map<String, Any>
+        dataMap: Map<String, Any>,
+        aesKey: javax.crypto.SecretKey
     ) {
+        // Get prescription IPFS hash if it exists
+        val prescriptionIpfsHash = (dataMap["prescriptionIpfsHash"] as? String)?.takeIf { it.isNotBlank() } ?: ""
+        val hasPrescription = prescriptionIpfsHash.isNotEmpty()
+        
         val intent = android.content.Intent(this, ViewReceivedMedicationActivity::class.java).apply {
             putExtra("SHARE_ID", share.id.toString())
             putExtra("OWNER_ADDRESS", share.ownerAddress)
@@ -658,6 +654,39 @@ class ReceivedRecordsActivity : AppCompatActivity() {
             putExtra("PHARMACY", (dataMap["pharmacy"] as? String)?.takeIf { it.isNotBlank() } ?: "")
             putExtra("NOTES", (dataMap["notes"] as? String)?.takeIf { it.isNotBlank() } ?: "")
             putExtra("CREATED_AT", ((dataMap["createdAt"] as? Number)?.toLong() ?: 0L))
+            putExtra("HAS_PRESCRIPTION", hasPrescription)
+            putExtra("PRESCRIPTION_IPFS_HASH", prescriptionIpfsHash)
+            putExtra("ENCRYPTED_RECORD_KEY", share.encryptedRecordKey)
+        }
+        startActivity(intent)
+    }
+
+    /**
+     * Open received vaccination details in new activity
+     */
+    private fun openReceivedVaccinationDetails(
+        share: BlockchainService.ShareRecord,
+        vaccinationRef: BlockchainService.VaccinationRecordRef,
+        vaccinationData: org.json.JSONObject,
+        aesKey: javax.crypto.SecretKey
+    ) {
+        val intent = android.content.Intent(this, ViewReceivedVaccinationActivity::class.java).apply {
+            putExtra("SHARE_ID", share.id.toString())
+            putExtra("OWNER_ADDRESS", share.ownerAddress)
+            putExtra("VACCINE_NAME", vaccinationData.optString("vaccineName", ""))
+            putExtra("VACCINE_NAME_EN", vaccinationData.optString("vaccineNameEn", ""))
+            putExtra("VACCINE_FULL_NAME", vaccinationData.optString("vaccineFullName", ""))
+            putExtra("MANUFACTURER", vaccinationData.optString("manufacturer", ""))
+            putExtra("COUNTRY", vaccinationData.optString("country", ""))
+            putExtra("PROVIDER", vaccinationData.optString("provider", ""))
+            putExtra("LOCATION", vaccinationData.optString("location", ""))
+            putExtra("BATCH_NUMBER", vaccinationData.optString("batchNumber", ""))
+            putExtra("NOTES", vaccinationData.optString("notes", ""))
+            putExtra("VACCINATION_DATE", vaccinationRef.vaccinationDate.toLong() * 1000)
+            putExtra("CREATED_AT", vaccinationRef.createdAt.toLong() * 1000)
+            putExtra("HAS_CERTIFICATE", !vaccinationRef.encryptedCertificateIpfsHash.isNullOrEmpty())
+            putExtra("CERTIFICATE_IPFS_HASH", vaccinationRef.encryptedCertificateIpfsHash ?: "")
+            putExtra("ENCRYPTED_RECORD_KEY", share.encryptedRecordKey)
         }
         startActivity(intent)
     }

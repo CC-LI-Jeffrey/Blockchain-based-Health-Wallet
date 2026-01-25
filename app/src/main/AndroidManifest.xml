@@ -77,6 +77,11 @@
             android:exported="false"
             android:label="疫苗紀錄詳情" />
         <activity
+            android:name=".ViewVaccinationActivity"
+            android:exported="false"
+            android:label="Vaccination Details"
+            android:parentActivityName=".VaccinationRecordActivity" />
+        <activity
             android:name=".PdfViewerActivity"
             android:exported="false"
             android:label="PDF Viewer" />
@@ -130,6 +135,11 @@
             android:name=".ViewReceivedMedicationActivity"
             android:exported="false"
             android:label="Received Medication"
+            android:parentActivityName=".ReceivedRecordsActivity" />
+        <activity
+            android:name=".ViewReceivedVaccinationActivity"
+            android:exported="false"
+            android:label="Received Vaccination"
             android:parentActivityName=".ReceivedRecordsActivity" />
         <activity
             android:name=".ShareRecordDetailActivity"
