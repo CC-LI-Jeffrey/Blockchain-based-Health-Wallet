@@ -489,15 +489,35 @@ class ProfileActivity : AppCompatActivity() {
     private fun showProfileForm() {
         val formView = layoutInflater.inflate(R.layout.dialog_edit_profile, null)
         
+        // Setup Gender dropdown
+        val genderField = formView.findViewById<android.widget.AutoCompleteTextView>(R.id.etGender)
+        val genderOptions = arrayOf("Male", "Female", "Other", "Prefer not to say")
+        val genderAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, genderOptions)
+        genderField?.setAdapter(genderAdapter)
+        
+        // Setup Blood Type dropdown
+        val bloodTypeField = formView.findViewById<android.widget.AutoCompleteTextView>(R.id.etBloodType)
+        val bloodTypeOptions = arrayOf("A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-")
+        val bloodTypeAdapter = android.widget.ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, bloodTypeOptions)
+        bloodTypeField?.setAdapter(bloodTypeAdapter)
+        
+        // Setup Date Picker for DOB
+        val dobField = formView.findViewById<android.widget.EditText>(R.id.etDOB)
+        dobField?.setOnClickListener {
+            showDatePicker { selectedDate ->
+                dobField.setText(selectedDate)
+            }
+        }
+        
         // Populate with existing data if available
         currentPersonalInfo?.let { info ->
             formView.findViewById<android.widget.EditText>(R.id.etFirstName)?.setText(info.firstName)
             formView.findViewById<android.widget.EditText>(R.id.etLastName)?.setText(info.lastName)
             formView.findViewById<android.widget.EditText>(R.id.etEmail)?.setText(info.email)
             formView.findViewById<android.widget.EditText>(R.id.etHKID)?.setText(info.hkid)
-            formView.findViewById<android.widget.EditText>(R.id.etDOB)?.setText(info.dateOfBirth)
-            formView.findViewById<android.widget.EditText>(R.id.etGender)?.setText(info.gender)
-            formView.findViewById<android.widget.EditText>(R.id.etBloodType)?.setText(info.bloodType)
+            dobField?.setText(info.dateOfBirth)
+            genderField?.setText(info.gender, false)
+            bloodTypeField?.setText(info.bloodType, false)
             formView.findViewById<android.widget.EditText>(R.id.etPhone)?.setText(info.phone)
             formView.findViewById<android.widget.EditText>(R.id.etAddress)?.setText(info.address)
             formView.findViewById<android.widget.EditText>(R.id.etEmergencyName)?.setText(info.emergencyContact.name)
@@ -505,14 +525,44 @@ class ProfileActivity : AppCompatActivity() {
             formView.findViewById<android.widget.EditText>(R.id.etEmergencyPhone)?.setText(info.emergencyContact.phone)
         }
         
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Edit Profile")
             .setView(formView)
             .setPositiveButton("Save to Blockchain") { _, _ ->
                 saveProfileFromForm(formView)
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+        
+        dialog.show()
+    }
+    
+    /**
+     * Show date picker dialog for date selection
+     */
+    private fun showDatePicker(onDateSelected: (String) -> Unit) {
+        val calendar = java.util.Calendar.getInstance()
+        
+        val datePickerDialog = android.app.DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                // Format date as YYYY-MM-DD
+                val formattedDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
+                onDateSelected(formattedDate)
+            },
+            calendar.get(java.util.Calendar.YEAR),
+            calendar.get(java.util.Calendar.MONTH),
+            calendar.get(java.util.Calendar.DAY_OF_MONTH)
+        )
+        
+        // Set max date to today (can't be born in the future)
+        datePickerDialog.datePicker.maxDate = System.currentTimeMillis()
+        
+        // Set min date to 150 years ago (reasonable limit)
+        calendar.add(java.util.Calendar.YEAR, -150)
+        datePickerDialog.datePicker.minDate = calendar.timeInMillis
+        
+        datePickerDialog.show()
     }
     
     /**
