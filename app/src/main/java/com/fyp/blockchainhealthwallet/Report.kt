@@ -15,7 +15,8 @@ data class Report(
     val filePath: String? = null,
     val ipfsHash: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
-    val encryptedKey: String = ""
+    val encryptedKey: String = "",
+    val isDeleted: Boolean = false  // Soft delete flag from blockchain
 ) : Parcelable
 
 enum class ReportType(val displayName: String) {

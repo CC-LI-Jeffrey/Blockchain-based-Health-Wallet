@@ -320,6 +320,20 @@
                         tools:src="@drawable/ic_document" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
+
+            <!-- Delete Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDeleteReport"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"
+                android:text="Delete Report"
+                android:textColor="#D32F2F"
+                app:strokeColor="#D32F2F"
+                app:icon="@android:drawable/ic_menu_delete"
+                app:iconTint="#D32F2F" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

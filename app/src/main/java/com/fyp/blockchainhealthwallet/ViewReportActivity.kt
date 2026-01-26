@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.math.BigInteger
 
 class ViewReportActivity : AppCompatActivity() {
 
@@ -75,6 +76,11 @@ class ViewReportActivity : AppCompatActivity() {
         cardAttachedFile = findViewById(R.id.cardAttachedFile)
         tvFilePath = findViewById(R.id.tvFilePath)
         ivFilePreview = findViewById(R.id.ivFilePreview)
+
+        val btnDeleteReport = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnDeleteReport)
+        btnDeleteReport?.setOnClickListener {
+            showDeleteConfirmationDialog()
+        }
     }
 
     private fun loadReportData() {
@@ -294,6 +300,78 @@ class ViewReportActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e("ViewReportActivity", "Error opening file", e)
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showDeleteConfirmationDialog() {
+        val report = currentReport ?: return
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Delete Report")
+            .setMessage("Are you sure you want to delete this medical report?\n\nNote: This will mark it as deleted but data remains on blockchain. Shared records remain accessible to recipients.")
+            .setPositiveButton("Delete") { _, _ ->
+                performDelete(report.id)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun performDelete(reportId: String) {
+        val progressDialog = android.app.ProgressDialog(this).apply {
+            setMessage("Deleting report...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch {
+            try {
+                val repId = BigInteger(reportId)
+                val txHash = BlockchainService.deleteReport(repId)
+
+                progressDialog.dismiss()
+
+                if (txHash.startsWith("pending_")) {
+                    androidx.appcompat.app.AlertDialog.Builder(this@ViewReportActivity)
+                        .setTitle("⏳ Waiting for Approval")
+                        .setMessage("Delete request sent!\n\n📱 Open your wallet app to approve.")
+                        .setPositiveButton("OK") { _, _ ->
+                            setResult(RESULT_OK)
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                } else {
+                    androidx.appcompat.app.AlertDialog.Builder(this@ViewReportActivity)
+                        .setTitle("✅ Deleted")
+                        .setMessage("Report deleted successfully.\n\nTransaction: ${txHash.take(10)}...")
+                        .setPositiveButton("OK") { _, _ ->
+                            setResult(RESULT_OK)
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
+
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                android.util.Log.e("ViewReportActivity", "Error deleting report", e)
+
+                val errorMessage = when {
+                    e.message?.contains("user rejected", ignoreCase = true) == true ->
+                        "Transaction cancelled by user"
+                    e.message?.contains("insufficient funds", ignoreCase = true) == true ->
+                        "Insufficient funds for gas fees"
+                    e.message?.contains("Already deleted", ignoreCase = true) == true ->
+                        "This report has already been deleted"
+                    else -> "Delete failed: ${e.message}"
+                }
+
+                androidx.appcompat.app.AlertDialog.Builder(this@ViewReportActivity)
+                    .setTitle("Delete Failed")
+                    .setMessage(errorMessage)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
         }
     }
 }

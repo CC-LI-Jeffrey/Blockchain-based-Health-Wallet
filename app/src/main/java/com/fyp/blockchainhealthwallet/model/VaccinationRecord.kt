@@ -37,5 +37,8 @@ data class VaccinationRecord(
     
     // Encryption status
     val isEncrypted: Boolean = false,                  // True if data is encrypted
-    val isOnBlockchain: Boolean = false                // True if saved to blockchain
+    val isOnBlockchain: Boolean = false,               // True if saved to blockchain
+    
+    // Delete status
+    val isDeleted: Boolean = false                     // Soft delete flag from blockchain
 )

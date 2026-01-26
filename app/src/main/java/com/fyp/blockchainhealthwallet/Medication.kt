@@ -15,5 +15,6 @@ data class Medication(
     val prescribingDoctor: String = "",
     val pharmacy: String = "",
     val notes: String = "",
-    val createdAt: Long? = null
+    val createdAt: Long? = null,
+    val isDeleted: Boolean = false  // Soft delete flag from blockchain
 )

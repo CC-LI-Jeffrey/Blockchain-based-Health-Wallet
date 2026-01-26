@@ -43,8 +43,8 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    private const val CONTRACT_ADDRESS = "0xC10AEFE286533F83079AbBc7E11f3824F017D9cE"
-    //0xfDa308729bfA50E27ecD8e3fFC6533f237DF345B
+    private const val CONTRACT_ADDRESS = "0x8b9432cc2d5b6164d7E57c128eEf14d10BB1C5d6"
+    //0xC10AEFE286533F83079AbBc7E11f3824F017D9cE
     // Sepolia RPC endpoints - using multiple public endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
     private const val RPC_URL_FALLBACK = "https://rpc.sepolia.org"
@@ -157,7 +157,8 @@ object BlockchainService {
         val isActive: Boolean,
         val startDate: BigInteger,
         val endDate: BigInteger,
-        val createdAt: BigInteger
+        val createdAt: BigInteger,
+        val isDeleted: Boolean = false
     )
     
     /**
@@ -169,7 +170,8 @@ object BlockchainService {
         val encryptedCertificateIpfsHash: String,
         val vaccinationDate: BigInteger,
         val createdAt: BigInteger,
-        val encryptedKey: String  // Encrypted random AES key for this record
+        val encryptedKey: String,  // Encrypted random AES key for this record
+        val isDeleted: Boolean = false
     )
     
     /**
@@ -183,7 +185,8 @@ object BlockchainService {
         val hasFile: Boolean,
         val reportDate: BigInteger,
         val createdAt: BigInteger,
-        val encryptedKey: String  // Encrypted random AES key for this record
+        val encryptedKey: String,  // Encrypted random AES key for this record
+        val isDeleted: Boolean = false
     )
     
     /**
@@ -742,6 +745,7 @@ object BlockchainService {
             // 256-319: startDate (uint256)
             // 320-383: endDate (uint256)
             // 384-447: createdAt (uint256)
+            // 448-511: isDeleted (bool padded to 32 bytes)
             // Then the actual string data at their respective offsets
 
             val hex = result.removePrefix("0x")
@@ -756,12 +760,14 @@ object BlockchainService {
             val startDateHex = structData.substring(256, 320)
             val endDateHex = structData.substring(320, 384)
             val createdAtHex = structData.substring(384, 448)
+            val isDeletedHex = structData.substring(448, 512)
 
             val id = BigInteger(idHex, 16)
             val isActive = BigInteger(isActiveHex, 16) != BigInteger.ZERO
             val startDate = BigInteger(startDateHex, 16)
             val endDate = BigInteger(endDateHex, 16)
             val createdAt = BigInteger(createdAtHex, 16)
+            val isDeleted = BigInteger(isDeletedHex, 16) != BigInteger.ZERO
             
             // Decode dynamic strings
             val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2 // Convert to hex chars
@@ -785,7 +791,8 @@ object BlockchainService {
                 isActive = isActive,
                 startDate = startDate,
                 endDate = endDate,
-                createdAt = createdAt
+                createdAt = createdAt,
+                isDeleted = isDeleted
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting medication ref", e)
@@ -1079,6 +1086,7 @@ object BlockchainService {
             // 192-255: vaccinationDate (uint256)
             // 256-319: createdAt (uint256)
             // 320-383: offset to encryptedKey (dynamic)
+            // 384-447: isDeleted (bool padded to 32 bytes)
             // Then the actual string data at their respective offsets
 
             val hex = result.removePrefix("0x")
@@ -1094,10 +1102,12 @@ object BlockchainService {
             val vaccinationDateHex = structData.substring(192, 256)
             val createdAtHex = structData.substring(256, 320)
             val encryptedKeyOffsetHex = structData.substring(320, 384)
+            val isDeletedHex = structData.substring(384, 448)
 
             val id = BigInteger(idHex, 16)
             val vaccinationDate = BigInteger(vaccinationDateHex, 16)
             val createdAt = BigInteger(createdAtHex, 16)
+            val isDeleted = BigInteger(isDeletedHex, 16) != BigInteger.ZERO
 
             val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2
             val certIpfsOffset = BigInteger(certIpfsOffsetHex, 16).toInt() * 2
@@ -1126,7 +1136,8 @@ object BlockchainService {
                 encryptedCertificateIpfsHash = encryptedCertificateIpfsHash,
                 vaccinationDate = vaccinationDate,
                 createdAt = createdAt,
-                encryptedKey = encryptedKey
+                encryptedKey = encryptedKey,
+                isDeleted = isDeleted
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting vaccination ref", e)
@@ -1204,6 +1215,87 @@ object BlockchainService {
                 Uint256(reportDate),
                 Utf8String(encryptedKey)
             ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+
+    /**
+     * Delete (soft delete) a medication record
+     * @param medicationId ID of the medication to delete
+     * @return Transaction hash
+     */
+    suspend fun deleteMedication(medicationId: BigInteger): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        Log.d(TAG, "Deleting medication ID: $medicationId for user: $userAddress")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "deleteMedication",
+            listOf(Uint256(medicationId)),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+
+    /**
+     * Delete (soft delete) a vaccination record
+     * @param vaccinationId ID of the vaccination to delete
+     * @return Transaction hash
+     */
+    suspend fun deleteVaccination(vaccinationId: BigInteger): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        Log.d(TAG, "Deleting vaccination ID: $vaccinationId for user: $userAddress")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "deleteVaccination",
+            listOf(Uint256(vaccinationId)),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = CONTRACT_ADDRESS,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+
+    /**
+     * Delete (soft delete) a medical report
+     * @param reportId ID of the report to delete
+     * @return Transaction hash
+     */
+    suspend fun deleteReport(reportId: BigInteger): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        Log.d(TAG, "Deleting report ID: $reportId for user: $userAddress")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "deleteReport",
+            listOf(Uint256(reportId)),
             emptyList()
         )
         
@@ -1402,6 +1494,7 @@ object BlockchainService {
             // 320-383: reportDate (uint256)
             // 384-447: createdAt (uint256)
             // 448-511: offset to encryptedKey (dynamic)
+            // 512-575: isDeleted (bool padded to 32 bytes)
             // Then the actual string data at their respective offsets
             
             val hex = result.removePrefix("0x")
@@ -1419,12 +1512,14 @@ object BlockchainService {
             val reportDateHex = structData.substring(320, 384)
             val createdAtHex = structData.substring(384, 448)
             val encryptedKeyOffsetHex = structData.substring(448, 512)
+            val isDeletedHex = structData.substring(512, 576)
             
             val id = BigInteger(idHex, 16)
             val reportTypeValue = BigInteger(reportTypeHex, 16).toInt()
             val hasFile = BigInteger(hasFileHex, 16) != BigInteger.ZERO
             val reportDate = BigInteger(reportDateHex, 16)
             val createdAt = BigInteger(createdAtHex, 16)
+            val isDeleted = BigInteger(isDeletedHex, 16) != BigInteger.ZERO
             
             val dataIpfsOffset = BigInteger(dataIpfsOffsetHex, 16).toInt() * 2
             val fileIpfsOffset = BigInteger(fileIpfsOffsetHex, 16).toInt() * 2
@@ -1456,7 +1551,8 @@ object BlockchainService {
                 hasFile = hasFile,
                 reportDate = reportDate,
                 createdAt = createdAt,
-                encryptedKey = encryptedKey
+                encryptedKey = encryptedKey,
+                isDeleted = isDeleted
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting report ref", e)

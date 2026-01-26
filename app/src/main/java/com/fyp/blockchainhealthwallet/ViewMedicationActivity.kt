@@ -92,6 +92,7 @@ class ViewMedicationActivity : AppCompatActivity() {
         btnEdit = findViewById(R.id.btnEdit)
         btnSaveChanges = findViewById(R.id.btnSaveChanges)
         val btnShareMedication = findViewById<MaterialButton>(R.id.btnShareMedication)
+        val btnDeleteMedication = findViewById<MaterialButton>(R.id.btnDeleteMedication)
 
         btnEdit.setOnClickListener {
             toggleEditMode()
@@ -103,6 +104,10 @@ class ViewMedicationActivity : AppCompatActivity() {
 
         btnShareMedication.setOnClickListener {
             showShareMedicationDialog()
+        }
+
+        btnDeleteMedication.setOnClickListener {
+            showDeleteConfirmationDialog()
         }
 
         etStartDate.setOnClickListener {
@@ -370,6 +375,75 @@ class ViewMedicationActivity : AppCompatActivity() {
             medicationId = medicationId!!,
             medicationName = etMedicationName.text.toString()
         )
+    }
+
+    private fun showDeleteConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Medication")
+            .setMessage("Are you sure you want to delete this medication?\n\nNote: This will mark it as deleted but data remains on blockchain. Shared records remain accessible to recipients.")
+            .setPositiveButton("Delete") { _, _ ->
+                performDelete()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun performDelete() {
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Deleting medication...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch {
+            try {
+                val txHash = BlockchainService.deleteMedication(medicationId!!)
+
+                progressDialog.dismiss()
+
+                if (txHash.startsWith("pending_")) {
+                    AlertDialog.Builder(this@ViewMedicationActivity)
+                        .setTitle("⏳ Waiting for Approval")
+                        .setMessage("Delete request sent!\n\n📱 Open your wallet app to approve.")
+                        .setPositiveButton("OK") { _, _ ->
+                            setResult(RESULT_OK)
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                } else {
+                    AlertDialog.Builder(this@ViewMedicationActivity)
+                        .setTitle("✅ Deleted")
+                        .setMessage("Medication deleted successfully.\n\nTransaction: ${txHash.take(10)}...")
+                        .setPositiveButton("OK") { _, _ ->
+                            setResult(RESULT_OK)
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
+
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                Log.e(TAG, "Error deleting medication", e)
+
+                val errorMessage = when {
+                    e.message?.contains("user rejected", ignoreCase = true) == true ->
+                        "Transaction cancelled by user"
+                    e.message?.contains("insufficient funds", ignoreCase = true) == true ->
+                        "Insufficient funds for gas fees"
+                    e.message?.contains("Already deleted", ignoreCase = true) == true ->
+                        "This medication has already been deleted"
+                    else -> "Delete failed: ${e.message}"
+                }
+
+                AlertDialog.Builder(this@ViewMedicationActivity)
+                    .setTitle("Delete Failed")
+                    .setMessage(errorMessage)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
     }
 
     private fun updateProgressDialog(message: String) {

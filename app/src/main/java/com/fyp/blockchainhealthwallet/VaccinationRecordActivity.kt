@@ -135,9 +135,12 @@ class VaccinationRecordActivity : AppCompatActivity() {
                     try {
                         Log.d(TAG, "Fetching vaccination ID: $vaccinationId")
                         val vaccination = fetchVaccinationDetails(vaccinationId)
-                        if (vaccination != null) {
+                        // Filter out deleted records
+                        if (vaccination != null && !vaccination.isDeleted) {
                             vaccinations.add(vaccination)
                             Log.d(TAG, "Vaccination loaded: ${vaccination.vaccineName}")
+                        } else if (vaccination?.isDeleted == true) {
+                            Log.d(TAG, "Vaccination $vaccinationId is deleted, skipping")
                         } else {
                             Log.w(TAG, "Vaccination $vaccinationId returned null")
                         }
@@ -265,7 +268,8 @@ class VaccinationRecordActivity : AppCompatActivity() {
                 createdAt = vaccinationRef.createdAt.toLong(),
                 encryptedKey = vaccinationRef.encryptedKey,
                 isEncrypted = true,
-                isOnBlockchain = true
+                isOnBlockchain = true,
+                isDeleted = vaccinationRef.isDeleted  // Get from blockchain
             )
             
         } catch (e: Exception) {

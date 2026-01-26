@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.cardview.widget.CardView
@@ -21,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.math.BigInteger
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -45,6 +47,7 @@ class ViewVaccinationActivity : AppCompatActivity() {
     private lateinit var ivCertificatePreview: ImageView
     private lateinit var btnViewCertificate: MaterialButton
     private lateinit var btnShareVaccination: MaterialButton
+    private lateinit var btnDeleteVaccination: MaterialButton
 
     private var vaccinationId: String? = null
     private var certificateIpfsHash: String? = null
@@ -100,6 +103,7 @@ class ViewVaccinationActivity : AppCompatActivity() {
         ivCertificatePreview = findViewById(R.id.ivCertificatePreview)
         btnViewCertificate = findViewById(R.id.btnViewCertificate)
         btnShareVaccination = findViewById(R.id.btnShareVaccination)
+        btnDeleteVaccination = findViewById(R.id.btnDeleteVaccination)
 
         btnViewCertificate.setOnClickListener {
             if (certificateIpfsHash != null) {
@@ -112,6 +116,10 @@ class ViewVaccinationActivity : AppCompatActivity() {
         btnShareVaccination.setOnClickListener {
             // TODO: Implement share functionality (similar to medication)
             Toast.makeText(this, "Share functionality coming soon", Toast.LENGTH_SHORT).show()
+        }
+
+        btnDeleteVaccination.setOnClickListener {
+            showDeleteConfirmationDialog()
         }
     }
 
@@ -306,6 +314,76 @@ class ViewVaccinationActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Error opening certificate", e)
             Toast.makeText(this, "Error opening certificate: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showDeleteConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Vaccination")
+            .setMessage("Are you sure you want to delete this vaccination record?\n\nNote: This will mark it as deleted but data remains on blockchain. Shared records remain accessible to recipients.")
+            .setPositiveButton("Delete") { _, _ ->
+                performDelete()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun performDelete() {
+        val progressDialog = android.app.ProgressDialog(this).apply {
+            setMessage("Deleting vaccination...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch {
+            try {
+                val vaccId = BigInteger(vaccinationId)
+                val txHash = BlockchainService.deleteVaccination(vaccId)
+
+                progressDialog.dismiss()
+
+                if (txHash.startsWith("pending_")) {
+                    androidx.appcompat.app.AlertDialog.Builder(this@ViewVaccinationActivity)
+                        .setTitle("⏳ Waiting for Approval")
+                        .setMessage("Delete request sent!\n\n📱 Open your wallet app to approve.")
+                        .setPositiveButton("OK") { _, _ ->
+                            setResult(RESULT_OK)
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                } else {
+                    androidx.appcompat.app.AlertDialog.Builder(this@ViewVaccinationActivity)
+                        .setTitle("✅ Deleted")
+                        .setMessage("Vaccination deleted successfully.\n\nTransaction: ${txHash.take(10)}...")
+                        .setPositiveButton("OK") { _, _ ->
+                            setResult(RESULT_OK)
+                            finish()
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
+
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                Log.e(TAG, "Error deleting vaccination", e)
+
+                val errorMessage = when {
+                    e.message?.contains("user rejected", ignoreCase = true) == true ->
+                        "Transaction cancelled by user"
+                    e.message?.contains("insufficient funds", ignoreCase = true) == true ->
+                        "Insufficient funds for gas fees"
+                    e.message?.contains("Already deleted", ignoreCase = true) == true ->
+                        "This vaccination has already been deleted"
+                    else -> "Delete failed: ${e.message}"
+                }
+
+                androidx.appcompat.app.AlertDialog.Builder(this@ViewVaccinationActivity)
+                    .setTitle("Delete Failed")
+                    .setMessage(errorMessage)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
         }
     }
 }

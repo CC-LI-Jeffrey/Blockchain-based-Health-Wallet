@@ -144,7 +144,10 @@ class MedicationActivity : AppCompatActivity() {
                 medicationIds.forEach { medicationId ->
                     try {
                         val medication = loadMedicationById(medicationId)
-                        medication?.let { medications.add(it) }
+                        // Filter out deleted records
+                        if (medication != null && !medication.isDeleted) {
+                            medications.add(medication)
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error loading medication $medicationId", e)
                     }
@@ -219,7 +222,8 @@ class MedicationActivity : AppCompatActivity() {
                     prescribingDoctor = dataMap["prescribingDoctor"] as? String ?: "",
                     pharmacy = dataMap["pharmacy"] as? String ?: "",
                     notes = dataMap["notes"] as? String ?: "",
-                    createdAt = (dataMap["createdAt"] as? Double)?.toLong()
+                    createdAt = (dataMap["createdAt"] as? Double)?.toLong(),
+                    isDeleted = medicationRef.isDeleted  // Get from blockchain
                 )
 
             } catch (e: Exception) {

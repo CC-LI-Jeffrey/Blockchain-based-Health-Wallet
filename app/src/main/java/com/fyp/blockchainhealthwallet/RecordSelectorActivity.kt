@@ -142,13 +142,16 @@ class RecordSelectorActivity : AppCompatActivity() {
                 ids.mapNotNull { id ->
                     try {
                         val med = BlockchainService.getMedicationRef(id)
-                        med?.let {
+                        // Filter out deleted records
+                        if (med != null && !med.isDeleted) {
                             SelectableRecord(
                                 id = id.toString(),
                                 title = "Medication #$id",
-                                subtitle = if (it.isActive) "Active medication" else "Inactive",
+                                subtitle = if (med.isActive) "Active medication" else "Inactive",
                                 category = RecordCategory.MEDICATIONS
                             )
+                        } else {
+                            null
                         }
                     } catch (e: Exception) {
                         null
@@ -166,12 +169,18 @@ class RecordSelectorActivity : AppCompatActivity() {
                 val ids = BlockchainService.getVaccinationIds(address)
                 ids.mapNotNull { id ->
                     try {
-                        SelectableRecord(
-                            id = id.toString(),
-                            title = "Vaccination #$id",
-                            subtitle = "Vaccination record",
-                            category = RecordCategory.VACCINATIONS
-                        )
+                        val vacc = BlockchainService.getVaccinationRef(id)
+                        // Filter out deleted records
+                        if (vacc != null && !vacc.isDeleted) {
+                            SelectableRecord(
+                                id = id.toString(),
+                                title = "Vaccination #$id",
+                                subtitle = "Vaccination record",
+                                category = RecordCategory.VACCINATIONS
+                            )
+                        } else {
+                            null
+                        }
                     } catch (e: Exception) {
                         null
                     }
@@ -189,13 +198,16 @@ class RecordSelectorActivity : AppCompatActivity() {
                 ids.mapNotNull { id ->
                     try {
                         val report = BlockchainService.getReportRef(id)
-                        report?.let {
+                        // Filter out deleted records
+                        if (report != null && !report.isDeleted) {
                             SelectableRecord(
                                 id = id.toString(),
                                 title = "Report #$id",
-                                subtitle = it.reportType.name.replace("_", " "),
+                                subtitle = report.reportType.name.replace("_", " "),
                                 category = RecordCategory.REPORTS
                             )
+                        } else {
+                            null
                         }
                     } catch (e: Exception) {
                         null

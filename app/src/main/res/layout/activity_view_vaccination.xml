@@ -393,6 +393,19 @@
                     android:textSize="14sp"
                     app:icon="@drawable/ic_share"
                     app:cornerRadius="8dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnDeleteVaccination"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Delete Vaccination"
+                    android:textColor="#D32F2F"
+                    app:strokeColor="#D32F2F"
+                    app:icon="@android:drawable/ic_menu_delete"
+                    app:iconTint="#D32F2F"
+                    app:cornerRadius="8dp" />
             </LinearLayout>
 
         </LinearLayout>

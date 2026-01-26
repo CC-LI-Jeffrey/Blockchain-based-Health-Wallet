@@ -283,6 +283,19 @@
                 android:text="Share This Medication"
                 android:textColor="@color/primary" />
 
+            <!-- Delete Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDeleteMedication"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Delete Medication"
+                android:textColor="#D32F2F"
+                app:strokeColor="#D32F2F"
+                app:icon="@android:drawable/ic_menu_delete"
+                app:iconTint="#D32F2F" />
+
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

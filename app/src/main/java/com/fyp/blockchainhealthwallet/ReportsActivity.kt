@@ -123,9 +123,12 @@ class ReportsActivity : AppCompatActivity() {
                     try {
                         Log.d("ReportsActivity", "Fetching report ID: $reportId")
                         val report = fetchReportDetails(reportId)
-                        if (report != null) {
+                        // Filter out deleted records
+                        if (report != null && !report.isDeleted) {
                             reports.add(report)
                             Log.d("ReportsActivity", "Report loaded: ${report.title}")
+                        } else if (report?.isDeleted == true) {
+                            Log.d("ReportsActivity", "Report $reportId is deleted, skipping")
                         } else {
                             Log.w("ReportsActivity", "Report $reportId returned null")
                         }
@@ -233,7 +236,8 @@ class ReportsActivity : AppCompatActivity() {
                 filePath = if (reportRef.hasFile) reportRef.encryptedFileIpfsHash else null,
                 ipfsHash = reportRef.encryptedDataIpfsHash,
                 timestamp = reportRef.createdAt.toLong() * 1000,
-                encryptedKey = reportRef.encryptedKey
+                encryptedKey = reportRef.encryptedKey,
+                isDeleted = reportRef.isDeleted  // Get from blockchain
             )
             
         } catch (e: Exception) {
