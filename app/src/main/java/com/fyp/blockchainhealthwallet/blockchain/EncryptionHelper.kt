@@ -193,16 +193,12 @@ object EncryptionHelper {
     
     /**
      * Encrypt the AES key itself for storage on blockchain.
-     * 
-     * For now, this just converts the key to Base64.
-     * TODO: In production, encrypt this with the user's wallet public key
-     * so only the user can decrypt it.
+     * Encrypts with the user's wallet-derived master key.
      * 
      * @param aesKey The AES key to encrypt
-     * @param userPublicKey User's public key (from wallet)
      * @return Encrypted key as Base64 string
      */
-    fun encryptKeyForBlockchain(aesKey: SecretKey, userPublicKey: String? = null): String {
+    fun encryptKeyForBlockchain(aesKey: SecretKey): String {
         // Use the user's key for actual encryption (not RSA public key)
         val userKey = SimpleKeyManager.getUserKey()
         return encryptKeyForBlockchain(aesKey, userKey)
@@ -210,12 +206,12 @@ object EncryptionHelper {
     
     /**
      * Decrypt the AES key from blockchain storage.
+     * Uses the user's wallet-derived master key for decryption.
      * 
      * @param encryptedKey The encrypted key from blockchain
-     * @param userPrivateKey User's private key (from wallet)
      * @return Decrypted AES key
      */
-    fun decryptKeyFromBlockchain(encryptedKey: String, userPrivateKey: String? = null): SecretKey {
+    fun decryptKeyFromBlockchain(encryptedKey: String): SecretKey {
         // Try to decode the Base64 string
         val decoded = Base64.decode(encryptedKey, Base64.NO_WRAP)
         
@@ -228,46 +224,11 @@ object EncryptionHelper {
         
         // New format: IV (16 bytes) + encrypted key - decrypt with user key
         Log.d(TAG, "Detected new key format (encrypted), decrypting with user key")
-        val userKey = SimpleKeyManager.getUserKey()
-        return decryptKeyFromBlockchain(encryptedKey, userKey)
+        return decryptKeyFromBlockchain(encryptedKey, SimpleKeyManager.getUserKey())
     }
     
     /**
-     * @deprecated Use prepareFileForUploadWithCategory() instead for proper key management
-     * 
-     * Encrypt file and return both encrypted file and encrypted key.
-     * WARNING: This uses a RANDOM key - the key will be lost after this call!
-     * 
-     * @param sourceFile Original medical file to encrypt
-     * @param outputDir Directory to save encrypted file
-     * @return Pair of (encrypted file, encrypted key for blockchain)
-     */
-    @Deprecated("Use prepareFileForUploadWithCategory() for deterministic keys")
-    fun prepareFileForUpload(
-        sourceFile: File,
-        outputDir: File
-    ): Pair<File, String> {
-        // Generate random AES key - WARNING: this key cannot be recovered!
-        val aesKey = generateAESKey()
-        
-        // Create encrypted file
-        val encryptedFileName = "${sourceFile.nameWithoutExtension}_encrypted"
-        val encryptedFile = File(outputDir, encryptedFileName)
-        
-        // Encrypt the file
-        val result = encryptFile(sourceFile, encryptedFile, aesKey)
-        
-        // Return key as Base64 (not truly encrypted - caller must store this!)
-        val keyString = keyToString(result.aesKey)
-        
-        Log.w(TAG, "Using deprecated prepareFileForUpload() - key must be stored or will be lost!")
-        Log.d(TAG, "File prepared for upload: encrypted file = ${encryptedFile.absolutePath}")
-        
-        return Pair(encryptedFile, keyString)
-    }
-    
-    /**
-     * RECOMMENDED: Encrypt file using user key from SimpleKeyManager
+     * Encrypt file using user key from SimpleKeyManager
      * The key can be re-derived from wallet address, so no key storage needed!
      * 
      * @param sourceFile Original medical file to encrypt

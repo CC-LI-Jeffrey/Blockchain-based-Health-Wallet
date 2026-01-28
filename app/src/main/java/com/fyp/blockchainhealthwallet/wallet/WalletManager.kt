@@ -12,6 +12,7 @@ import kotlin.coroutines.Continuation
 
 object WalletManager : AppKit.ModalDelegate {
     private const val TAG = "WalletManager"
+    private const val SEPOLIA_CHAIN_ID = "11155111"
     
     // State flows for reactive state management
     private val _connectionState = MutableStateFlow<WalletConnectionState>(WalletConnectionState.Disconnected)
@@ -64,8 +65,7 @@ object WalletManager : AppKit.ModalDelegate {
                 
                 try {
                     val selectedChain = AppKit.getSelectedChain()
-                    // Default to Sepolia testnet (11155111) instead of mainnet
-                    val chainId = selectedChain?.chainReference ?: "11155111"
+                    val chainId = selectedChain?.chainReference ?: SEPOLIA_CHAIN_ID
                     
                     _walletAddress.value = account.address
                     _chainId.value = chainId
@@ -92,16 +92,10 @@ object WalletManager : AppKit.ModalDelegate {
     private fun updateSessionInfo(session: Modal.Model.ApprovedSession) {
         _currentSession.value = session
         
-        // Log the session object to understand its structure
-        Log.d(TAG, "Session received: $session")
-        
-        // Try to extract address from the session's toString representation
-        // The session likely contains account info in format "namespace:chainId:address"
         try {
             val sessionStr = session.toString()
-            Log.d(TAG, "Session full string: $sessionStr")
             
-            // Try to find ethereum address pattern (0x followed by 40 hex characters)
+            // Extract ethereum address pattern
             val addressRegex = Regex("(0x[a-fA-F0-9]{40})")
             val matchResult = addressRegex.find(sessionStr)
             
@@ -118,8 +112,7 @@ object WalletManager : AppKit.ModalDelegate {
                 Log.d(TAG, "Extracted address: $address")
                 Log.d(TAG, "Chain ID: $chainId")
             } else {
-                // Fallback: just show as connected with Sepolia
-                _connectionState.value = WalletConnectionState.Connected("Unknown", "11155111")
+                _connectionState.value = WalletConnectionState.Connected("Unknown", SEPOLIA_CHAIN_ID)
                 Log.w(TAG, "Could not extract address from session")
             }
         } catch (e: Exception) {
@@ -130,12 +123,9 @@ object WalletManager : AppKit.ModalDelegate {
     
     fun disconnectWallet() {
         try {
-            Log.d(TAG, "========================================")
-            Log.d(TAG, "DISCONNECTING WALLET")
-            Log.d(TAG, "========================================")
+            Log.d(TAG, "Disconnecting wallet...")
             
-            // CRITICAL: Clear session data FIRST to update UI immediately
-            // This prevents race conditions where UI shows disconnected but session persists
+            // Clear session data FIRST to update UI immediately
             clearSessionData()
             
             // Then disconnect from AppKit and all pairings
@@ -173,29 +163,21 @@ object WalletManager : AppKit.ModalDelegate {
      */
     private fun disconnectAllPairings() {
         try {
-            Log.d(TAG, "Cleaning up all pairings...")
-            
-            // Access the Core API to get and disconnect all pairings
             val pairings = CoreClient.Pairing.getPairings()
-            
-            Log.d(TAG, "Found ${pairings.size} pairing(s) to disconnect")
+            Log.d(TAG, "Disconnecting ${pairings.size} pairing(s)")
             
             pairings.forEach { pairing ->
                 try {
-                    Log.d(TAG, "  Disconnecting pairing: ${pairing.topic.take(10)}...")
                     CoreClient.Pairing.disconnect(pairing.topic) { error ->
                         if (error != null) {
-                            Log.w(TAG, "    Error disconnecting pairing: ${error.throwable.message}")
-                        } else {
-                            Log.d(TAG, "    Pairing disconnected")
+                            Log.w(TAG, "Error disconnecting pairing: ${error.throwable.message}")
                         }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "    Exception disconnecting pairing: ${e.message}")
                 }
             }
-            
-            Log.d(TAG, "Pairing cleanup complete")
+
         } catch (e: Exception) {
             Log.e(TAG, "Error accessing pairings: ${e.message}", e)
         }
@@ -285,17 +267,14 @@ object WalletManager : AppKit.ModalDelegate {
         
         // Handle chain changes
         if (sessionEvent.name == "chainChanged") {
-            Log.d(TAG, "========================================")
-            Log.d(TAG, "⚠️ CHAIN CHANGED EVENT DETECTED")
-            Log.d(TAG, "========================================")
+            Log.d(TAG, "Chain changed event detected")
             
             try {
                 // Update chain ID when wallet switches chains
                 val selectedChain = AppKit.getSelectedChain()
-                val newChainId = selectedChain?.chainReference ?: "1"
+                val newChainId = selectedChain?.chainReference ?: SEPOLIA_CHAIN_ID
                 
-                Log.d(TAG, "New Chain ID: $newChainId")
-                Log.d(TAG, "Chain Name: ${selectedChain?.chainName}")
+                Log.d(TAG, "Chain changed to: $newChainId (${selectedChain?.chainName})")
                 
                 _chainId.value = newChainId
                 
@@ -318,9 +297,7 @@ object WalletManager : AppKit.ModalDelegate {
         
         // Handle account changes
         if (sessionEvent.name == "accountsChanged") {
-            Log.d(TAG, "========================================")
-            Log.d(TAG, "⚠️ ACCOUNT CHANGED EVENT DETECTED")
-            Log.d(TAG, "========================================")
+            Log.d(TAG, "Account changed event detected")
             
             try {
                 val account = AppKit.getAccount()
@@ -392,8 +369,7 @@ object WalletManager : AppKit.ModalDelegate {
                 
                 val selectedChain = AppKit.getSelectedChain()
                 val address = account.address
-                // Default to Sepolia testnet (11155111) instead of mainnet
-                val chainId = selectedChain?.chainReference ?: "11155111"
+                val chainId = selectedChain?.chainReference ?: SEPOLIA_CHAIN_ID
                 
                 _walletAddress.value = address
                 _chainId.value = chainId
@@ -402,14 +378,7 @@ object WalletManager : AppKit.ModalDelegate {
                 // Initialize encryption keys when wallet connects
                 SimpleKeyManager.clearCache()
                 
-                Log.d(TAG, "========================================")
-                Log.d(TAG, "CONNECTION STATE CHANGED TO CONNECTED")
-                Log.d(TAG, "========================================")
-                Log.d(TAG, "Address: $address")
-                Log.d(TAG, "Chain ID: $chainId")
-                Log.d(TAG, "Chain Name: ${selectedChain?.chainName}")
-                Log.d(TAG, "Full Chain Object: $selectedChain")
-                Log.d(TAG, "========================================")
+                Log.d(TAG, "Connected: $address on chain $chainId (${selectedChain?.chainName})")
             } catch (e: Exception) {
                 Log.w(TAG, "Could not retrieve session info on connection state change: ${e.message}")
                 Log.w(TAG, "Clearing potentially invalid session")
@@ -491,7 +460,7 @@ object WalletManager : AppKit.ModalDelegate {
             val selectedChain = AppKit.getSelectedChain()
             val chainId = selectedChain?.chainReference ?: _chainId.value ?: "1"
             
-            if (chainId == "11155111") {
+            if (chainId == SEPOLIA_CHAIN_ID) {
                 return Pair(true, "Connected to Sepolia")
             }
             

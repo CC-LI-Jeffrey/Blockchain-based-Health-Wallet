@@ -216,8 +216,7 @@ class VaccinationRecordActivity : AppCompatActivity() {
                 }
                 
                 val decryptedAesKey = EncryptionHelper.decryptKeyFromBlockchain(
-                    vaccinationRef.encryptedKey,
-                    userAddress
+                    vaccinationRef.encryptedKey
                 )
                 
                 EncryptionHelper.decryptBytesWithKey(encryptedBytes, decryptedAesKey)

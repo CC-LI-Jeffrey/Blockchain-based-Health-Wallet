@@ -163,6 +163,11 @@ object MedicationShareHelper {
                 val userAddress = WalletManager.getAddress()
                     ?: throw Exception("Wallet not connected")
                 
+                // Prevent self-sharing
+                if (recipientAddress.equals(userAddress, ignoreCase = true)) {
+                    throw Exception("Cannot share with yourself. Please enter a different wallet address.")
+                }
+                
                 // Step 1: Get recipient's public key from blockchain
                 progressDialog?.setMessage("Checking recipient's public key...")
                 Log.d(TAG, "Step 1: Getting recipient's public key")

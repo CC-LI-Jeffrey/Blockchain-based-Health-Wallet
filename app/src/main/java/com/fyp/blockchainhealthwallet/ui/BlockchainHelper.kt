@@ -480,6 +480,11 @@ object BlockchainHelper {
                 val userAddress = WalletManager.getAddress()
                     ?: throw Exception("Wallet not connected")
                 
+                // Prevent self-sharing
+                if (recipientAddress.equals(userAddress, ignoreCase = true)) {
+                    throw Exception("Cannot share with yourself. Please enter a different wallet address.")
+                }
+                
                 // Step 1: Get recipient's public key from blockchain
                 progressDialog?.setMessage("Checking recipient's public key...")
                 Log.d(TAG, "Step 1: Getting recipient's public key")
@@ -535,7 +540,7 @@ object BlockchainHelper {
                 }
                 
                 val reportAesKey: javax.crypto.SecretKey = withContext(Dispatchers.IO) {
-                    EncryptionHelper.decryptKeyFromBlockchain(encryptedAesKeyBase64, userAddress)
+                    EncryptionHelper.decryptKeyFromBlockchain(encryptedAesKeyBase64)
                 }
                 
                 Log.d(TAG, "Decrypted report's AES key")
@@ -694,6 +699,11 @@ object BlockchainHelper {
                 val userAddress = WalletManager.getAddress()
                     ?: throw Exception("Wallet not connected")
                 
+                // Prevent self-sharing
+                if (recipientAddress.equals(userAddress, ignoreCase = true)) {
+                    throw Exception("Cannot share with yourself. Please enter a different wallet address.")
+                }
+                
                 // Step 1: Get recipient's public key from blockchain
                 progressDialog?.setMessage("Checking recipient's public key...")
                 Log.d(TAG, "Step 1: Getting recipient's public key")
@@ -749,7 +759,7 @@ object BlockchainHelper {
                 }
                 
                 val vaccinationAesKey: javax.crypto.SecretKey = withContext(Dispatchers.IO) {
-                    EncryptionHelper.decryptKeyFromBlockchain(encryptedAesKeyBase64, userAddress)
+                    EncryptionHelper.decryptKeyFromBlockchain(encryptedAesKeyBase64)
                 }
                 
                 Log.d(TAG, "Decrypted vaccination's AES key")

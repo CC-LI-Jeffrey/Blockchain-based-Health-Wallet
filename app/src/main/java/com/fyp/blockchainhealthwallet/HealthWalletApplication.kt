@@ -108,11 +108,6 @@ class HealthWalletApplication : Application() {
         // Set chains in AppKit
         AppKit.setChains(chains)
         
-        Log.d("AppKit", "========================================")
-        Log.d("AppKit", "✅ Configured Chains:")
-        Log.d("AppKit", "  1. Sepolia Testnet (Chain ID: 11155111) - DEFAULT")
-        Log.d("AppKit", "========================================")
-        Log.d("AppKit", "⚠️ NOTE: Only Sepolia enabled to prevent wrong network transactions")
-        Log.d("AppKit", "========================================")
+        Log.d("AppKit", "Configured Sepolia Testnet (Chain ID: 11155111)")
     }
 }

@@ -198,8 +198,7 @@ class ReportsActivity : AppCompatActivity() {
                 }
                 
                 val decryptedAesKey = EncryptionHelper.decryptKeyFromBlockchain(
-                    reportRef.encryptedKey,
-                    userAddress
+                    reportRef.encryptedKey
                 )
                 
                 EncryptionHelper.decryptBytesWithKey(encryptedBytes, decryptedAesKey)
@@ -286,8 +285,8 @@ class ReportsActivity : AppCompatActivity() {
     }
 
     private fun deleteReport(report: Report) {
-        // TODO: Implement blockchain deletion if contract supports it
-        // For now, just remove from local list
+        // Note: Blockchain soft delete is implemented in BlockchainService.deleteReport()
+        // This UI removal is for immediate feedback; actual deletion requires transaction signing
         reportsList.remove(report)
         reportsAdapter.updateReports(reportsList)
         updateEmptyState()

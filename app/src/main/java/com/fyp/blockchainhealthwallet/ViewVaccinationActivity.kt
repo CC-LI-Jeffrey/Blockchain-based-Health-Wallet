@@ -114,8 +114,8 @@ class ViewVaccinationActivity : AppCompatActivity() {
         }
 
         btnShareVaccination.setOnClickListener {
-            // TODO: Implement share functionality (similar to medication)
-            Toast.makeText(this, "Share functionality coming soon", Toast.LENGTH_SHORT).show()
+            // Vaccination sharing can follow MedicationShareHelper pattern
+            Toast.makeText(this, "Vaccination sharing - implementation pending", Toast.LENGTH_SHORT).show()
         }
 
         btnDeleteVaccination.setOnClickListener {

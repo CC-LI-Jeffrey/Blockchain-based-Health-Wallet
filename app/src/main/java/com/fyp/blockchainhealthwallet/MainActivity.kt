@@ -152,7 +152,7 @@ class MainActivity : AppCompatActivity() {
                             tvWalletStatus.text = "Connecting..."
                         }
                         is WalletManager.WalletConnectionState.Disconnected -> {
-                            tvWalletStatus.text = "Harry Dwa"
+                            tvWalletStatus.text = "User"
                         }
                         is WalletManager.WalletConnectionState.Error -> {
                             tvWalletStatus.text = "Connection Error"
@@ -188,8 +188,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupUI() {
-        findViewById<TextView>(R.id.tvUserName).text = "Harry Dwa"
-
         findViewById<CardView>(R.id.cardMedication).setOnClickListener {
             startActivity(Intent(this, MedicationActivity::class.java))
         }

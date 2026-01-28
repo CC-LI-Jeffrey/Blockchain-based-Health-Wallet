@@ -57,21 +57,16 @@ object RSAHelper {
             
             // Check if key already exists
             if (keyStore.containsAlias(keyAlias)) {
-                Log.d(TAG, "RSA key pair already exists for alias: $keyAlias")
+                Log.d(TAG, "RSA key pair already exists")
                 return getPublicKey()
             }
             
-            Log.d(TAG, "========== RSA KEY GENERATION START ==========")
-            Log.d(TAG, "Generating new RSA key pair for alias: $keyAlias")
+            Log.d(TAG, "Generating RSA-$KEY_SIZE key pair...")
             
             val keyPairGenerator = KeyPairGenerator.getInstance(
                 KeyProperties.KEY_ALGORITHM_RSA,
                 KEYSTORE_PROVIDER
             )
-            
-            Log.d(TAG, "KeyPairGenerator Details:")
-            Log.d(TAG, "  - Algorithm: ${KeyProperties.KEY_ALGORITHM_RSA}")
-            Log.d(TAG, "  - Provider: $KEYSTORE_PROVIDER")
             
             val spec = KeyGenParameterSpec.Builder(
                 keyAlias,
@@ -86,27 +81,10 @@ object RSAHelper {
                 .setUserAuthenticationRequired(false)
                 .build()
             
-            Log.d(TAG, "KeyGenParameterSpec Details:")
-            Log.d(TAG, "  - Key Size: $KEY_SIZE")
-            Log.d(TAG, "  - Padding: RSA_OAEP")
-            Log.d(TAG, "  - Digests: SHA256 (main) + SHA1 (for MGF1)")
-            Log.d(TAG, "  - Default OAEP: SHA256 digest with MGF1-SHA1")
-            Log.d(TAG, "  - Purposes: ENCRYPT | DECRYPT")
-            Log.d(TAG, "  - User Auth Required: false")
-            
             keyPairGenerator.initialize(spec)
             val keyPair = keyPairGenerator.generateKeyPair()
             
-            Log.d(TAG, "Generated KeyPair:")
-            Log.d(TAG, "  - Public Key Algorithm: ${keyPair.public.algorithm}")
-            Log.d(TAG, "  - Private Key Algorithm: ${keyPair.private.algorithm}")
-            if (keyPair.public is java.security.interfaces.RSAPublicKey) {
-                val rsaPublic = keyPair.public as java.security.interfaces.RSAPublicKey
-                Log.d(TAG, "  - Modulus bit length: ${rsaPublic.modulus.bitLength()}")
-            }
-            
-            Log.d(TAG, "✅ RSA key pair generated successfully")
-            Log.d(TAG, "========== RSA KEY GENERATION END ==========")
+            Log.d(TAG, "RSA key pair generated successfully")
             
             // Return public key as Base64
             val publicKey = keyPair.public
@@ -193,29 +171,16 @@ object RSAHelper {
      */
     fun encryptKeyWithPublicKey(aesKey: SecretKey, recipientPublicKeyBase64: String): String {
         try {
-            Log.d(TAG, "========== RSA ENCRYPTION START ==========")
-            Log.d(TAG, "Recipient public key Base64 length: ${recipientPublicKeyBase64.length} chars")
+            Log.d(TAG, "Encrypting AES key with recipient's public key")
             
             // Decode the recipient's public key from Base64
             val publicKeyBytes = Base64.decode(recipientPublicKeyBase64, Base64.NO_WRAP)
-            Log.d(TAG, "Decoded public key bytes: ${publicKeyBytes.size}")
-            Log.d(TAG, "First 10 bytes of public key: ${publicKeyBytes.take(10).joinToString(",")}")
             
             val keyFactory = KeyFactory.getInstance(RSA_ALGORITHM)
             val publicKey = keyFactory.generatePublic(X509EncodedKeySpec(publicKeyBytes))
             
-            Log.d(TAG, "Public Key Details:")
-            Log.d(TAG, "  - Algorithm: ${publicKey.algorithm}")
-            Log.d(TAG, "  - Format: ${publicKey.format}")
-            if (publicKey is java.security.interfaces.RSAPublicKey) {
-                Log.d(TAG, "  - Modulus bit length: ${publicKey.modulus.bitLength()}")
-            }
-            
-            // Encrypt the AES key bytes
+            // Encrypt using RSA OAEP with parameters matching Android KeyStore
             val cipher = Cipher.getInstance(RSA_TRANSFORMATION)
-            Log.d(TAG, "Cipher Details:")
-            Log.d(TAG, "  - Algorithm: ${cipher.algorithm}")
-            Log.d(TAG, "  - Provider: ${cipher.provider.name}")
             
             // CRITICAL: Match Android KeyStore's default OAEP parameters
             // KeyStore uses SHA-256 digest with MGF1-SHA1 by default
@@ -252,17 +217,10 @@ object RSAHelper {
             }
             
             val aesKeyBytes = aesKey.encoded
-            Log.d(TAG, "AES key to encrypt: ${aesKeyBytes.size} bytes")
-            Log.d(TAG, "First 10 bytes of AES key: ${aesKeyBytes.take(10).joinToString(",")}")
-            
             val encryptedKeyBytes = cipher.doFinal(aesKeyBytes)
-            Log.d(TAG, "Encrypted bytes: ${encryptedKeyBytes.size}")
-            Log.d(TAG, "First 10 bytes of encrypted: ${encryptedKeyBytes.take(10).joinToString(",")}")
-            
             val result = Base64.encodeToString(encryptedKeyBytes, Base64.NO_WRAP)
-            Log.d(TAG, "Final Base64 length: ${result.length} chars")
-            Log.d(TAG, "✅ AES key encrypted successfully")
-            Log.d(TAG, "========== RSA ENCRYPTION END ==========")
+            
+            Log.d(TAG, "AES key encrypted successfully")
             
             return result
             
