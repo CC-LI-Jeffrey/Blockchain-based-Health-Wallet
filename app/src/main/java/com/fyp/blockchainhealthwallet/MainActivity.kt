@@ -219,6 +219,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<CardView>(R.id.cardSettings).setOnClickListener {
             navigateToSettings()
         }
+        
+        findViewById<CardView>(R.id.cardScanPartialShare).setOnClickListener {
+            openScanPartialShare()
+        }
     }
 
     private fun navigateToSettings() {
@@ -238,5 +242,15 @@ class MainActivity : AppCompatActivity() {
             putExtra("TITLE", "My Wallet Address")
         }
         startActivity(intent)
+    }
+    
+    private fun openScanPartialShare() {
+        try {
+            val intent = Intent(this, Class.forName("com.fyp.blockchainhealthwallet.ui.partialshare.ScanPartialShareActivity"))
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error opening scan partial share", e)
+            Toast.makeText(this, "Scan feature not available yet", Toast.LENGTH_SHORT).show()
+        }
     }
 }

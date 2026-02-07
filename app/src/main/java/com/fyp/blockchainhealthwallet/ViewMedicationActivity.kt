@@ -105,6 +105,11 @@ class ViewMedicationActivity : AppCompatActivity() {
         btnShareMedication.setOnClickListener {
             showShareMedicationDialog()
         }
+        
+        // Partial Share Button
+        findViewById<MaterialButton>(R.id.btnPartialShare).setOnClickListener {
+            openPartialShareActivity()
+        }
 
         btnDeleteMedication.setOnClickListener {
             showDeleteConfirmationDialog()
@@ -449,6 +454,42 @@ class ViewMedicationActivity : AppCompatActivity() {
     private fun updateProgressDialog(message: String) {
         runOnUiThread {
             progressDialog?.setMessage(message)
+        }
+    }
+    
+    private fun openPartialShareActivity() {
+        // Collect all medication data
+        val recordData = mapOf(
+            "medicineName" to (etMedicationName.text?.toString() ?: ""),
+            "dosage" to (etDosage.text?.toString() ?: ""),
+            "frequency" to (etFrequency.text?.toString() ?: ""),
+            "route" to (etRoute.text?.toString() ?: ""),
+            "startDate" to SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(selectedStartDate.time),
+            "endDate" to (selectedEndDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(it.time) } ?: ""),
+            "purpose" to (etPurpose.text?.toString() ?: ""),
+            "prescribedBy" to (etDoctor.text?.toString() ?: ""),
+            "pharmacy" to (etPharmacy.text?.toString() ?: ""),
+            "notes" to (etNotes.text?.toString() ?: ""),
+            "prescriptionNumber" to "",
+            "refillsRemaining" to "",
+            "cost" to "",
+            "insurance" to "",
+            "doctorPhone" to "",
+            "sideEffects" to ""
+        )
+        
+        try {
+            val intent = android.content.Intent(this, Class.forName("com.fyp.blockchainhealthwallet.ui.partialshare.PartialShareActivity"))
+            intent.putExtra("RECORD_ID", medicationId?.toString())
+            intent.putExtra("RECORD_TYPE", "MEDICATION")
+            intent.putExtra("RECORD_DATA", kotlinx.serialization.json.Json.encodeToString(
+                kotlinx.serialization.serializer<Map<String, String>>(),
+                recordData
+            ))
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening partial share", e)
+            Toast.makeText(this, "Partial share feature not available yet", Toast.LENGTH_SHORT).show()
         }
     }
 

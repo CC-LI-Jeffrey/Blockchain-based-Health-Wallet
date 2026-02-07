@@ -282,6 +282,18 @@
                 android:layout_marginTop="8dp"
                 android:text="Share This Medication"
                 android:textColor="@color/primary" />
+            
+            <!-- Partial Share Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPartialShare"
+                style="@style/Widget.Material3.Button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Partial Share (Select Fields)"
+                android:textColor="@android:color/white"
+                app:icon="@android:drawable/ic_menu_share"
+                app:iconTint="@android:color/white" />
 
             <!-- Delete Button -->
             <com.google.android.material.button.MaterialButton

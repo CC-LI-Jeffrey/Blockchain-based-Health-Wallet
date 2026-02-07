@@ -177,6 +177,17 @@
             android:label="Wallet Information"
             android:parentActivityName=".MainActivity" />
         
+        <!-- Partial Share Activities -->
+        <activity
+            android:name=".ui.partialshare.PartialShareActivity"
+            android:exported="false"
+            android:label="Partial Share" />
+        <activity
+            android:name=".ui.partialshare.ScanPartialShareActivity"
+            android:exported="false"
+            android:label="Scan Shared Data"
+            android:screenOrientation="portrait" />
+        
         <!-- FileProvider for sharing decrypted files -->
         <provider
             android:name="androidx.core.content.FileProvider"
