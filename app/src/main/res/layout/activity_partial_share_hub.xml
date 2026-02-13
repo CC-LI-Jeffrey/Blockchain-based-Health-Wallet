@@ -34,7 +34,7 @@
                 android:layout_height="wrap_content"
                 android:layout_below="@id/btnBack"
                 android:layout_marginTop="16dp"
-                android:text="Share Records"
+                android:text="Partial Record Sharing"
                 android:textColor="@color/white"
                 android:textSize="32sp"
                 android:textStyle="bold" />
@@ -45,7 +45,7 @@
                 android:layout_below="@id/tvTitle"
                 android:layout_marginTop="8dp"
                 android:alpha="0.9"
-                android:text="Manage who has access to your health data"
+                android:text="Share specific attributes with Merkle proof verification"
                 android:textColor="@color/white"
                 android:textSize="16sp" />
         </RelativeLayout>
@@ -60,15 +60,14 @@
             android:paddingEnd="20dp"
             android:paddingBottom="24dp">
 
-            <!-- Full Record Sharing Section -->
+            <!-- View Partial Shares Received Button -->
             <androidx.cardview.widget.CardView
-                android:id="@+id/cardFullShareHub"
+                android:id="@+id/cardViewReceivedPartialShares"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="6dp"
-                app:cardBackgroundColor="@color/primary"
                 android:clickable="true"
                 android:focusable="true"
                 android:foreground="?attr/selectableItemBackground">
@@ -85,12 +84,13 @@
                         android:layout_height="56dp"
                         android:background="@drawable/card_background">
 
-                        <ImageView
-                            android:layout_width="32dp"
-                            android:layout_height="32dp"
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
                             android:layout_gravity="center"
-                            android:src="@drawable/ic_share"
-                            app:tint="@color/primary" />
+                            android:text="🟣"
+                            android:textSize="28sp" />
+
                     </FrameLayout>
 
                     <LinearLayout
@@ -103,18 +103,17 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Full Record Sharing"
+                            android:text="Partial Shares Received"
                             android:textSize="18sp"
                             android:textStyle="bold"
-                            android:textColor="@color/white" />
+                            android:textColor="@color/text_primary" />
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Share complete health records"
+                            android:text="View partial records shared with you"
                             android:textSize="14sp"
-                            android:textColor="@color/white"
-                            android:alpha="0.9"
+                            android:textColor="@color/text_secondary"
                             android:layout_marginTop="4dp" />
 
                     </LinearLayout>
@@ -123,18 +122,85 @@
                         android:layout_width="24dp"
                         android:layout_height="24dp"
                         android:src="@drawable/ic_arrow_forward"
-                        app:tint="@color/white" />
+                        app:tint="@color/text_secondary" />
 
                 </LinearLayout>
 
             </androidx.cardview.widget.CardView>
 
-            <!-- Partial Record Sharing Section -->
+            <!-- View Partial Shares Sent Button -->
             <androidx.cardview.widget.CardView
-                android:id="@+id/cardPartialShareHub"
+                android:id="@+id/cardViewSentPartialShares"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="6dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackground">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="24dp"
+                    android:gravity="center_vertical">
+
+                    <FrameLayout
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:background="@drawable/card_background">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="🟠"
+                            android:textSize="28sp" />
+
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="20dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Partial Shares I Sent"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="View partial records you shared with others"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_secondary"
+                            android:layout_marginTop="4dp" />
+
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_arrow_forward"
+                        app:tint="@color/text_secondary" />
+
+                </LinearLayout>
+
+            </androidx.cardview.widget.CardView>
+
+            <!-- Partial Share Button -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardPartialShare"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="6dp"
                 app:cardBackgroundColor="@color/accent"
@@ -172,7 +238,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Partial Record Sharing"
+                            android:text="Create Partial Share"
                             android:textSize="18sp"
                             android:textStyle="bold"
                             android:textColor="@color/white" />
@@ -193,72 +259,6 @@
                         android:layout_height="24dp"
                         android:src="@drawable/ic_arrow_forward"
                         app:tint="@color/white" />
-
-                </LinearLayout>
-
-            </androidx.cardview.widget.CardView>
-
-            <!-- QR Code Sharing Button -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/cardQRCodeSharing"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="6dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="?attr/selectableItemBackground">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:padding="24dp"
-                    android:gravity="center_vertical">
-
-                    <FrameLayout
-                        android:layout_width="56dp"
-                        android:layout_height="56dp"
-                        android:background="@drawable/card_background">
-
-                        <ImageView
-                            android:layout_width="32dp"
-                            android:layout_height="32dp"
-                            android:layout_gravity="center"
-                            android:src="@drawable/ic_qr_code_scanner"
-                            app:tint="@color/primary" />
-                    </FrameLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:layout_marginStart="20dp">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="View QR Codes"
-                            android:textSize="18sp"
-                            android:textStyle="bold"
-                            android:textColor="@color/text_primary" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Generate QR codes for shared records"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_secondary"
-                            android:layout_marginTop="4dp" />
-
-                    </LinearLayout>
-
-                    <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_arrow_forward"
-                        app:tint="@color/text_secondary" />
 
                 </LinearLayout>
 

@@ -453,6 +453,18 @@
                 app:backgroundTint="@color/primary"
                 app:cornerRadius="12dp" />
 
+            <!-- Partial Share Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPartialShareProfile"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:text="Partial Share Profile (QR/Blockchain)"
+                android:textSize="14sp"
+                app:icon="@drawable/ic_qr_code"
+                app:cornerRadius="12dp" />
+
             <!-- Enable Receive Shares Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnEnableReceive"

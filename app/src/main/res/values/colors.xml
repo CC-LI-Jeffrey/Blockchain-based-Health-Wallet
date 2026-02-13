@@ -26,6 +26,8 @@
     <color name="approved">#4CAF50</color>
     <color name="pending">#FF9800</color>
     <color name="rejected">#F44336</color>
+    <color name="rejected_light">#FFEBEE</color>
+    <color name="revoked">#9E9E9E</color>
     
     <!-- UI Colors -->
     <color name="divider">#E0E0E0</color>

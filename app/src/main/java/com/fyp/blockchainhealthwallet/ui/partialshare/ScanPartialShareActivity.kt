@@ -33,10 +33,20 @@ class ScanPartialShareActivity : AppCompatActivity() {
     private lateinit var attributesContainer: LinearLayout
     private lateinit var verifyButton: Button
     private lateinit var progressBar: ProgressBar
+    private lateinit var btnSelectPhoto: com.google.android.material.button.MaterialButton
     
     private lateinit var cameraExecutor: ExecutorService
     private val merkleHelper = MerkleTreeHelper()
     private var scannedPackage: PartialSharePackage? = null
+    
+    // Photo picker launcher
+    private val photoPickerLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            scanQRFromImage(uri)
+        }
+    }
     
     companion object {
         private const val REQUEST_CODE_PERMISSIONS = 10
@@ -61,12 +71,22 @@ class ScanPartialShareActivity : AppCompatActivity() {
     }
     
     private fun initViews() {
+        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+        toolbar.setNavigationOnClickListener {
+            finish()
+        }
+        
         previewView = findViewById(R.id.previewView)
         resultContainer = findViewById(R.id.resultContainer)
         statusText = findViewById(R.id.statusText)
         attributesContainer = findViewById(R.id.attributesContainer)
         verifyButton = findViewById(R.id.verifyButton)
         progressBar = findViewById(R.id.progressBar)
+        btnSelectPhoto = findViewById(R.id.btnSelectPhoto)
+        
+        btnSelectPhoto.setOnClickListener {
+            photoPickerLauncher.launch("image/*")
+        }
         
         verifyButton.setOnClickListener {
             verifyScannedData()
@@ -248,6 +268,51 @@ class ScanPartialShareActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+    }
+    
+    /**
+     * Scan QR code from selected photo
+     */
+    private fun scanQRFromImage(uri: android.net.Uri) {
+        try {
+            val bitmap = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                val source = android.graphics.ImageDecoder.createSource(contentResolver, uri)
+                android.graphics.ImageDecoder.decodeBitmap(source)
+            } else {
+                @Suppress("DEPRECATION")
+                android.provider.MediaStore.Images.Media.getBitmap(contentResolver, uri)
+            }
+            
+            val image = InputImage.fromBitmap(bitmap, 0)
+            val scanner = BarcodeScanning.getClient()
+            
+            scanner.process(image)
+                .addOnSuccessListener { barcodes ->
+                    if (barcodes.isNotEmpty()) {
+                        val qrData = barcodes[0].rawValue
+                        if (!qrData.isNullOrEmpty()) {
+                            processQRCode(qrData)
+                        } else {
+                            runOnUiThread {
+                                Toast.makeText(this, "No valid QR code found in photo", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        runOnUiThread {
+                            Toast.makeText(this, "No QR code found in photo", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                .addOnFailureListener { e ->
+                    runOnUiThread {
+                        Toast.makeText(this, "Failed to scan photo: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+        } catch (e: Exception) {
+            runOnUiThread {
+                Toast.makeText(this, "Error processing photo: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
     
     // QR Code Analyzer using ML Kit

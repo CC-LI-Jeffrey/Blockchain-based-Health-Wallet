@@ -449,7 +449,7 @@
                         app:cardElevation="6dp"
                         android:clickable="true"
                         android:foreground="?attr/selectableItemBackground"
-                        app:cardBackgroundColor="#4CAF50">
+                        app:cardBackgroundColor="@android:color/white">
 
                         <LinearLayout
                             android:layout_width="match_parent"
@@ -471,7 +471,7 @@
                                 android:text="Scan Share"
                                 android:textSize="16sp"
                                 android:textStyle="bold"
-                                android:textColor="@android:color/white"
+                                android:textColor="@color/text_primary"
                                 android:gravity="center"
                                 android:layout_marginTop="12dp" />
                         </LinearLayout>

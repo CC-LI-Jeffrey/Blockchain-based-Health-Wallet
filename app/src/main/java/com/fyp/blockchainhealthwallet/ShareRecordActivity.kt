@@ -27,16 +27,12 @@ class ShareRecordActivity : AppCompatActivity() {
             finish()
         }
 
-        binding.cardViewSharedRecords.setOnClickListener {
-            startActivity(Intent(this, SharedRecordsActivity::class.java))
+        binding.cardFullShareHub.setOnClickListener {
+            startActivity(Intent(this, FullShareHubActivity::class.java))
         }
 
-        binding.cardViewReceivedRecords.setOnClickListener {
-            startActivity(Intent(this, ReceivedRecordsActivity::class.java))
-        }
-
-        binding.cardShareNew.setOnClickListener {
-            startActivity(Intent(this, RecordSelectorActivity::class.java))
+        binding.cardPartialShareHub.setOnClickListener {
+            startActivity(Intent(this, PartialShareHubActivity::class.java))
         }
 
         binding.cardQRCodeSharing.setOnClickListener {

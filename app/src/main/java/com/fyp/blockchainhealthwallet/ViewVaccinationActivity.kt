@@ -47,6 +47,7 @@ class ViewVaccinationActivity : AppCompatActivity() {
     private lateinit var ivCertificatePreview: ImageView
     private lateinit var btnViewCertificate: MaterialButton
     private lateinit var btnShareVaccination: MaterialButton
+    private lateinit var btnPartialShareVaccination: MaterialButton
     private lateinit var btnDeleteVaccination: MaterialButton
 
     private var vaccinationId: String? = null
@@ -103,6 +104,7 @@ class ViewVaccinationActivity : AppCompatActivity() {
         ivCertificatePreview = findViewById(R.id.ivCertificatePreview)
         btnViewCertificate = findViewById(R.id.btnViewCertificate)
         btnShareVaccination = findViewById(R.id.btnShareVaccination)
+        btnPartialShareVaccination = findViewById(R.id.btnPartialShareVaccination)
         btnDeleteVaccination = findViewById(R.id.btnDeleteVaccination)
 
         btnViewCertificate.setOnClickListener {
@@ -116,6 +118,10 @@ class ViewVaccinationActivity : AppCompatActivity() {
         btnShareVaccination.setOnClickListener {
             // Vaccination sharing can follow MedicationShareHelper pattern
             Toast.makeText(this, "Vaccination sharing - implementation pending", Toast.LENGTH_SHORT).show()
+        }
+
+        btnPartialShareVaccination.setOnClickListener {
+            openPartialShareActivity()
         }
 
         btnDeleteVaccination.setOnClickListener {
@@ -386,4 +392,37 @@ class ViewVaccinationActivity : AppCompatActivity() {
             }
         }
     }
+    
+    private fun openPartialShareActivity() {
+        // Collect all vaccination data from intent
+        val recordData = mapOf(
+            "date" to (intent.getStringExtra("DATE") ?: ""),
+            "vaccineName" to (intent.getStringExtra("VACCINE_NAME") ?: ""),
+            "vaccineNameEn" to (intent.getStringExtra("VACCINE_NAME_EN") ?: ""),
+            "vaccineFullName" to (intent.getStringExtra("VACCINE_FULL_NAME") ?: ""),
+            "manufacturer" to (intent.getStringExtra("MANUFACTURER") ?: ""),
+            "country" to (intent.getStringExtra("COUNTRY") ?: ""),
+            "provider" to (intent.getStringExtra("PROVIDER") ?: ""),
+            "location" to (intent.getStringExtra("LOCATION") ?: ""),
+            "batchNumber" to (intent.getStringExtra("BATCH_NUMBER") ?: ""),
+            "certificateHash" to (intent.getStringExtra("CERTIFICATE_HASH") ?: ""),
+            "encryptedKey" to (intent.getStringExtra("ENCRYPTED_KEY") ?: ""),
+            "createdAt" to (intent.getLongExtra("CREATED_AT", 0L).toString())
+        )
+        
+        try {
+            val intent = android.content.Intent(this, Class.forName("com.fyp.blockchainhealthwallet.ui.partialshare.PartialShareActivity"))
+            intent.putExtra("RECORD_ID", vaccinationId)
+            intent.putExtra("RECORD_TYPE", "VACCINATION")
+            intent.putExtra("RECORD_DATA", kotlinx.serialization.json.Json.encodeToString(
+                kotlinx.serialization.serializer<Map<String, String>>(),
+                recordData
+            ))
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Error opening partial share", e)
+            Toast.makeText(this, "Partial share feature not available: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
 }
+

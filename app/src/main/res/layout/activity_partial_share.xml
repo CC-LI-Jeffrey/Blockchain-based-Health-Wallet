@@ -1,23 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- filepath: c:\Users\User\AndroidStudioProjects\Blockchain-based-Health-Wallet\app\src\main\res\layout\activity_partial_share.xml -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
+    android:orientation="vertical"
+    android:background="@color/white">
 
-    <LinearLayout
+    <!-- Toolbar -->
+    <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar">
 
-        <TextView
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/primary"
+            app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
+            app:title="Partial Share"
+            app:titleTextColor="@android:color/white"
+            app:navigationIcon="@drawable/ic_arrow_back" />
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:padding="16dp">
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Create Partial Share"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="16dp"/>
+            android:orientation="vertical">
 
         <!-- Record Type -->
         <TextView
@@ -77,13 +92,67 @@
         </RadioGroup>
 
         <!-- Receiver Address (for blockchain method) -->
-        <EditText
-            android:id="@+id/receiverAddressInput"
+        <TextView
+            android:id="@+id/receiverAddressLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Receiver Wallet Address"
+            android:text="Receiver Wallet Address"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"
+            android:visibility="gone"/>
+
+        <LinearLayout
+            android:id="@+id/receiverAddressContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
             android:visibility="gone"
-            android:layout_marginTop="8dp"/>
+            android:layout_marginTop="8dp">
+
+            <!-- Address Input Methods -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnScanQR"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="4dp"
+                    android:text="Scan QR"
+                    android:textSize="12sp"
+                    app:icon="@drawable/ic_qr_code_scanner"
+                    app:iconSize="18dp"
+                    app:cornerRadius="8dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSelectPhoto"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:text="From Photo"
+                    android:textSize="12sp"
+                    app:icon="@android:drawable/ic_menu_gallery"
+                    app:iconSize="18dp"
+                    app:cornerRadius="8dp"/>
+            </LinearLayout>
+
+            <!-- Manual Address Input -->
+            <EditText
+                android:id="@+id/receiverAddressInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Or type address manually (0x...)"
+                android:inputType="text"
+                android:padding="12dp"
+                android:textSize="14sp"/>
+        </LinearLayout>
 
         <!-- Expiry Time -->
         <TextView
@@ -136,5 +205,37 @@
             android:visibility="gone"
             android:scaleType="fitCenter"/>
 
+        <!-- QR Action Buttons -->
+        <LinearLayout
+            android:id="@+id/qrActionButtons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="16dp"
+            android:visibility="gone"
+            android:gravity="center">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSaveQR"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="Save QR"
+                app:icon="@android:drawable/ic_menu_save"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnShareQR"
+                style="@style/Widget.Material3.Button"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Share QR"
+                app:icon="@android:drawable/ic_menu_share"/>
+        </LinearLayout>
+
     </LinearLayout>
 </ScrollView>
+</LinearLayout>

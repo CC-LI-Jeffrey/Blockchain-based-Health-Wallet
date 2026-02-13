@@ -321,13 +321,25 @@
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
+            <!-- Partial Share Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPartialShareReport"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Partial Share (QR/Blockchain)"
+                android:textSize="14sp"
+                app:icon="@drawable/ic_qr_code"
+                app:cornerRadius="8dp" />
+
             <!-- Delete Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnDeleteReport"
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:layout_marginBottom="16dp"
                 android:text="Delete Report"
                 android:textColor="#D32F2F"

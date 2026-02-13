@@ -77,6 +77,11 @@ class ViewReportActivity : AppCompatActivity() {
         tvFilePath = findViewById(R.id.tvFilePath)
         ivFilePreview = findViewById(R.id.ivFilePreview)
 
+        val btnPartialShareReport = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnPartialShareReport)
+        btnPartialShareReport?.setOnClickListener {
+            openPartialShareActivity()
+        }
+
         val btnDeleteReport = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnDeleteReport)
         btnDeleteReport?.setOnClickListener {
             showDeleteConfirmationDialog()
@@ -374,4 +379,42 @@ class ViewReportActivity : AppCompatActivity() {
             }
         }
     }
+    
+    private fun openPartialShareActivity() {
+        val report = currentReport
+        if (report == null) {
+            Toast.makeText(this, "Report data not available", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Collect all report data
+        val recordData = mapOf(
+            "title" to report.title,
+            "reportType" to report.reportType.name,
+            "reportTypeDisplay" to report.reportType.displayName,
+            "date" to report.date,
+            "doctorName" to report.doctorName,
+            "hospital" to report.hospital,
+            "description" to report.description,
+            "filePath" to (report.filePath ?: ""),
+            "ipfsHash" to (report.ipfsHash ?: ""),
+            "timestamp" to report.timestamp.toString(),
+            "encryptedKey" to report.encryptedKey
+        )
+        
+        try {
+            val intent = android.content.Intent(this, Class.forName("com.fyp.blockchainhealthwallet.ui.partialshare.PartialShareActivity"))
+            intent.putExtra("RECORD_ID", report.id)
+            intent.putExtra("RECORD_TYPE", "MEDICAL_REPORT")
+            intent.putExtra("RECORD_DATA", kotlinx.serialization.json.Json.encodeToString(
+                kotlinx.serialization.serializer<Map<String, String>>(),
+                recordData
+            ))
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("ViewReportActivity", "Error opening partial share", e)
+            Toast.makeText(this, "Partial share feature not available: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
 }
+

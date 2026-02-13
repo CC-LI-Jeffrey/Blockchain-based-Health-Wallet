@@ -43,7 +43,10 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    private const val CONTRACT_ADDRESS = "0x8f5b04Eb4EF06c4eFFA98D0cA20576a87A4CcCF6"
+    private const val CONTRACT_ADDRESS = "0x8b9432cc2d5b6164d7E57c128eEf14d10BB1C5d6"
+    //0x8f5b04Eb4EF06c4eFFA98D0cA20576a87A4CcCF6
+
+    private const val PARTIAL_SHARE_CONTRACT = "0xc810D25aFf4684f289f3D17420E8C19c1224Cadf" // PartialShareExtension contract
     
     // Sepolia RPC endpoints for reliability
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
@@ -799,6 +802,426 @@ object BlockchainService {
             null
         }
     }
+    
+    // ============================================
+    // PARTIAL SHARE EXTENSION FUNCTIONS
+    // ============================================
+    
+    /**
+     * Register a record with PartialShareExtension contract
+     * Call this once per record before granting partial access
+     */
+    suspend fun registerPartialShareRecord(recordId: BigInteger): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        if (PARTIAL_SHARE_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            throw IllegalStateException("PartialShareExtension not deployed yet. Deploy contract and update PARTIAL_SHARE_CONTRACT address.")
+        }
+        
+        Log.d(TAG, "Registering record $recordId for partial sharing")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "registerRecord",
+            listOf(
+                Uint256(recordId),
+                Address(userAddress)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = PARTIAL_SHARE_CONTRACT,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Grant partial access with IPFS package containing Merkle proofs
+     * @param recordId The record to share
+     * @param receiver Address to share with
+     * @param shareIPFSHash IPFS hash of encrypted partial share package
+     * @param merkleRoot Root hash of Merkle tree for verification
+     * @param expiryTime Unix timestamp when access expires
+     */
+    suspend fun grantPartialAccess(
+        recordId: BigInteger,
+        receiver: String,
+        shareIPFSHash: String,
+        merkleRoot: String,
+        expiryTime: BigInteger
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        if (PARTIAL_SHARE_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            throw IllegalStateException("PartialShareExtension not deployed yet. Deploy contract and update PARTIAL_SHARE_CONTRACT address.")
+        }
+        
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "GRANT PARTIAL ACCESS - PARAMETERS")
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "Record ID: $recordId")
+        Log.d(TAG, "Receiver: $receiver")
+        Log.d(TAG, "Sender: $userAddress")
+        Log.d(TAG, "IPFS Hash: $shareIPFSHash")
+        Log.d(TAG, "Merkle Root: $merkleRoot")
+        Log.d(TAG, "Expiry Time: $expiryTime (${java.util.Date(expiryTime.toLong() * 1000)})")
+        Log.d(TAG, "Contract: $PARTIAL_SHARE_CONTRACT")
+        
+        // Validate receiver address
+        if (!receiver.startsWith("0x") || receiver.length != 42) {
+            throw IllegalArgumentException("Invalid receiver address format: $receiver")
+        }
+        
+        // Validate IPFS hash
+        if (shareIPFSHash.isEmpty()) {
+            throw IllegalArgumentException("IPFS hash cannot be empty")
+        }
+        
+        // Validate merkle root
+        if (merkleRoot.isEmpty()) {
+            throw IllegalArgumentException("Merkle root cannot be empty")
+        }
+        
+        // Validate expiry time is in the future
+        val currentTime = BigInteger.valueOf(System.currentTimeMillis() / 1000)
+        if (expiryTime <= currentTime) {
+            throw IllegalArgumentException("Expiry time must be in the future (current: $currentTime, expiry: $expiryTime)")
+        }
+        
+        Log.d(TAG, "✅ All parameter validations passed")
+        
+        // Convert merkleRoot string to bytes32
+        val merkleRootBytes = try {
+            if (merkleRoot.startsWith("0x")) {
+                Numeric.hexStringToByteArray(merkleRoot)
+            } else {
+                Numeric.hexStringToByteArray("0x$merkleRoot")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to convert merkleRoot to bytes32: $merkleRoot", e)
+            throw IllegalArgumentException("Invalid merkle root format: ${e.message}")
+        }
+        
+        if (merkleRootBytes.size != 32) {
+            throw IllegalArgumentException("Merkle root must be 32 bytes, got ${merkleRootBytes.size} bytes")
+        }
+        
+        Log.d(TAG, "Merkle root bytes: ${merkleRootBytes.joinToString("") { "%02x".format(it) }}")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "grantPartialAccess",
+            listOf(
+                Uint256(recordId),
+                Address(receiver),
+                Utf8String(shareIPFSHash),
+                org.web3j.abi.datatypes.generated.Bytes32(merkleRootBytes),
+                Uint256(expiryTime)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        Log.d(TAG, "Encoded function data: ${encodedFunction.take(200)}...")
+        Log.d(TAG, "========================================")
+        
+        sendTransaction(
+            from = userAddress,
+            to = PARTIAL_SHARE_CONTRACT,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Revoke partial access
+     */
+    suspend fun revokePartialAccess(
+        recordId: BigInteger,
+        accessIndex: BigInteger
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+        
+        if (PARTIAL_SHARE_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            throw IllegalStateException("PartialShareExtension not deployed yet")
+        }
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "revokePartialAccess",
+            listOf(
+                Uint256(recordId),
+                Uint256(accessIndex)
+            ),
+            emptyList()
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        sendTransaction(
+            from = userAddress,
+            to = PARTIAL_SHARE_CONTRACT,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+    
+    /**
+     * Check if PartialShareExtension contract is deployed
+     */
+    fun isPartialShareDeployed(): Boolean {
+        return PARTIAL_SHARE_CONTRACT != "0x0000000000000000000000000000000000000000"
+    }
+    
+    /**
+     * Get all recordIds that have been shared with a receiver
+     * @param receiverAddress Address of the receiver
+     * @return List of recordIds
+     */
+    suspend fun getSharedRecordsForReceiver(receiverAddress: String): List<BigInteger> = withContext(Dispatchers.IO) {
+        if (!isPartialShareDeployed()) {
+            throw IllegalStateException("PartialShareExtension not deployed")
+        }
+        
+        Log.d(TAG, "Querying shared records for receiver: $receiverAddress")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "getSharedRecordsForReceiver",
+            listOf(Address(receiverAddress)),
+            listOf(object : TypeReference<DynamicArray<Uint256>>() {})
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        val response = executeEthCallWithFallback(
+            encodedFunction = encodedFunction,
+            contractAddress = PARTIAL_SHARE_CONTRACT,
+            fromAddress = null
+        )
+        
+        if (response.hasError()) {
+            Log.e(TAG, "Error getting shared records: ${response.error.message}")
+            return@withContext emptyList()
+        }
+        
+        val result = response.value
+        if (result.isNullOrEmpty() || result == "0x") {
+            return@withContext emptyList()
+        }
+        
+        val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+            result,
+            function.outputParameters
+        )
+        
+        if (decodedResult.isEmpty()) {
+            return@withContext emptyList()
+        }
+        
+        @Suppress("UNCHECKED_CAST")
+        val recordIds = (decodedResult[0].value as List<Uint256>).map { it.value }
+        
+        Log.d(TAG, "Found ${recordIds.size} shared records")
+        return@withContext recordIds
+    }
+    
+    /**
+     * Get all active (non-expired, non-revoked) partial shares for a receiver
+     * @param receiverAddress Address of the receiver
+     * @return List of PartialShareInfo objects
+     */
+    suspend fun getActiveSharesForReceiver(receiverAddress: String): List<PartialShareInfo> = withContext(Dispatchers.IO) {
+        if (!isPartialShareDeployed()) {
+            throw IllegalStateException("PartialShareExtension not deployed")
+        }
+        
+        Log.d(TAG, "Querying active shares for receiver: $receiverAddress")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "getActiveSharesForReceiver",
+            listOf(Address(receiverAddress)),
+            listOf(
+                object : TypeReference<DynamicArray<Uint256>>() {},  // recordIds
+                object : TypeReference<DynamicArray<Address>>() {},  // owners
+                object : TypeReference<DynamicArray<Utf8String>>() {}, // ipfsHashes
+                object : TypeReference<DynamicArray<org.web3j.abi.datatypes.generated.Bytes32>>() {}, // merkleRoots
+                object : TypeReference<DynamicArray<Uint256>>() {}   // expiryTimes
+            )
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        val response = executeEthCallWithFallback(
+            encodedFunction = encodedFunction,
+            contractAddress = PARTIAL_SHARE_CONTRACT,
+            fromAddress = null
+        )
+        
+        if (response.hasError()) {
+            Log.e(TAG, "Error getting active shares: ${response.error.message}")
+            return@withContext emptyList()
+        }
+        
+        val result = response.value
+        if (result.isNullOrEmpty() || result == "0x") {
+            return@withContext emptyList()
+        }
+        
+        val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+            result,
+            function.outputParameters
+        )
+        
+        if (decodedResult.isEmpty()) {
+            return@withContext emptyList()
+        }
+        
+        @Suppress("UNCHECKED_CAST")
+        val recordIds = (decodedResult[0].value as List<Uint256>).map { it.value }
+        @Suppress("UNCHECKED_CAST")
+        val owners = (decodedResult[1].value as List<Address>).map { it.value }
+        @Suppress("UNCHECKED_CAST")
+        val ipfsHashes = (decodedResult[2].value as List<Utf8String>).map { it.value }
+        @Suppress("UNCHECKED_CAST")
+        val merkleRoots = (decodedResult[3].value as List<org.web3j.abi.datatypes.generated.Bytes32>).map { 
+            Numeric.toHexString(it.value)
+        }
+        @Suppress("UNCHECKED_CAST")
+        val expiryTimes = (decodedResult[4].value as List<Uint256>).map { it.value }
+        
+        val shares = recordIds.indices.map { i ->
+            PartialShareInfo(
+                recordId = recordIds[i],
+                owner = owners[i],
+                ipfsHash = ipfsHashes[i],
+                merkleRoot = merkleRoots[i],
+                expiryTime = expiryTimes[i]
+            )
+        }
+        
+        Log.d(TAG, "Found ${shares.size} active shares")
+        return@withContext shares
+    }
+    
+    /**
+     * Get specific partial access details for a receiver
+     * @param recordId The record ID
+     * @param receiverAddress Address of the receiver
+     * @return PartialShareInfo or null if not found/expired
+     */
+    suspend fun getPartialAccessDetails(
+        recordId: BigInteger,
+        receiverAddress: String
+    ): PartialShareInfo? = withContext(Dispatchers.IO) {
+        if (!isPartialShareDeployed()) {
+            throw IllegalStateException("PartialShareExtension not deployed")
+        }
+        
+        try {
+            // Use getActiveSharesForReceiver and filter for the specific recordId
+            val allShares = getActiveSharesForReceiver(receiverAddress)
+            return@withContext allShares.firstOrNull { it.recordId == recordId }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get partial access details: ${e.message}")
+            return@withContext null
+        }
+    }
+    
+    /**
+     * Get all partial shares sent by an owner
+     * @param ownerAddress Address of the sender/owner
+     * @return List of SentPartialShareInfo objects
+     */
+    suspend fun getSentPartialShares(ownerAddress: String): List<com.fyp.blockchainhealthwallet.ui.partialshare.SentPartialShareInfo> = withContext(Dispatchers.IO) {
+        if (!isPartialShareDeployed()) {
+            throw IllegalStateException("PartialShareExtension not deployed")
+        }
+        
+        Log.d(TAG, "Querying sent shares for owner: $ownerAddress")
+        
+        val function = org.web3j.abi.datatypes.Function(
+            "getSentPartialShares",
+            listOf(Address(ownerAddress)),
+            listOf(
+                object : TypeReference<DynamicArray<Uint256>>() {},  // recordIds
+                object : TypeReference<DynamicArray<Address>>() {},  // receivers
+                object : TypeReference<DynamicArray<Utf8String>>() {}, // ipfsHashes
+                object : TypeReference<DynamicArray<org.web3j.abi.datatypes.generated.Bytes32>>() {}, // merkleRoots
+                object : TypeReference<DynamicArray<Uint256>>() {},  // expiryTimes
+                object : TypeReference<DynamicArray<Bool>>() {}      // isActiveArray
+            )
+        )
+        
+        val encodedFunction = FunctionEncoder.encode(function)
+        
+        val response = executeEthCallWithFallback(
+            encodedFunction = encodedFunction,
+            contractAddress = PARTIAL_SHARE_CONTRACT,
+            fromAddress = null
+        )
+        
+        if (response.hasError()) {
+            Log.e(TAG, "Error getting sent shares: ${response.error.message}")
+            return@withContext emptyList()
+        }
+        
+        val result = response.value
+        if (result.isNullOrEmpty() || result == "0x") {
+            return@withContext emptyList()
+        }
+        
+        val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+            result,
+            function.outputParameters
+        )
+        
+        if (decodedResult.isEmpty()) {
+            return@withContext emptyList()
+        }
+        
+        @Suppress("UNCHECKED_CAST")
+        val recordIds = (decodedResult[0].value as List<Uint256>).map { it.value }
+        @Suppress("UNCHECKED_CAST")
+        val receivers = (decodedResult[1].value as List<Address>).map { it.value }
+        @Suppress("UNCHECKED_CAST")
+        val ipfsHashes = (decodedResult[2].value as List<Utf8String>).map { it.value }
+        @Suppress("UNCHECKED_CAST")
+        val merkleRoots = (decodedResult[3].value as List<org.web3j.abi.datatypes.generated.Bytes32>).map { 
+            Numeric.toHexString(it.value)
+        }
+        @Suppress("UNCHECKED_CAST")
+        val expiryTimes = (decodedResult[4].value as List<Uint256>).map { it.value }
+        @Suppress("UNCHECKED_CAST")
+        val isActiveArray = (decodedResult[5].value as List<Bool>).map { it.value }
+        
+        val shares = recordIds.indices.map { i ->
+            com.fyp.blockchainhealthwallet.ui.partialshare.SentPartialShareInfo(
+                recordId = recordIds[i].toLong(),
+                receiver = receivers[i],
+                ipfsHash = ipfsHashes[i],
+                merkleRoot = merkleRoots[i],
+                expiryTime = expiryTimes[i].toLong(),
+                isActive = isActiveArray[i]
+            )
+        }
+        
+        Log.d(TAG, "Found ${shares.size} sent shares")
+        return@withContext shares
+    }
+    
+    data class PartialShareInfo(
+        val recordId: BigInteger,
+        val owner: String,
+        val ipfsHash: String,
+        val merkleRoot: String,
+        val expiryTime: BigInteger
+    )
     
     /**
      * DUMMY TEST METHOD: Test HealthWalletV2 by calling setPersonalInfo with dummy data

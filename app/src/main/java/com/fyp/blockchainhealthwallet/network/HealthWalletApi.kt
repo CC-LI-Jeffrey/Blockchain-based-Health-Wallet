@@ -100,6 +100,27 @@ interface HealthWalletApi {
     suspend fun isAuthorizedProvider(
         @Path("address") providerAddress: String
     ): Response<IsProviderResponse>
+    
+    /**
+     * Upload partial share package to IPFS via backend.
+     * @param packageJson JSON string of the partial share package
+     * @return IPFS hash
+     */
+    @POST("/api/partial-share/upload-package")
+    @Headers("Content-Type: application/json")
+    suspend fun uploadPartialSharePackage(
+        @Body request: PartialShareUploadRequest
+    ): Response<PartialShareUploadResponse>
+    
+    /**
+     * Download partial share package from IPFS via backend.
+     * @param ipfsHash The IPFS hash of the package
+     * @return Package JSON string
+     */
+    @GET("/api/partial-share/download-package/{ipfsHash}")
+    fun downloadPartialSharePackage(
+        @Path("ipfsHash") ipfsHash: String
+    ): retrofit2.Call<okhttp3.ResponseBody>
 }
 
 // Request/Response data classes
@@ -181,5 +202,15 @@ data class TransactionResponse(
 data class IsProviderResponse(
     val success: Boolean,
     val isProvider: Boolean,
+    val error: String?
+)
+
+data class PartialShareUploadRequest(
+    val sharePackage: String
+)
+
+data class PartialShareUploadResponse(
+    val success: Boolean,
+    val ipfsHash: String?,
     val error: String?
 )

@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"
+        tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
 
@@ -120,6 +123,16 @@
             android:exported="false"
             android:label="Share Records" />
         <activity
+            android:name=".FullShareHubActivity"
+            android:exported="false"
+            android:label="Full Record Sharing"
+            android:parentActivityName=".ShareRecordActivity" />
+        <activity
+            android:name=".PartialShareHubActivity"
+            android:exported="false"
+            android:label="Partial Record Sharing"
+            android:parentActivityName=".ShareRecordActivity" />
+        <activity
             android:name=".SharedRecordsActivity"
             android:exported="false"
             android:label="Records I Shared" />
@@ -179,6 +192,14 @@
         
         <!-- Partial Share Activities -->
         <activity
+            android:name=".ui.partialshare.PartialShareHubActivity"
+            android:exported="false"
+            android:label="Partial Share" />
+        <activity
+            android:name=".ui.partialshare.PartialShareSelectorActivity"
+            android:exported="false"
+            android:label="Select Record to Share" />
+        <activity
             android:name=".ui.partialshare.PartialShareActivity"
             android:exported="false"
             android:label="Partial Share" />
@@ -187,6 +208,23 @@
             android:exported="false"
             android:label="Scan Shared Data"
             android:screenOrientation="portrait" />
+        <activity
+            android:name=".ui.partialshare.AddressQRScannerActivity"
+            android:exported="false"
+            android:label="Scan Wallet Address"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".ui.partialshare.ViewSharedWithMeActivity"
+            android:exported="false"
+            android:label="Shared With Me" />
+        <activity
+            android:name=".ui.partialshare.ViewSentPartialSharesActivity"
+            android:exported="false"
+            android:label="Partial Shares I Sent" />
+        <activity
+            android:name=".ui.partialshare.PartialShareDetailActivity"
+            android:exported="false"
+            android:label="Partial Share Details" />
         
         <!-- FileProvider for sharing decrypted files -->
         <provider

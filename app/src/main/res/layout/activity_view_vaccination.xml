@@ -395,6 +395,17 @@
                     app:cornerRadius="8dp" />
 
                 <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPartialShareVaccination"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Partial Share (QR/Blockchain)"
+                    android:textSize="14sp"
+                    app:icon="@drawable/ic_qr_code"
+                    app:cornerRadius="8dp" />
+
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnDeleteVaccination"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="match_parent"

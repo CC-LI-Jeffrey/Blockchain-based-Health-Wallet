@@ -49,6 +49,7 @@ class ProfileActivity : AppCompatActivity() {
     private lateinit var tvEmergencyRelation: TextView
     private lateinit var tvEmergencyPhone: TextView
     private lateinit var btnEditProfile: Button
+    private lateinit var btnPartialShareProfile: Button
     private lateinit var btnEnableReceive: Button
     private lateinit var tvReceiveStatus: TextView
     
@@ -77,6 +78,7 @@ class ProfileActivity : AppCompatActivity() {
         tvEmergencyRelation = findViewById(R.id.tvEmergencyRelation)
         tvEmergencyPhone = findViewById(R.id.tvEmergencyPhone)
         btnEditProfile = findViewById(R.id.btnEditProfile)
+        btnPartialShareProfile = findViewById(R.id.btnPartialShareProfile)
         btnEnableReceive = findViewById(R.id.btnEnableReceive)
         tvReceiveStatus = findViewById(R.id.tvReceiveStatus)
     }
@@ -88,6 +90,10 @@ class ProfileActivity : AppCompatActivity() {
         
         btnEditProfile.setOnClickListener {
             showEditProfileDialog()
+        }
+        
+        btnPartialShareProfile.setOnClickListener {
+            openPartialShareActivity()
         }
         
         btnEnableReceive.setOnClickListener {
@@ -834,6 +840,44 @@ class ProfileActivity : AppCompatActivity() {
         }
         
         return response.body()!!.ipfsHash!!
+    }
+    
+    private fun openPartialShareActivity() {
+        val personalInfo = currentPersonalInfo
+        if (personalInfo == null) {
+            Toast.makeText(this, "Please load profile data first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Collect all personal info data
+        val recordData = mapOf(
+            "firstName" to personalInfo.firstName,
+            "lastName" to personalInfo.lastName,
+            "email" to personalInfo.email,
+            "hkid" to personalInfo.hkid,
+            "dateOfBirth" to personalInfo.dateOfBirth,
+            "gender" to personalInfo.gender,
+            "bloodType" to personalInfo.bloodType,
+            "phone" to personalInfo.phone,
+            "address" to personalInfo.address,
+            "emergencyContactName" to personalInfo.emergencyContact.name,
+            "emergencyContactRelationship" to personalInfo.emergencyContact.relationship,
+            "emergencyContactPhone" to personalInfo.emergencyContact.phone
+        )
+        
+        try {
+            val intent = android.content.Intent(this, Class.forName("com.fyp.blockchainhealthwallet.ui.partialshare.PartialShareActivity"))
+            intent.putExtra("RECORD_ID", WalletManager.getAddress())
+            intent.putExtra("RECORD_TYPE", "PERSONAL_INFO")
+            intent.putExtra("RECORD_DATA", kotlinx.serialization.json.Json.encodeToString(
+                kotlinx.serialization.serializer<Map<String, String>>(),
+                recordData
+            ))
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Error opening partial share", e)
+            Toast.makeText(this, "Partial share feature not available: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 
