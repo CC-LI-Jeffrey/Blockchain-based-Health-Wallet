@@ -46,9 +46,9 @@ object BlockchainService {
     private const val CONTRACT_ADDRESS = "0x8b9432cc2d5b6164d7E57c128eEf14d10BB1C5d6"
     //0x8f5b04Eb4EF06c4eFFA98D0cA20576a87A4CcCF6
 
-    private const val PARTIAL_SHARE_CONTRACT = "0xc810D25aFf4684f289f3D17420E8C19c1224Cadf" // PartialShareExtension contract
-    
-    // Sepolia RPC endpoints for reliability
+    private const val PARTIAL_SHARE_CONTRACT = "0x4c2c436b9baa58DAD1C70A01627321597d67C57A" // PartialShareExtension contract
+
+
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
     private const val RPC_URL_FALLBACK = "https://rpc.sepolia.org"
     private const val RPC_URL_FALLBACK2 = "https://rpc2.sepolia.org"
@@ -838,6 +838,53 @@ object BlockchainService {
             data = encodedFunction,
             value = "0x0"
         )
+    }
+
+    /**
+     * Check who owns a record in PartialShareExtension contract
+     * @param recordId The record ID to check
+     * @return Owner address or null if not registered (address(0))
+     */
+    suspend fun getPartialShareRecordOwner(recordId: BigInteger): String? = withContext(Dispatchers.IO) {
+        try {
+            if (PARTIAL_SHARE_CONTRACT == "0x0000000000000000000000000000000000000000") {
+                return@withContext null
+            }
+
+            val function = org.web3j.abi.datatypes.Function(
+                "recordOwners",
+                listOf(Uint256(recordId)),
+                listOf(object : TypeReference<Address>() {})
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+            val ethCallResponse = executeEthCallWithFallback(encodedFunction, PARTIAL_SHARE_CONTRACT)
+
+            val result = ethCallResponse.value
+            if (result.isNullOrEmpty() || result == "0x") {
+                return@withContext null
+            }
+
+            val decodedResult = org.web3j.abi.FunctionReturnDecoder.decode(
+                result,
+                function.outputParameters
+            )
+
+            if (decodedResult.isEmpty()) {
+                return@withContext null
+            }
+
+            val ownerAddress = (decodedResult[0] as Address).value
+            // Return null if address is zero address (not registered)
+            if (ownerAddress == "0x0000000000000000000000000000000000000000") {
+                return@withContext null
+            }
+
+            ownerAddress
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking record owner", e)
+            null
+        }
     }
     
     /**

@@ -40,72 +40,53 @@ object RecordSchemas {
     // ============================================
     
     val PERSONAL_INFO_SCHEMA = listOf(
-        "fullName",
+        "firstName",
+        "lastName",
+        "email",
+        "hkid",
         "dateOfBirth",
         "gender",
         "bloodType",
+        "phone",
         "address",
-        "phoneNumber",
-        "email",
-        "emergencyContact",
-        "emergencyPhone",
-        "allergies",
-        "chronicConditions"
+        "emergencyContactName",
+        "emergencyContactRelationship",
+        "emergencyContactPhone"
     )
     
     val MEDICATION_SCHEMA = listOf(
         "medicineName",
         "dosage",
-        "prescribedBy",
+        "frequency",
+        "route",
         "startDate",
         "endDate",
-        "frequency",
         "purpose",
-        "sideEffects",
+        "prescribedBy",
         "pharmacy",
-        "prescriptionNumber",
-        "refillsRemaining",
-        "cost",
-        "insurance",
-        "notes",
-        "doctorPhone"
+        "notes"
     )
     
     val VACCINATION_SCHEMA = listOf(
+        "date",
         "vaccineName",
+        "vaccineNameEn",
+        "vaccineFullName",
         "manufacturer",
-        "lotNumber",
-        "doseNumber",
-        "totalDoses",
-        "vaccinationDate",
-        "administeredBy",
-        "facilityName",
-        "facilityAddress",
-        "nextDoseDate",
-        "reactions",
-        "certificateNumber",
-        "notes",
-        "boosterRequired"
+        "country",
+        "provider",
+        "location",
+        "batchNumber"
     )
     
     val MEDICAL_REPORT_SCHEMA = listOf(
-        "reportTitle",
+        "title",
         "reportType",
-        "reportDate",
-        "facilityName",
+        "reportTypeDisplay",
+        "date",
         "doctorName",
-        "doctorSpecialty",
-        "chiefComplaint",
-        "diagnosis",
-        "treatmentPlan",
-        "medications",
-        "labResults",
-        "imagingResults",
-        "vitalSigns",
-        "followUpDate",
-        "referrals",
-        "notes",
-        "billingCode"
+        "hospital",
+        "description"
     )
     
     // ============================================
@@ -114,65 +95,49 @@ object RecordSchemas {
     
     val ATTRIBUTE_DISPLAY_NAMES = mapOf(
         // Personal Info
-        "fullName" to "Full Name",
+        "firstName" to "First Name",
+        "lastName" to "Last Name",
+        "email" to "Email",
+        "hkid" to "HKID Number",
         "dateOfBirth" to "Date of Birth",
         "gender" to "Gender",
         "bloodType" to "Blood Type",
+        "phone" to "Phone",
         "address" to "Address",
-        "phoneNumber" to "Phone Number",
-        "email" to "Email",
-        "emergencyContact" to "Emergency Contact",
-        "emergencyPhone" to "Emergency Phone",
-        "allergies" to "Allergies",
-        "chronicConditions" to "Chronic Conditions",
+        "emergencyContactName" to "Emergency Contact Name",
+        "emergencyContactRelationship" to "Relationship",
+        "emergencyContactPhone" to "Emergency Contact Phone",
         
         // Medication
         "medicineName" to "Medicine Name",
         "dosage" to "Dosage",
-        "prescribedBy" to "Prescribed By",
+        "frequency" to "Frequency",
+        "route" to "Route",
         "startDate" to "Start Date",
         "endDate" to "End Date",
-        "frequency" to "Frequency",
         "purpose" to "Purpose",
-        "sideEffects" to "Side Effects",
+        "prescribedBy" to "Prescribed By",
         "pharmacy" to "Pharmacy",
-        "prescriptionNumber" to "Prescription Number",
-        "refillsRemaining" to "Refills Remaining",
-        "cost" to "Cost",
-        "insurance" to "Insurance",
         "notes" to "Notes",
-        "doctorPhone" to "Doctor Phone",
         
         // Vaccination
+        "date" to "Date",
         "vaccineName" to "Vaccine Name",
+        "vaccineNameEn" to "Vaccine Name (EN)",
+        "vaccineFullName" to "Vaccine Full Name",
         "manufacturer" to "Manufacturer",
-        "lotNumber" to "Lot Number",
-        "doseNumber" to "Dose Number",
-        "totalDoses" to "Total Doses",
-        "vaccinationDate" to "Vaccination Date",
-        "administeredBy" to "Administered By",
-        "facilityName" to "Facility Name",
-        "facilityAddress" to "Facility Address",
-        "nextDoseDate" to "Next Dose Date",
-        "reactions" to "Reactions",
-        "certificateNumber" to "Certificate Number",
-        "boosterRequired" to "Booster Required",
+        "country" to "Country",
+        "provider" to "Provider",
+        "location" to "Location",
+        "batchNumber" to "Batch Number",
         
         // Medical Report
-        "reportTitle" to "Report Title",
+        "title" to "Title",
         "reportType" to "Report Type",
-        "reportDate" to "Report Date",
+        "reportTypeDisplay" to "Report Type Display",
+        "date" to "Date",
         "doctorName" to "Doctor Name",
-        "doctorSpecialty" to "Doctor Specialty",
-        "chiefComplaint" to "Chief Complaint",
-        "diagnosis" to "Diagnosis",
-        "treatmentPlan" to "Treatment Plan",
-        "medications" to "Medications",
-        "labResults" to "Lab Results",
-        "imagingResults" to "Imaging Results",
-        "vitalSigns" to "Vital Signs",
-        "followUpDate" to "Follow Up Date",
-        "referrals" to "Referrals",
-        "billingCode" to "Billing Code"
+        "hospital" to "Hospital",
+        "description" to "Description"
     )
 }

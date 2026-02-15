@@ -23,7 +23,7 @@ class SharedRecordAdapter(
     }
     
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind(getItem(position), position + 1)
     }
     
     class ViewHolder(
@@ -36,8 +36,10 @@ class SharedRecordAdapter(
         private val expiryText: TextView = itemView.findViewById(R.id.expiryText)
         private val ipfsHashText: TextView = itemView.findViewById(R.id.ipfsHashText)
         
-        fun bind(shareInfo: BlockchainService.PartialShareInfo) {
-            recordIdText.text = "Record #${shareInfo.recordId}"
+        fun bind(shareInfo: BlockchainService.PartialShareInfo, displayNumber: Int) {
+            // Display sequential number for cleaner UI
+            recordIdText.text = "Shared Record #$displayNumber"
+            
             ownerText.text = "From: ${shareInfo.owner.take(10)}...${shareInfo.owner.takeLast(8)}"
             
             val expiryDate = Date(shareInfo.expiryTime.toLong() * 1000)

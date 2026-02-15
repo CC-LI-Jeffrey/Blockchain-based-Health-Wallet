@@ -37,7 +37,15 @@ class SentPartialShareAdapter(
         private val tvStatus: TextView = itemView.findViewById(R.id.tvStatus)
         
         fun bind(shareInfo: SentPartialShareInfo) {
-            tvRecordId.text = "Record #${shareInfo.recordId}"
+            // Display shorter, more readable record ID
+            val recordIdStr = shareInfo.recordId.toString()
+            val shortId = if (recordIdStr.length > 8) {
+                "#...${recordIdStr.takeLast(4)}"
+            } else {
+                "#${recordIdStr}"
+            }
+            tvRecordId.text = "Shared Record $shortId"
+            
             tvReceiver.text = "To: ${shareInfo.receiver.take(10)}...${shareInfo.receiver.takeLast(8)}"
             tvIpfsHash.text = "IPFS: ${shareInfo.ipfsHash.take(15)}..."
             

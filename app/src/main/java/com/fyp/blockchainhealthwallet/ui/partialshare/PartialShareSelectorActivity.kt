@@ -17,6 +17,8 @@ import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.math.BigInteger
+import java.security.MessageDigest
 
 /**
  * Activity to select which record to partially share
@@ -126,6 +128,19 @@ class PartialShareSelectorActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
+    /**
+     * Generate unique recordId for personal info based on user address
+     * This prevents collisions when multiple users use the same contract
+     */
+    private fun generatePersonalInfoRecordId(userAddress: String): String {
+        // Use hash of "PERSONAL_INFO" + address to generate unique recordId
+        val data = "PERSONAL_INFO:$userAddress"
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(data.toByteArray())
+        val bigInt = BigInteger(1, hashBytes)
+        return bigInt.toString()
+    }
+
     private suspend fun loadPersonalInfo(address: String): List<RecordItem> {
         return withContext(Dispatchers.IO) {
             try {
@@ -133,7 +148,7 @@ class PartialShareSelectorActivity : AppCompatActivity() {
                 if (hasInfo) {
                     listOf(
                         RecordItem(
-                            id = "0",
+                            id = generatePersonalInfoRecordId(address),
                             title = "Personal Information",
                             subtitle = "Name, DOB, Blood Type, etc.",
                             icon = R.drawable.ic_person

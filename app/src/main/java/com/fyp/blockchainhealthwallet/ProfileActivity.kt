@@ -849,6 +849,22 @@ class ProfileActivity : AppCompatActivity() {
             return
         }
         
+        // Log the raw PersonalInfo object
+        android.util.Log.d(TAG, "=== OPENING PARTIAL SHARE ===")
+        android.util.Log.d(TAG, "currentPersonalInfo object:")
+        android.util.Log.d(TAG, "  firstName: '${personalInfo.firstName}'")
+        android.util.Log.d(TAG, "  lastName: '${personalInfo.lastName}'")
+        android.util.Log.d(TAG, "  email: '${personalInfo.email}'")
+        android.util.Log.d(TAG, "  hkid: '${personalInfo.hkid}'")
+        android.util.Log.d(TAG, "  dateOfBirth: '${personalInfo.dateOfBirth}'")
+        android.util.Log.d(TAG, "  gender: '${personalInfo.gender}'")
+        android.util.Log.d(TAG, "  bloodType: '${personalInfo.bloodType}'")
+        android.util.Log.d(TAG, "  phone: '${personalInfo.phone}'")
+        android.util.Log.d(TAG, "  address: '${personalInfo.address}'")
+        android.util.Log.d(TAG, "  emergencyContact.name: '${personalInfo.emergencyContact.name}'")
+        android.util.Log.d(TAG, "  emergencyContact.relationship: '${personalInfo.emergencyContact.relationship}'")
+        android.util.Log.d(TAG, "  emergencyContact.phone: '${personalInfo.emergencyContact.phone}'")
+        
         // Collect all personal info data
         val recordData = mapOf(
             "firstName" to personalInfo.firstName,
@@ -865,14 +881,22 @@ class ProfileActivity : AppCompatActivity() {
             "emergencyContactPhone" to personalInfo.emergencyContact.phone
         )
         
+        android.util.Log.d(TAG, "recordData map created:")
+        recordData.forEach { (k, v) ->
+            android.util.Log.d(TAG, "  $k: '$v' (empty: ${v.isEmpty()})")
+        }
+        
         try {
+            val jsonString = kotlinx.serialization.json.Json.encodeToString(
+                kotlinx.serialization.serializer<Map<String, String>>(),
+                recordData
+            )
+            android.util.Log.d(TAG, "JSON string to send: $jsonString")
+            
             val intent = android.content.Intent(this, Class.forName("com.fyp.blockchainhealthwallet.ui.partialshare.PartialShareActivity"))
             intent.putExtra("RECORD_ID", WalletManager.getAddress())
             intent.putExtra("RECORD_TYPE", "PERSONAL_INFO")
-            intent.putExtra("RECORD_DATA", kotlinx.serialization.json.Json.encodeToString(
-                kotlinx.serialization.serializer<Map<String, String>>(),
-                recordData
-            ))
+            intent.putExtra("RECORD_DATA", jsonString)
             startActivity(intent)
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Error opening partial share", e)

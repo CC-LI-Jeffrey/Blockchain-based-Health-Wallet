@@ -89,10 +89,11 @@ class PartialShareDetailActivity : AppCompatActivity() {
         merkleRoot: String,
         expiryTime: Long
     ) {
-        tvRecordId.text = "Record #$recordId"
+        // Display simple title (actual recordId stored for blockchain operations)
+        tvRecordId.text = "Shared Record Details"
         tvOwner.text = "Owner: ${owner.take(10)}...${owner.takeLast(8)}"
-        tvIpfsHash.text = "IPFS: $ipfsHash"
-        tvMerkleRoot.text = "Merkle Root: $merkleRoot"
+        tvIpfsHash.text = "IPFS: ${ipfsHash.take(20)}..."
+        tvMerkleRoot.text = "Root: ${merkleRoot.take(20)}..."
         
         val date = Date(expiryTime * 1000)
         val formatter = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
@@ -181,9 +182,9 @@ class PartialShareDetailActivity : AppCompatActivity() {
                         continue
                     }
                     
-                    Log.d(TAG, "\nVerifying attribute: $attrName")
-                    Log.d(TAG, "  Value: $attrValue")
-                    Log.d(TAG, "  Proof path length: ${proof.size}")
+                    Log.d(TAG, "\n════════════════════════════════════════════════════")
+                    Log.d(TAG, "Starting verification for attribute: $attrName")
+                    Log.d(TAG, "════════════════════════════════════════════════════")
                     
                     // Convert proof map to ProofNode list
                     val proofNodes = proof.map { proofNodeMap ->
@@ -193,21 +194,16 @@ class PartialShareDetailActivity : AppCompatActivity() {
                         )
                     }
                     
-                    // Verify proof
-                    val isValid = merkleHelper.verifyProof(
+                    // Verify proof with detailed logging
+                    val isValid = merkleHelper.verifyProofWithDetailedLogging(
                         attrName,
                         attrValue,
                         proofNodes,
-                        packageData.merkleRoot!!
+                        packageData.merkleRoot!!,
+                        TAG
                     )
                     
                     verificationResults.add(attrName to isValid)
-                    
-                    if (isValid) {
-                        Log.d(TAG, "  ✓ PROOF VALID - Attribute verified!")
-                    } else {
-                        Log.e(TAG, "  ✗ PROOF INVALID - Verification failed!")
-                    }
                 }
                 
                 // Display results

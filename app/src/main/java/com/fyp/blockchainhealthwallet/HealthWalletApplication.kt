@@ -8,19 +8,27 @@ import com.reown.android.CoreClient
 import com.reown.appkit.client.AppKit
 import com.reown.appkit.client.Modal
 import com.reown.appkit.presets.AppKitChainsPresets
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class HealthWalletApplication : Application() {
+    
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     
     override fun onCreate() {
         super.onCreate()
         
-        try {
-            // Initialize WalletConnect first
-            initializeWalletConnect()
-            // Initialize WalletManager after AppKit
-            WalletManager.initialize()
-        } catch (e: Exception) {
-            Log.e("HealthWalletApp", "Failed to initialize WalletConnect", e)
+        // Initialize WalletConnect on background thread to prevent ANR
+        applicationScope.launch {
+            try {
+                initializeWalletConnect()
+                WalletManager.initialize()
+                Log.d("HealthWalletApp", "WalletConnect initialized successfully")
+            } catch (e: Exception) {
+                Log.e("HealthWalletApp", "Failed to initialize WalletConnect", e)
+            }
         }
     }
     

@@ -115,6 +115,10 @@ class PartialShareActivity : AppCompatActivity() {
         qrActionButtons = findViewById(R.id.qrActionButtons)
         btnSaveQR = findViewById(R.id.btnSaveQR)
         btnShareQR = findViewById(R.id.btnShareQR)
+        
+        // Initialize visibility based on default selection (blockchain is now default)
+        receiverAddressLabel.visibility = View.VISIBLE
+        receiverAddressContainer.visibility = View.VISIBLE
     }
     
     private fun setupListeners() {
@@ -230,7 +234,49 @@ class PartialShareActivity : AppCompatActivity() {
     }
     
     private fun loadFromIntent() {
-        // Load medication data from intent (old flow)
+        // Check for new unified flow (used by ProfileActivity)
+        val recordDataJson = intent.getStringExtra("RECORD_DATA")
+        val recordType = intent.getStringExtra("RECORD_TYPE")
+        
+        if (recordDataJson != null && recordType != null) {
+            // New unified flow: Parse JSON data
+            android.util.Log.d("PartialShare", "Loading from intent with RECORD_DATA")
+            
+            try {
+                // Deserialize the JSON map
+                fullRecord = Json.decodeFromString<Map<String, String>>(recordDataJson)
+                
+                // Set record type based on string
+                currentRecordType = when (recordType) {
+                    "PERSONAL_INFO" -> RecordSchemas.RecordType.PERSONAL_INFO
+                    "MEDICATION" -> RecordSchemas.RecordType.MEDICATION
+                    "VACCINATION" -> RecordSchemas.RecordType.VACCINATION
+                    "MEDICAL_REPORT" -> RecordSchemas.RecordType.MEDICAL_REPORT
+                    else -> RecordSchemas.RecordType.PERSONAL_INFO
+                }
+                
+                android.util.Log.d("PartialShare", "Loaded record type: $currentRecordType")
+                android.util.Log.d("PartialShare", "Loaded data keys: ${fullRecord?.keys}")
+                android.util.Log.d("PartialShare", "Loaded data values:")
+                fullRecord?.forEach { (k, v) -> 
+                    android.util.Log.d("PartialShare", "  $k = '$v'")
+                }
+                
+                setupRecordTypeSpinner()
+                updateAttributesList()
+                return
+                
+            } catch (e: Exception) {
+                android.util.Log.e("PartialShare", "Error parsing RECORD_DATA JSON", e)
+                Toast.makeText(this, "Error loading record data: ${e.message}", Toast.LENGTH_SHORT).show()
+                finish()
+                return
+            }
+        }
+        
+        // Fall back to old medication-specific flow (backward compatibility)
+        android.util.Log.d("PartialShare", "Loading from intent with individual fields (old flow)")
+        
         val medicationName = intent.getStringExtra("medicationName") ?: ""
         val dosage = intent.getStringExtra("dosage") ?: ""
         val frequency = intent.getStringExtra("frequency") ?: ""
@@ -326,29 +372,33 @@ class PartialShareActivity : AppCompatActivity() {
                 // Convert to Map<String, String> - flatten nested structures and map field names
                 val result = mutableMapOf<String, String>()
                 
-                // Combine firstName and lastName into fullName
-                val firstName = dataMap["firstName"]?.toString() ?: ""
-                val lastName = dataMap["lastName"]?.toString() ?: ""
-                result["fullName"] = "$firstName $lastName".trim()
+                android.util.Log.d("PartialShare", "=== PERSONAL INFO MAPPING DEBUG ===")
+                android.util.Log.d("PartialShare", "Raw IPFS fields: ${dataMap.keys}")
+                dataMap.forEach { (k, v) ->
+                    android.util.Log.d("PartialShare", "  $k = $v")
+                }
                 
-                // Map other fields
+                // Schema: firstName, lastName, email, hkid, dateOfBirth, gender, bloodType, phone, address, emergencyContactName, emergencyContactRelationship, emergencyContactPhone
+                result["firstName"] = dataMap["firstName"]?.toString() ?: ""
+                result["lastName"] = dataMap["lastName"]?.toString() ?: ""
+                result["email"] = dataMap["email"]?.toString() ?: ""
+                result["hkid"] = dataMap["hkid"]?.toString() ?: ""
                 result["dateOfBirth"] = dataMap["dateOfBirth"]?.toString() ?: ""
                 result["gender"] = dataMap["gender"]?.toString() ?: ""
                 result["bloodType"] = dataMap["bloodType"]?.toString() ?: ""
+                result["phone"] = dataMap["phone"]?.toString() ?: ""
                 result["address"] = dataMap["address"]?.toString() ?: ""
-                result["phoneNumber"] = dataMap["phone"]?.toString() ?: "" // Map phone -> phoneNumber
-                result["email"] = dataMap["email"]?.toString() ?: ""
                 
                 // Flatten emergencyContact nested object
                 val emergencyContact = dataMap["emergencyContact"] as? Map<*, *>
-                if (emergencyContact != null) {
-                    result["emergencyContact"] = emergencyContact["name"]?.toString() ?: ""
-                    result["emergencyPhone"] = emergencyContact["phone"]?.toString() ?: ""
-                }
+                result["emergencyContactName"] = emergencyContact?.get("name")?.toString() ?: ""
+                result["emergencyContactRelationship"] = emergencyContact?.get("relationship")?.toString() ?: ""
+                result["emergencyContactPhone"] = emergencyContact?.get("phone")?.toString() ?: ""
                 
-                // Add empty fields for allergies and chronicConditions (not in PersonalInfo model yet)
-                result["allergies"] = ""
-                result["chronicConditions"] = ""
+                android.util.Log.d("PartialShare", "=== MAPPED PERSONAL INFO FIELDS ===")
+                result.forEach { (k, v) -> 
+                    android.util.Log.d("PartialShare", "$k = '$v' (empty: ${v.isEmpty()})")
+                }
                 
                 result
             } catch (e: Exception) {
@@ -385,21 +435,38 @@ class PartialShareActivity : AppCompatActivity() {
                 
                 // Convert to Map<String, String> with proper field name mapping
                 val result = mutableMapOf<String, String>()
-                result["medicineName"] = dataMap["name"]?.toString() ?: ""
+                
+                android.util.Log.d("PartialShare", "=== MEDICATION MAPPING DEBUG ===")
+                android.util.Log.d("PartialShare", "Raw IPFS fields: ${dataMap.keys}")
+                dataMap.forEach { (k, v) ->
+                    android.util.Log.d("PartialShare", "  $k = $v")
+                }
+                
+                // Schema: medicineName, dosage, frequency, route, startDate, endDate, purpose, prescribedBy, pharmacy, notes
+                result["medicineName"] = dataMap["name"]?.toString() ?: dataMap["medicineName"]?.toString() ?: ""
                 result["dosage"] = dataMap["dosage"]?.toString() ?: ""
-                result["prescribedBy"] = dataMap["prescribingDoctor"]?.toString() ?: ""
-                result["startDate"] = dataMap["startDate"]?.toString() ?: ""
-                result["endDate"] = dataMap["endDate"]?.toString() ?: ""
                 result["frequency"] = dataMap["frequency"]?.toString() ?: ""
+                result["route"] = dataMap["route"]?.toString() ?: ""
+                result["startDate"] = when (val start = dataMap["startDate"]) {
+                    is Number -> java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                        .format(java.util.Date(start.toLong()))
+                    else -> start?.toString() ?: ""
+                }
+                result["endDate"] = when (val end = dataMap["endDate"]) {
+                    is Number -> if (end.toLong() == 0L) "" else java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                        .format(java.util.Date(end.toLong()))
+                    else -> end?.toString() ?: ""
+                }
                 result["purpose"] = dataMap["purpose"]?.toString() ?: ""
-                result["sideEffects"] = "" // Not in model
+                result["prescribedBy"] = dataMap["prescribingDoctor"]?.toString() ?: dataMap["prescribedBy"]?.toString() ?: ""
                 result["pharmacy"] = dataMap["pharmacy"]?.toString() ?: ""
-                result["prescriptionNumber"] = "" // Not in model
-                result["refillsRemaining"] = "" // Not in model
-                result["cost"] = "" // Not in model
-                result["insurance"] = "" // Not in model
                 result["notes"] = dataMap["notes"]?.toString() ?: ""
-                result["doctorPhone"] = "" // Not in model
+                
+                android.util.Log.d("PartialShare", "=== MAPPED MEDICATION FIELDS ===")
+                result.forEach { (k, v) -> 
+                    android.util.Log.d("PartialShare", "$k = '$v' (empty: ${v.isEmpty()})")
+                }
+                
                 result
             } catch (e: Exception) {
                 throw Exception("Error loading medication: ${e.message}")
@@ -435,20 +502,31 @@ class PartialShareActivity : AppCompatActivity() {
                 
                 // Convert to Map<String, String> with proper field name mapping
                 val result = mutableMapOf<String, String>()
+                android.util.Log.d("PartialShare", "=== VACCINATION MAPPING DEBUG ===")
+                android.util.Log.d("PartialShare", "Raw IPFS fields: ${dataMap.keys}")
+                dataMap.forEach { (k, v) ->
+                    android.util.Log.d("PartialShare", "  $k = $v")
+                }
+                
+                // Schema: date, vaccineName, vaccineNameEn, vaccineFullName, manufacturer, country, provider, location, batchNumber
+                result["date"] = dataMap["date"]?.toString() ?: when (val created = dataMap["createdAt"]) {
+                    is Number -> java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                        .format(java.util.Date(created.toLong()))
+                    else -> created?.toString() ?: ""
+                }
                 result["vaccineName"] = dataMap["vaccineName"]?.toString() ?: ""
+                result["vaccineNameEn"] = dataMap["vaccineNameEn"]?.toString() ?: ""
+                result["vaccineFullName"] = dataMap["vaccineFullName"]?.toString() ?: ""
                 result["manufacturer"] = dataMap["manufacturer"]?.toString() ?: ""
-                result["lotNumber"] = dataMap["batchNumber"]?.toString() ?: ""
-                result["doseNumber"] = "" // Not in model
-                result["totalDoses"] = "" // Not in model
-                result["vaccinationDate"] = dataMap["date"]?.toString() ?: ""
-                result["administeredBy"] = dataMap["provider"]?.toString() ?: ""
-                result["facilityName"] = dataMap["location"]?.toString() ?: ""
-                result["facilityAddress"] = "" // Not in model
-                result["nextDoseDate"] = "" // Not in model
-                result["reactions"] = "" // Not in model
-                result["certificateNumber"] = "" // Not in model
-                result["notes"] = "" // Not in model
-                result["boosterRequired"] = "" // Not in model
+                result["country"] = dataMap["country"]?.toString() ?: ""
+                result["provider"] = dataMap["provider"]?.toString() ?: ""
+                result["location"] = dataMap["location"]?.toString() ?: ""
+                result["batchNumber"] = dataMap["batchNumber"]?.toString() ?: ""
+                
+                android.util.Log.d("PartialShare", "=== MAPPED VACCINATION FIELDS ===")
+                result.forEach { (k, v) -> 
+                    android.util.Log.d("PartialShare", "$k = '$v' (empty: ${v.isEmpty()})")
+                }
                 result
             } catch (e: Exception) {
                 throw Exception("Error loading vaccination: ${e.message}")
@@ -484,23 +562,30 @@ class PartialShareActivity : AppCompatActivity() {
                 
                 // Convert to Map<String, String> with proper field name mapping
                 val result = mutableMapOf<String, String>()
-                result["reportTitle"] = dataMap["title"]?.toString() ?: ""
-                result["reportType"] = dataMap["reportType"]?.toString() ?: ""
-                result["reportDate"] = dataMap["date"]?.toString() ?: ""
-                result["facilityName"] = dataMap["hospital"]?.toString() ?: ""
+                android.util.Log.d("PartialShare", "=== REPORT MAPPING DEBUG ===")
+                android.util.Log.d("PartialShare", "Raw IPFS fields: ${dataMap.keys}")
+                dataMap.forEach { (k, v) ->
+                    android.util.Log.d("PartialShare", "  $k = $v")
+                }
+                
+                // Schema: title, reportType, reportTypeDisplay, date, doctorName, hospital, description
+                // Note: PDF file NOT included in partial share - Merkle tree is metadata only
+                result["title"] = dataMap["title"]?.toString() ?: ""
+                result["reportType"] = dataMap["reportType"]?.toString() ?: dataMap["type"]?.toString() ?: ""
+                result["reportTypeDisplay"] = dataMap["reportTypeDisplay"]?.toString() ?: result["reportType"] ?: ""
+                result["date"] = dataMap["date"]?.toString() ?: when (val ts = dataMap["timestamp"]) {
+                    is Number -> java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                        .format(java.util.Date(ts.toLong()))
+                    else -> ts?.toString() ?: ""
+                }
                 result["doctorName"] = dataMap["doctorName"]?.toString() ?: ""
-                result["doctorSpecialty"] = "" // Not in model
-                result["chiefComplaint"] = dataMap["description"]?.toString() ?: ""
-                result["diagnosis"] = "" // Not in model
-                result["treatmentPlan"] = "" // Not in model
-                result["medications"] = "" // Not in model
-                result["labResults"] = "" // Not in model
-                result["imagingResults"] = "" // Not in model
-                result["vitalSigns"] = "" // Not in model
-                result["followUpDate"] = "" // Not in model
-                result["referrals"] = "" // Not in model
-                result["notes"] = dataMap["description"]?.toString() ?: ""
-                result["billingCode"] = "" // Not in model
+                result["hospital"] = dataMap["hospital"]?.toString() ?: ""
+                result["description"] = dataMap["description"]?.toString() ?: ""
+                
+                android.util.Log.d("PartialShare", "=== MAPPED REPORT FIELDS ===")
+                result.forEach { (k, v) -> 
+                    android.util.Log.d("PartialShare", "$k = '$v' (empty: ${v.isEmpty()})")
+                }
                 result
             } catch (e: Exception) {
                 throw Exception("Error loading report: ${e.message}")
@@ -565,14 +650,15 @@ class PartialShareActivity : AppCompatActivity() {
         
         android.util.Log.d("PartialShare", "Share method: $shareMethod")
         
-        // Validate blockchain method requirements
-        if (shareMethod == ShareMethod.BLOCKCHAIN) {
-            val receiverAddress = receiverAddressInput.text.toString().trim()
-            android.util.Log.d("PartialShare", "Receiver address: $receiverAddress")
-            if (receiverAddress.isEmpty()) {
-                Toast.makeText(this, "Please enter receiver address", Toast.LENGTH_SHORT).show()
-                return
-            }
+        // Validate method and inputs match
+        val receiverAddress = receiverAddressInput.text.toString().trim()
+        if (shareMethod == ShareMethod.BLOCKCHAIN && receiverAddress.isEmpty()) {
+            Toast.makeText(this, "Please enter receiver address for blockchain method", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (shareMethod == ShareMethod.QR_CODE && receiverAddress.isNotEmpty()) {
+            Toast.makeText(this, "Receiver address is not needed for QR code method. Switch to Blockchain method or clear address.", Toast.LENGTH_LONG).show()
+            return
         }
         
         lifecycleScope.launch {
@@ -639,7 +725,7 @@ class PartialShareActivity : AppCompatActivity() {
                 when (shareMethod) {
                     ShareMethod.QR_CODE -> {
                         android.util.Log.d("PartialShare", "Generating QR code...")
-                        generateQRCode(sharePackage)
+                        generateQRCode(sharePackage, partialData, data, merkleTree)
                     }
                     ShareMethod.BLOCKCHAIN -> {
                         android.util.Log.d("PartialShare", "Uploading to blockchain...")
@@ -662,40 +748,105 @@ class PartialShareActivity : AppCompatActivity() {
         }
     }
     
-    private fun generateQRCode(sharePackage: PartialSharePackage) {
-        statusText.text = "Generating QR code..."
-        
-        // Serialize to JSON
-        val json = Json.encodeToString(sharePackage)
-        
-        // Check size
-        if (json.length > 2000) {
-            statusText.text = "Warning: QR code may be too large (${json.length} chars)"
-        }
-        
-        // Generate QR code
-        val qrCodeWriter = QRCodeWriter()
-        val bitMatrix = qrCodeWriter.encode(json, BarcodeFormat.QR_CODE, 512, 512)
-        
-        val width = bitMatrix.width
-        val height = bitMatrix.height
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-        
-        for (x in 0 until width) {
-            for (y in 0 until height) {
-                bitmap.setPixel(x, y, if (bitMatrix[x, y]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
+    private fun generateQRCode(
+        sharePackage: PartialSharePackage,
+        originalAttributes: Map<String, String>,
+        fullRecordData: Map<String, String>,
+        originalMerkleTree: MerkleTreeHelper.MerkleTree
+    ) {
+        lifecycleScope.launch {
+            try {
+                statusText.text = "Generating QR code..."
+                
+                var currentPackage = sharePackage
+                var currentAttributes = originalAttributes.toMutableMap()
+                val excludedAttributes = mutableListOf<String>()
+                val maxQRSize = 2900 // Safe max for QR codes in bytes
+                
+                // Try to fit attributes within QR code size limit
+                while (currentAttributes.isNotEmpty()) {
+                    // Rebuild proofs with current attributes
+                    val proofsData = merkleHelper.generateProofs(
+                        originalMerkleTree,
+                        currentAttributes
+                    ).mapValues { (_, proof) ->
+                        proof.map { ProofNodeData.fromProofNode(it) }
+                    }
+                    
+                    currentPackage = sharePackage.copy(
+                        attributes = currentAttributes,
+                        proofs = proofsData
+                    )
+                    
+                    val json = Json.encodeToString(currentPackage)
+                    android.util.Log.d("PartialShare", "QR payload size: ${json.length} bytes")
+                    
+                    // Check if it fits
+                    if (json.length <= maxQRSize) {
+                        android.util.Log.d("PartialShare", "✅ QR code fits with ${currentAttributes.size} attributes")
+                        break
+                    }
+                    
+                    // Too big - remove one attribute (from end of list)
+                    val attributeToRemove = currentAttributes.keys.last()
+                    currentAttributes.remove(attributeToRemove)
+                    excludedAttributes.add(attributeToRemove)
+                    android.util.Log.d("PartialShare", "⚠️ Removing '$attributeToRemove' to reduce size (${json.length} > $maxQRSize)")
+                }
+                
+                if (currentAttributes.isEmpty()) {
+                    throw Exception("Package too large even with minimal attributes")
+                }
+                
+                // Warn user if attributes were excluded
+                if (excludedAttributes.isNotEmpty()) {
+                    val message = "⚠️ QR code size limit: Excluded ${excludedAttributes.size} attribute(s):\n" +
+                            excludedAttributes.joinToString(", ")
+                    Toast.makeText(this@PartialShareActivity, message, Toast.LENGTH_LONG).show()
+                    android.util.Log.w("PartialShare", message)
+                }
+                
+                // Generate QR code
+                statusText.text = "Encoding QR code..."
+                val json = Json.encodeToString(currentPackage)
+                val qrCodeWriter = QRCodeWriter()
+                val bitMatrix = qrCodeWriter.encode(json, BarcodeFormat.QR_CODE, 512, 512)
+                
+                val width = bitMatrix.width
+                val height = bitMatrix.height
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+                
+                for (x in 0 until width) {
+                    for (y in 0 until height) {
+                        bitmap.setPixel(x, y, if (bitMatrix[x, y]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
+                    }
+                }
+                
+                // Store bitmap for save/share functionality
+                currentQRBitmap = bitmap
+                
+                qrCodeImage.setImageBitmap(bitmap)
+                qrCodeImage.visibility = View.VISIBLE
+                qrActionButtons.visibility = View.VISIBLE
+                
+                // Update status with attribute count
+                val statusMessage = if (excludedAttributes.isEmpty()) {
+                    "QR code generated with ${currentAttributes.size} attributes!"
+                } else {
+                    "QR code generated with ${currentAttributes.size}/${originalAttributes.size} attributes (size limit)"
+                }
+                statusText.text = statusMessage
+                
+                Toast.makeText(this@PartialShareActivity, "QR Code ready for scanning", Toast.LENGTH_LONG).show()
+                
+            } catch (e: Exception) {
+                android.util.Log.e("PartialShare", "QR generation failed", e)
+                statusText.text = "Error: ${e.message}"
+                Toast.makeText(this@PartialShareActivity, "QR generation failed: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                progressBar.visibility = View.GONE
             }
         }
-        
-        // Store bitmap for save/share functionality
-        currentQRBitmap = bitmap
-        
-        qrCodeImage.setImageBitmap(bitmap)
-        qrCodeImage.visibility = View.VISIBLE
-        qrActionButtons.visibility = View.VISIBLE
-        statusText.text = "QR code generated! Scan to access shared data."
-        
-        Toast.makeText(this, "QR Code ready for scanning", Toast.LENGTH_LONG).show()
     }
     
     private fun saveQRCode() {
@@ -822,20 +973,51 @@ class PartialShareActivity : AppCompatActivity() {
             }
             
             android.util.Log.d("PartialShare", "IPFS upload successful: $ipfsHash")
-            statusText.text = "Registering record ownership..."
+            statusText.text = "Checking record ownership..."
             
-            // Register record if not already registered (required before granting access)
-            try {
-                android.util.Log.d("PartialShare", "Registering record $recordId...")
-                withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.fyp.blockchainhealthwallet.blockchain.BlockchainService.registerPartialShareRecord(recordId)
+            // Check if record is already registered and owned by someone
+            val currentOwner = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.fyp.blockchainhealthwallet.blockchain.BlockchainService.getPartialShareRecordOwner(recordId)
+            }
+            
+            val userAddress = com.fyp.blockchainhealthwallet.wallet.WalletManager.getAddress()
+                ?: throw IllegalStateException("No wallet connected")
+            
+            var needsWait = false
+            
+            if (currentOwner == null) {
+                // Not registered yet - register it
+                android.util.Log.d("PartialShare", "Record $recordId not registered yet - registering...")
+                statusText.text = "Registering record ownership..."
+                try {
+                    withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        com.fyp.blockchainhealthwallet.blockchain.BlockchainService.registerPartialShareRecord(recordId)
+                    }
+                    android.util.Log.d("PartialShare", "✅ Record registered successfully - waiting 20 seconds for block confirmation...")
+                    needsWait = true
+                } catch (e: Exception) {
+                    android.util.Log.e("PartialShare", "❌ Registration failed", e)
+                    throw Exception("Failed to register record: ${e.message}")
                 }
-                android.util.Log.d("PartialShare", "Record registered successfully")
-                // Wait a bit for transaction to be mined
-                kotlinx.coroutines.delay(3000)
-            } catch (e: Exception) {
-                // If already registered, this will fail - that's okay
-                android.util.Log.d("PartialShare", "Record registration: ${e.message} (may already be registered)")
+            } else if (currentOwner.equals(userAddress, ignoreCase = true)) {
+                // Already registered by us - no wait needed
+                android.util.Log.d("PartialShare", "ℹ️ Record $recordId already registered by us - skipping registration")
+            } else {
+                // Registered by someone else - error!
+                android.util.Log.e("PartialShare", "❌ Record $recordId is owned by someone else: $currentOwner (we are $userAddress)")
+                throw IllegalStateException(
+                    "This record ID is already registered by another user.\n" +
+                    "Owner: $currentOwner\n" +
+                    "This shouldn't happen with unique record IDs.\n\n" +
+                    "Please report this bug."
+                )
+            }
+            
+            // Wait for Sepolia block confirmation (12-15 seconds block time)
+            if (needsWait) {
+                statusText.text = "Waiting for block confirmation (20s)..."
+                kotlinx.coroutines.delay(20000) // 20 seconds to ensure transaction is mined
+                android.util.Log.d("PartialShare", "✅ Block confirmation wait completed")
             }
             
             statusText.text = "Granting access on blockchain..."

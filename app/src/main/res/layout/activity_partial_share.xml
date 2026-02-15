@@ -81,14 +81,14 @@
                 android:id="@+id/qrCodeRadio"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="QR Code (Instant)"
-                android:checked="true"/>
+                android:text="QR Code (Instant)"/>
 
             <RadioButton
                 android:id="@+id/blockchainRadio"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Blockchain (Persistent)"/>
+                android:text="Blockchain (Persistent)"
+                android:checked="true"/>
         </RadioGroup>
 
         <!-- Receiver Address (for blockchain method) -->
