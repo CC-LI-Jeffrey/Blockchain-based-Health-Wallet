@@ -223,6 +223,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<CardView>(R.id.cardScanPartialShare).setOnClickListener {
             openScanPartialShare()
         }
+
+        findViewById<CardView>(R.id.cardAgeVerify).setOnClickListener {
+            startActivity(Intent(this, AgeVerifyActivity::class.java))
+        }
     }
 
     private fun navigateToSettings() {

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <!--
+        snarkjs WebView wrapper for AgeVerify ZKP
+        Loaded by ZkpService.kt inside a hidden WebView.
+
+        • AgeVerify.wasm and AgeVerify_final.zkey are loaded from Android assets
+          via the custom WebViewAssetLoader path /assets/zkp/
+        • birthYear NEVER leaves this page; only the proof is sent back via the
+          JavaScript bridge (ZkpBridge.onProofReady / ZkpBridge.onProofError)
+        • snarkjs.min.js can be bundled in assets/zkp/ for offline use,
+          or loaded from CDN for development
+    -->
+</head>
+<body>
+<script>
+    // -------------------------------------------------------
+    // Load snarkjs — bundled locally so it works offline
+    // After running setupCircuit.js, also place snarkjs.min.js
+    // in app/src/main/assets/zkp/
+    // -------------------------------------------------------
+    var snarkjsScript = document.createElement('script');
+    snarkjsScript.src = 'https://cdn.jsdelivr.net/npm/snarkjs@0.7.4/build/snarkjs.min.js';
+    snarkjsScript.onload = function() {
+        // Signal to Android that the engine is ready
+        if (window.ZkpBridge) {
+            window.ZkpBridge.onEngineReady();
+        }
+    };
+    snarkjsScript.onerror = function() {
+        if (window.ZkpBridge) {
+            window.ZkpBridge.onProofError('Failed to load snarkjs library');
+        }
+    };
+    document.head.appendChild(snarkjsScript);
+
+    // -------------------------------------------------------
+    // Helper: fetch a local asset file as ArrayBuffer
+    // WebViewAssetLoader maps /assets/ → app assets folder
+    // -------------------------------------------------------
+    async function fetchLocalAsset(assetPath) {
+        const response = await fetch(assetPath);
+        if (!response.ok) {
+            throw new Error('Failed to load asset: ' + assetPath + ' (status ' + response.status + ')');
+        }
+        return response.arrayBuffer();
+    }
+
+    // -------------------------------------------------------
+    // generateAgeProof(birthYear, currentYear, minAge)
+    // Called by ZkpService.kt via evaluateJavascript()
+    // -------------------------------------------------------
+    async function generateAgeProof(birthYear, currentYear, minAge) {
+        try {
+            // Input validation
+            if (isNaN(birthYear) || birthYear < 1900 || birthYear > currentYear) {
+                throw new Error('Invalid birth year: ' + birthYear);
+            }
+
+            // Load circuit files from Android assets
+            // These must exist at: app/src/main/assets/zkp/
+            const wasmBuffer = await fetchLocalAsset('/assets/zkp/AgeVerify.wasm');
+            const zkeyBuffer = await fetchLocalAsset('/assets/zkp/AgeVerify_final.zkey');
+
+            // Private input — birthYear stays here, never sent back
+            const input = {
+                birthYear:   birthYear.toString(),
+                currentYear: currentYear.toString(),
+                minAge:      minAge.toString()
+            };
+
+            // Generate Groth16 proof — this is the heavy computation (~1-3s on mobile)
+            const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+                input,
+                new Uint8Array(wasmBuffer),
+                new Uint8Array(zkeyBuffer)
+            );
+
+            // Send proof back to Kotlin — birthYear is NOT included
+            const result = JSON.stringify({
+                proof: proof,
+                publicSignals: publicSignals   // ["1", "2026", "18"]
+            });
+
+            window.ZkpBridge.onProofReady(result);
+
+        } catch (err) {
+            window.ZkpBridge.onProofError(err.message || 'Unknown error during proof generation');
+        }
+    }
+</script>
+</body>
+</html>

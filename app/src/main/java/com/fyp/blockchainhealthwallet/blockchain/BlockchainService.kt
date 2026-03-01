@@ -3117,4 +3117,177 @@ object BlockchainService {
             "Error getting summary: ${e.message}"
         }
     }
+
+    // ============================================
+    // ZKP AGE VERIFICATION - AgeVerifyExtension
+    // ============================================
+
+    private const val AGE_VERIFY_CONTRACT = "0x0000000000000000000000000000000000000000"
+    // TODO: After deploying AgeVerifier.sol + AgeVerifyExtension.sol to Sepolia,
+    //       replace the above with the deployed AgeVerifyExtension address.
+    //       Run: npx hardhat run scripts/deployAgeVerify.js --network sepolia
+
+    /**
+     * Submit a ZK proof to prove age >= 18.
+     * Proof was generated locally on the device via ZkpService (snarkjs in WebView).
+     * Birth year is NEVER included — only the 3 proof components + public signals.
+     *
+     * @param proofA       Groth16 component A — 2 BigIntegers
+     * @param proofB       Groth16 component B — 2×2 BigIntegers
+     * @param proofC       Groth16 component C — 2 BigIntegers
+     * @param publicInputs Public signals — [isAdult=1, currentYear, minAge=18]
+     * @return Transaction hash
+     */
+    suspend fun submitAgeProof(
+        proofA: List<java.math.BigInteger>,
+        proofB: List<List<java.math.BigInteger>>,
+        proofC: List<java.math.BigInteger>,
+        publicInputs: List<java.math.BigInteger>
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+
+        if (AGE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            throw IllegalStateException(
+                "AgeVerifyExtension not deployed yet. " +
+                "Run: npx hardhat run scripts/deployAgeVerify.js --network sepolia, " +
+                "then update AGE_VERIFY_CONTRACT in BlockchainService.kt"
+            )
+        }
+
+        require(proofA.size == 2)             { "proofA must have 2 elements" }
+        require(proofB.size == 2)             { "proofB must have 2 rows" }
+        require(proofB.all { it.size == 2 })  { "proofB rows must each have 2 elements" }
+        require(proofC.size == 2)             { "proofC must have 2 elements" }
+        require(publicInputs.size == 3)       { "publicInputs must have 3 elements [isAdult, year, minAge]" }
+        require(publicInputs[0] == java.math.BigInteger.ONE) { "publicInputs[0] (isAdult) must be 1" }
+
+        Log.d(TAG, "Submitting ZK age proof for: $userAddress")
+        Log.d(TAG, "Public inputs: isAdult=${publicInputs[0]}, year=${publicInputs[1]}, minAge=${publicInputs[2]}")
+
+        // Encode submitAgeProof(uint[2] a, uint[2][2] b, uint[2] c, uint[3] input)
+        // We encode manually as the ABI types need static arrays
+        val proofAHex  = proofA.map { "0x${it.toString(16).padStart(64, '0')}" }
+        val proofBHex  = proofB.map { row -> row.map { "0x${it.toString(16).padStart(64, '0')}" } }
+        val proofCHex  = proofC.map { "0x${it.toString(16).padStart(64, '0')}" }
+        val inputsHex  = publicInputs.map { "0x${it.toString(16).padStart(64, '0')}" }
+
+        // Manual ABI encoding for function with static arrays
+        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitAgeProof(uint256[2],uint256[2][2],uint256[2],uint256[3])")
+            .substring(0, 8)
+
+        val sb = StringBuilder(functionSelector)
+        // a[0], a[1]
+        sb.append(proofA[0].toString(16).padStart(64, '0'))
+        sb.append(proofA[1].toString(16).padStart(64, '0'))
+        // b[0][0], b[0][1], b[1][0], b[1][1]
+        sb.append(proofB[0][0].toString(16).padStart(64, '0'))
+        sb.append(proofB[0][1].toString(16).padStart(64, '0'))
+        sb.append(proofB[1][0].toString(16).padStart(64, '0'))
+        sb.append(proofB[1][1].toString(16).padStart(64, '0'))
+        // c[0], c[1]
+        sb.append(proofC[0].toString(16).padStart(64, '0'))
+        sb.append(proofC[1].toString(16).padStart(64, '0'))
+        // input[0], input[1], input[2]
+        sb.append(publicInputs[0].toString(16).padStart(64, '0'))
+        sb.append(publicInputs[1].toString(16).padStart(64, '0'))
+        sb.append(publicInputs[2].toString(16).padStart(64, '0'))
+
+        val encodedFunction = sb.toString()
+
+        sendTransaction(
+            from = userAddress,
+            to = AGE_VERIFY_CONTRACT,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+
+    /**
+     * Check if a wallet address has been verified as an adult (>= 18).
+     * Read-only, no gas required. Anyone can call this.
+     *
+     * @param userAddress Wallet address to check
+     * @return true if the address has submitted a valid age proof
+     */
+    suspend fun checkAdultStatus(userAddress: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (AGE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+                return@withContext false
+            }
+
+            val function = org.web3j.abi.datatypes.Function(
+                "checkAdultStatus",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<Bool>() {})
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+
+            val response = executeEthCallWithFallback(
+                encodedFunction = encodedFunction,
+                contractAddress = AGE_VERIFY_CONTRACT,
+                fromAddress = null
+            )
+
+            if (response.hasError()) {
+                Log.e(TAG, "checkAdultStatus error: ${response.error.message}")
+                return@withContext false
+            }
+
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") return@withContext false
+
+            val decoded = org.web3j.abi.FunctionReturnDecoder.decode(result, function.outputParameters)
+            if (decoded.isEmpty()) return@withContext false
+
+            (decoded[0] as Bool).value
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking adult status for $userAddress", e)
+            false
+        }
+    }
+
+    /**
+     * Get verification timestamp for a wallet address (0 if not verified).
+     * @param userAddress Wallet address to check
+     * @return Unix timestamp or 0
+     */
+    suspend fun getVerificationTimestamp(userAddress: String): java.math.BigInteger = withContext(Dispatchers.IO) {
+        try {
+            if (AGE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+                return@withContext java.math.BigInteger.ZERO
+            }
+
+            val function = org.web3j.abi.datatypes.Function(
+                "getVerificationDetails",
+                listOf(Address(userAddress)),
+                listOf(
+                    object : TypeReference<Bool>() {},
+                    object : TypeReference<Uint256>() {}
+                )
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+
+            val response = executeEthCallWithFallback(
+                encodedFunction = encodedFunction,
+                contractAddress = AGE_VERIFY_CONTRACT,
+                fromAddress = null
+            )
+
+            if (response.hasError()) return@withContext java.math.BigInteger.ZERO
+
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") return@withContext java.math.BigInteger.ZERO
+
+            val decoded = org.web3j.abi.FunctionReturnDecoder.decode(result, function.outputParameters)
+            if (decoded.size < 2) return@withContext java.math.BigInteger.ZERO
+
+            (decoded[1] as Uint256).value
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting verification timestamp for $userAddress", e)
+            java.math.BigInteger.ZERO
+        }
+    }
 }
