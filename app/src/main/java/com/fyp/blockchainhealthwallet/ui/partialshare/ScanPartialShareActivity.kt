@@ -28,7 +28,7 @@ import java.util.concurrent.Executors
 class ScanPartialShareActivity : AppCompatActivity() {
     
     private lateinit var previewView: PreviewView
-    private lateinit var resultContainer: LinearLayout
+    private lateinit var resultContainer: ScrollView
     private lateinit var statusText: TextView
     private lateinit var attributesContainer: LinearLayout
     private lateinit var verifyButton: Button
@@ -152,7 +152,7 @@ class ScanPartialShareActivity : AppCompatActivity() {
     }
     
     private fun displayScannedData(sharePackage: PartialSharePackage) {
-        resultContainer.visibility = LinearLayout.VISIBLE
+        resultContainer.visibility = ScrollView.VISIBLE
         attributesContainer.removeAllViews()
         
         statusText.text = "Scanned ${sharePackage.recordType} record with ${sharePackage.attributes.size} attributes"

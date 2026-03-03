@@ -43,10 +43,11 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    private const val CONTRACT_ADDRESS = "0x8b9432cc2d5b6164d7E57c128eEf14d10BB1C5d6"
+    private const val CONTRACT_ADDRESS = "0x74995cAB1b0BCe7933bF0CF2805124e76cB297d2"
     //0x8f5b04Eb4EF06c4eFFA98D0cA20576a87A4CcCF6
 
-    private const val PARTIAL_SHARE_CONTRACT = "0x4c2c436b9baa58DAD1C70A01627321597d67C57A" // PartialShareExtension contract
+    private const val PARTIAL_SHARE_CONTRACT = "0x1d76341F07Ee1f9442e854863B8Eb6C92F39E70f" // PartialShareExtension contract
+    private const val AGE_VERIFY_CONTRACT = "0x9A855eaa26564F3290be3E4cB3b5af7a7f93E5c9"
 
 
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
@@ -3122,11 +3123,6 @@ object BlockchainService {
     // ZKP AGE VERIFICATION - AgeVerifyExtension
     // ============================================
 
-    private const val AGE_VERIFY_CONTRACT = "0x0000000000000000000000000000000000000000"
-    // TODO: After deploying AgeVerifier.sol + AgeVerifyExtension.sol to Sepolia,
-    //       replace the above with the deployed AgeVerifyExtension address.
-    //       Run: npx hardhat run scripts/deployAgeVerify.js --network sepolia
-
     /**
      * Submit a ZK proof to prove age >= 18.
      * Proof was generated locally on the device via ZkpService (snarkjs in WebView).
@@ -3173,8 +3169,9 @@ object BlockchainService {
         val inputsHex  = publicInputs.map { "0x${it.toString(16).padStart(64, '0')}" }
 
         // Manual ABI encoding for function with static arrays
+        // Hash.sha3String returns 0x-prefixed hex, so strip the prefix before taking the 4-byte selector
         val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitAgeProof(uint256[2],uint256[2][2],uint256[2],uint256[3])")
-            .substring(0, 8)
+            .removePrefix("0x").substring(0, 8)
 
         val sb = StringBuilder(functionSelector)
         // a[0], a[1]

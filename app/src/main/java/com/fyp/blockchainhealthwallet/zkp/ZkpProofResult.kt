@@ -24,7 +24,14 @@ data class ZkpProofResult(
      */
     fun toA(): List<BigInteger> = proofA.map { BigInteger(it) }
 
-    fun toB(): List<List<BigInteger>> = proofB.map { row -> row.map { BigInteger(it) } }
+    /**
+     * IMPORTANT: snarkjs outputs pi_b inner pairs as [imaginary, real] (e.g. [[x2,x1],[y2,y1]]),
+     * but the snarkjs-generated Solidity Groth16 verifier expects each inner pair REVERSED:
+     *   _pB[0] = [pi_b[0][1], pi_b[0][0]]  (i.e. [x1, x2])
+     *   _pB[1] = [pi_b[1][1], pi_b[1][0]]  (i.e. [y1, y2])
+     * Failing to reverse causes "Invalid ZK proof" on-chain.
+     */
+    fun toB(): List<List<BigInteger>> = proofB.map { row -> row.reversed().map { BigInteger(it) } }
 
     fun toC(): List<BigInteger> = proofC.map { BigInteger(it) }
 

@@ -17,12 +17,10 @@
 <body>
 <script>
     // -------------------------------------------------------
-    // Load snarkjs — bundled locally so it works offline
-    // After running setupCircuit.js, also place snarkjs.min.js
-    // in app/src/main/assets/zkp/
+    // Load snarkjs from local assets — no CDN, works offline
     // -------------------------------------------------------
     var snarkjsScript = document.createElement('script');
-    snarkjsScript.src = 'https://cdn.jsdelivr.net/npm/snarkjs@0.7.4/build/snarkjs.min.js';
+    snarkjsScript.src = '/assets/zkp/snarkjs.min.js';
     snarkjsScript.onload = function() {
         // Signal to Android that the engine is ready
         if (window.ZkpBridge) {
@@ -31,7 +29,7 @@
     };
     snarkjsScript.onerror = function() {
         if (window.ZkpBridge) {
-            window.ZkpBridge.onProofError('Failed to load snarkjs library');
+            window.ZkpBridge.onProofError('Failed to load snarkjs from local assets');
         }
     };
     document.head.appendChild(snarkjsScript);

@@ -73,6 +73,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
 
+    // WebView asset loader (for serving .wasm / .zkey from assets in ZkpService)
+    implementation("androidx.webkit:webkit:1.12.1")
+
 
     implementation(platform("com.reown:android-bom:1.4.12"))
     implementation("com.reown:android-core")
