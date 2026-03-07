@@ -169,6 +169,76 @@ class MerkleTreeHelper {
     }
     
     /**
+     * Verify a Merkle proof and return step-by-step results for UI display
+     */
+    data class VerificationStep(
+        val stepTitle: String,
+        val detail: String,
+        val hash: String
+    )
+
+    data class AttributeVerificationResult(
+        val attributeName: String,
+        val attributeValue: String,
+        val leafHash: String,
+        val steps: List<VerificationStep>,
+        val computedRoot: String,
+        val expectedRoot: String,
+        val isValid: Boolean
+    )
+
+    fun verifyProofWithSteps(
+        attributeName: String,
+        attributeValue: String,
+        proof: List<ProofNode>,
+        expectedRoot: String
+    ): AttributeVerificationResult {
+        val steps = mutableListOf<VerificationStep>()
+        val leafHash = hashLeaf(attributeName, attributeValue)
+        var currentHash = leafHash
+
+        steps.add(VerificationStep(
+            stepTitle = "Step 1: Hash the field",
+            detail = "SHA-256(\"$attributeName:$attributeValue\")",
+            hash = leafHash.take(16) + "..."
+        ))
+
+        for ((index, proofNode) in proof.withIndex()) {
+            val oldHash = currentHash
+            val isLeft = proofNode.position == "left"
+            currentHash = if (isLeft) {
+                sha256(proofNode.hash + currentHash)
+            } else {
+                sha256(currentHash + proofNode.hash)
+            }
+            steps.add(VerificationStep(
+                stepTitle = "Step ${index + 2}: Combine with sibling (${proofNode.position})",
+                detail = if (isLeft)
+                    "SHA-256(sibling + current)"
+                else
+                    "SHA-256(current + sibling)",
+                hash = currentHash.take(16) + "..."
+            ))
+        }
+
+        steps.add(VerificationStep(
+            stepTitle = "Final: Compare roots",
+            detail = if (currentHash == expectedRoot) "Computed root matches Merkle root" else "Root mismatch - data may be tampered",
+            hash = currentHash.take(16) + "..."
+        ))
+
+        return AttributeVerificationResult(
+            attributeName = attributeName,
+            attributeValue = attributeValue,
+            leafHash = leafHash,
+            steps = steps,
+            computedRoot = currentHash,
+            expectedRoot = expectedRoot,
+            isValid = currentHash == expectedRoot
+        )
+    }
+
+    /**
      * Verify a Merkle proof with detailed logging
      * Shows step-by-step hash computation for verification
      */
@@ -327,6 +397,52 @@ class MerkleTreeHelper {
             return cleanHex.chunked(2)
                 .map { it.toInt(16).toByte() }
                 .toByteArray()
+        }
+
+        /**
+         * Creates a [com.fyp.blockchainhealthwallet.models.PartialSharePackage] that contains
+         * a tampered (incorrect) Merkle root so that proof verification always fails.
+         *
+         * Use this to test the "VERIFICATION FAILED" path in [ScanPartialShareActivity].
+         *
+         * The attributes and proofs are built correctly from [recordType] + [attributes], but
+         * the [com.fyp.blockchainhealthwallet.models.PartialSharePackage.merkleRoot] is replaced
+         * with a SHA-256 hash of the string "tampered" – a value that will never match the
+         * computed root, causing every proof to fail.
+         *
+         * @param recordType  the record type (e.g. MEDICATION)
+         * @param attributes  a map of attribute names → values to include in the share
+         * @param expiryMs    validity window in milliseconds from now (default 1 hour)
+         */
+        fun createTamperedPackage(
+            recordType: com.fyp.blockchainhealthwallet.models.RecordSchemas.RecordType,
+            attributes: Map<String, String>,
+            expiryMs: Long = 3_600_000L
+        ): com.fyp.blockchainhealthwallet.models.PartialSharePackage {
+            val helper = MerkleTreeHelper()
+
+            // Build a real tree and real proofs from the supplied data
+            val merkleTree = helper.buildMerkleTree(recordType, attributes)
+            val proofs = helper.generateProofs(merkleTree, attributes)
+            val proofsData = proofs.mapValues { (_, proof) ->
+                proof.map { com.fyp.blockchainhealthwallet.models.ProofNodeData.fromProofNode(it) }
+            }
+
+            // Replace the real root with a deterministic "tampered" hash
+            val tamperedRoot = java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest("tampered".toByteArray())
+                .joinToString("") { "%02x".format(it) }
+
+            return com.fyp.blockchainhealthwallet.models.PartialSharePackage(
+                version = "1.0-TAMPERED",
+                recordType = recordType.name,
+                merkleRoot = tamperedRoot,   // <-- wrong root, proofs will never match
+                attributes = attributes,
+                proofs = proofsData,
+                timestamp = System.currentTimeMillis(),
+                expiryTime = System.currentTimeMillis() + expiryMs
+            )
         }
     }
 }

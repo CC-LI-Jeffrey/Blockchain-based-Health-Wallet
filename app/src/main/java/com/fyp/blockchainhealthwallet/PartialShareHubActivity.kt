@@ -26,6 +26,10 @@ class PartialShareHubActivity : AppCompatActivity() {
             startActivity(Intent(this, com.fyp.blockchainhealthwallet.ui.partialshare.ViewSharedWithMeActivity::class.java))
         }
 
+        binding.cardViewScannedQRShares.setOnClickListener {
+            startActivity(Intent(this, com.fyp.blockchainhealthwallet.ui.partialshare.ViewScannedQRSharesActivity::class.java))
+        }
+
         binding.cardViewSentPartialShares.setOnClickListener {
             startActivity(Intent(this, com.fyp.blockchainhealthwallet.ui.partialshare.ViewSentPartialSharesActivity::class.java))
         }

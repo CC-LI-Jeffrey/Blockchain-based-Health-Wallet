@@ -73,8 +73,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
 
-
-    implementation(platform("com.reown:android-bom:1.4.12"))
+    // Reown SDK (WalletConnect) - Updated to latest version
+    implementation(platform("com.reown:android-bom:1.6.8"))
     implementation("com.reown:android-core")
     implementation("com.reown:appkit")
 

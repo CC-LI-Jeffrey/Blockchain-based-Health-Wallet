@@ -218,6 +218,10 @@
             android:exported="false"
             android:label="Shared With Me" />
         <activity
+            android:name=".ui.partialshare.ViewScannedQRSharesActivity"
+            android:exported="false"
+            android:label="Scanned QR Records" />
+        <activity
             android:name=".ui.partialshare.ViewSentPartialSharesActivity"
             android:exported="false"
             android:label="Partial Shares I Sent" />

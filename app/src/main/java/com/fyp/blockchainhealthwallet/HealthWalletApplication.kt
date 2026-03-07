@@ -12,10 +12,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 class HealthWalletApplication : Application() {
     
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    
+    companion object {
+        @Volatile
+        var isAppKitInitialized = false
+            private set
+        
+        @Volatile
+        var initializationError: String? = null
+            private set
+    }
     
     override fun onCreate() {
         super.onCreate()
@@ -23,18 +34,28 @@ class HealthWalletApplication : Application() {
         // Initialize WalletConnect on background thread to prevent ANR
         applicationScope.launch {
             try {
+                Log.d("HealthWalletApp", "Starting WalletConnect initialization...")
                 initializeWalletConnect()
+                // Wait a bit for initialization to complete
+                delay(2000)
                 WalletManager.initialize()
-                Log.d("HealthWalletApp", "WalletConnect initialized successfully")
+                isAppKitInitialized = true
+                initializationError = null
+                Log.d("HealthWalletApp", "✓ WalletConnect initialized successfully")
             } catch (e: Exception) {
-                Log.e("HealthWalletApp", "Failed to initialize WalletConnect", e)
+                Log.e("HealthWalletApp", "✗ Failed to initialize WalletConnect", e)
+                initializationError = e.message ?: "Unknown error"
+                isAppKitInitialized = false
             }
         }
     }
     
     private fun initializeWalletConnect() {
         try {
+            // IMPORTANT: Get your own project ID from https://cloud.reown.com/
+            // This one might be expired or rate-limited
             val projectId = "6c3de96f85d19576c9ad76f1143a6d37"
+            Log.d("HealthWalletApp", "Using Project ID: $projectId")
 
             val appMetaData = Core.Model.AppMetaData(
                 name = "Health Wallet",
@@ -44,13 +65,16 @@ class HealthWalletApplication : Application() {
                 redirect = "healthwallet://request"  // MUST match AndroidManifest scheme
             )
 
+            Log.d("HealthWalletApp", "Initializing CoreClient...")
             CoreClient.initialize(
                 application = this,
                 projectId = projectId,
                 metaData = appMetaData
             ) { error ->
-                Log.e("CoreClient", "Initialization error: ${error.throwable.message}", error.throwable)
+                Log.e("CoreClient", "✗ CoreClient initialization error: ${error.throwable.message}", error.throwable)
+                initializationError = "CoreClient error: ${error.throwable.message}"
             }
+            Log.d("HealthWalletApp", "✓ CoreClient initialized")
 
             // Specific wallet IDs - only show MetaMask, Zerion, Crypto.com, and Onchain
             val recommendedWalletIds = listOf(
@@ -66,18 +90,21 @@ class HealthWalletApplication : Application() {
             recommendedWalletsIds = recommendedWalletIds
         )
         
+        Log.d("HealthWalletApp", "Initializing AppKit...")
         AppKit.initialize(
             init = initParams,
             onSuccess = {
                 try {
                     setupChains()
-                    Log.d("AppKit", "Successfully initialized")
+                    Log.d("AppKit", "✓ AppKit successfully initialized")
                 } catch (e: Exception) {
-                    Log.e("AppKit", "Error setting up chains", e)
+                    Log.e("AppKit", "✗ Error setting up chains", e)
+                    initializationError = "Chain setup error: ${e.message}"
                 }
             },
             onError = { error ->
-                Log.e("AppKit", "Initialization error: $error")
+                Log.e("AppKit", "✗ AppKit initialization error: $error")
+                initializationError = "AppKit error: $error"
             }
         )
         } catch (e: Exception) {

@@ -1,6 +1,9 @@
 package com.fyp.blockchainhealthwallet
 
+import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
@@ -17,7 +20,10 @@ import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.reown.appkit.ui.appKit
 import com.reown.appkit.ui.openAppKit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : AppCompatActivity() {
     
@@ -106,6 +112,8 @@ class MainActivity : AppCompatActivity() {
     
     private fun openWalletModal() {
         try {
+            Log.d("MainActivity", "Opening wallet modal...")
+            
             // Check if already connected
             if (WalletManager.isConnected()) {
                 Toast.makeText(
@@ -116,20 +124,132 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             
-            val navHostFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
+            // 1. Check network connectivity
+            if (!isNetworkAvailable()) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("⚠️ No Internet Connection")
+                    .setMessage("WalletConnect requires an active internet connection. Please check your network and try again.")
+                    .setPositiveButton("OK", null)
+                    .show()
+                Log.e("MainActivity", "No network connectivity")
+                return
+            }
+            
+            // 2. Check if AppKit is initialized
+            if (!HealthWalletApplication.isAppKitInitialized) {
+                Log.w("MainActivity", "AppKit not initialized yet, waiting...")
+                
+                // Show loading message
+                Toast.makeText(
+                    this,
+                    "Initializing wallet connection...",
+                    Toast.LENGTH_SHORT
+                ).show()
+                
+                // Wait for initialization in background
+                lifecycleScope.launch {
+                    val initialized = withTimeoutOrNull(10000) { // 10 second timeout
+                        var attempts = 0
+                        while (!HealthWalletApplication.isAppKitInitialized && attempts < 50) {
+                            delay(200)
+                            attempts++
+                        }
+                        HealthWalletApplication.isAppKitInitialized
+                    }
+                    
+                    withContext(Dispatchers.Main) {
+                        if (initialized == true) {
+                            Log.d("MainActivity", "AppKit now initialized, opening modal")
+                            openModalNow()
+                        } else {
+                            val errorMsg = HealthWalletApplication.initializationError 
+                                ?: "Initialization timed out"
+                            
+                            android.app.AlertDialog.Builder(this@MainActivity)
+                                .setTitle("⚠️ Connection Error")
+                                .setMessage(
+                                    "Failed to initialize wallet connection.\n\n" +
+                                    "Error: $errorMsg\n\n" +
+                                    "Please try:\n" +
+                                    "1. Check your internet connection\n" +
+                                    "2. Restart the app\n" +
+                                    "3. Clear app data if problem persists"
+                                )
+                                .setPositiveButton("Retry") { _, _ ->
+                                    openWalletModal()
+                                }
+                                .setNegativeButton("Cancel", null)
+                                .show()
+                            
+                            Log.e("MainActivity", "AppKit initialization failed: $errorMsg")
+                        }
+                    }
+                }
+                return
+            }
+            
+            // 3. AppKit is ready, open modal
+            openModalNow()
+            
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error opening wallet modal", e)
+            Toast.makeText(
+                this, 
+                "⚠️ Error: ${e.message}\n\nPlease restart the app.", 
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+    
+    private fun openModalNow() {
+        try {
+            val navHostFragment = supportFragmentManager.findFragmentById(
+                R.id.nav_host_fragment
+            ) as? NavHostFragment
+            
             if (navHostFragment != null) {
+                Log.d("MainActivity", "Opening AppKit modal")
                 navHostFragment.navController.openAppKit(
                     shouldOpenChooseNetwork = true,
                     onError = { error ->
-                        Toast.makeText(this, "Error: ${error.message}", Toast.LENGTH_LONG).show()
+                        Log.e("MainActivity", "Modal error: ${error.message}")
+                        runOnUiThread {
+                            android.app.AlertDialog.Builder(this)
+                                .setTitle("⚠️ Connection Error")
+                                .setMessage(
+                                    "Failed to open wallet connection.\n\n" +
+                                    "${error.message}\n\n" +
+                                    "Please ensure:\n" +
+                                    "• You have internet connection\n" +
+                                    "• You have a wallet app installed\n" +
+                                    "• The wallet app is up to date"
+                                )
+                                .setPositiveButton("OK", null)
+                                .show()
+                        }
                     }
                 )
             } else {
-                Toast.makeText(this, "Navigation not ready", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Navigation not ready. Please restart the app.", Toast.LENGTH_SHORT).show()
+                Log.e("MainActivity", "NavHostFragment is null")
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Error opening wallet: ${e.message}", Toast.LENGTH_LONG).show()
+            Log.e("MainActivity", "Error in openModalNow", e)
+            Toast.makeText(
+                this, 
+                "⚠️ Error: ${e.message}", 
+                Toast.LENGTH_LONG
+            ).show()
         }
+    }
+    
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+               capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
     
     private fun observeWalletState() {

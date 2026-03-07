@@ -23,16 +23,31 @@
         app:titleTextColor="@android:color/white"
         app:navigationIcon="@drawable/ic_back">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnSelectPhoto"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="end"
-            android:text="Photo"
-            android:textColor="@android:color/white"
-            app:icon="@android:drawable/ic_menu_gallery"
-            app:iconTint="@android:color/white" />
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTestTampered"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Test Tamper"
+                android:textColor="@android:color/holo_orange_light" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSelectPhoto"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Photo"
+                android:textColor="@android:color/white"
+                app:icon="@android:drawable/ic_menu_gallery"
+                app:iconTint="@android:color/white" />
+
+        </LinearLayout>
     </androidx.appcompat.widget.Toolbar>
 
     <!-- Results Container -->
