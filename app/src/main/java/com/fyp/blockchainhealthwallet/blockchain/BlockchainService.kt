@@ -3283,4 +3283,167 @@ object BlockchainService {
             java.math.BigInteger.ZERO
         }
     }
+
+    // ============================================
+    // ZKP VACCINE VERIFICATION - VaccineVerifyExtension
+    // ============================================
+
+    private const val VACCINE_VERIFY_CONTRACT = "0x0000000000000000000000000000000000000000" // TODO: deploy and update
+
+    /**
+     * Register a Poseidon commitment on-chain for a vaccination record.
+     * Must be called once when a vaccination record is added.
+     * commitment = poseidon(vaccinationId, vaccineName, salt) — computed in JS
+     *
+     * @param commitment  The Poseidon hash as a decimal string (BigInteger)
+     * @return Transaction hash
+     */
+    suspend fun registerVaccineCommitment(commitment: java.math.BigInteger): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+
+        if (VACCINE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            throw IllegalStateException(
+                "VaccineVerifyExtension not deployed yet. " +
+                "Deploy and update VACCINE_VERIFY_CONTRACT in BlockchainService.kt"
+            )
+        }
+
+        require(commitment != java.math.BigInteger.ZERO) { "Commitment cannot be zero" }
+
+        Log.d(TAG, "Registering vaccine commitment for: $userAddress  commitment=${commitment.toString(16).take(16)}...")
+
+        // Encode registerVaccineCommitment(uint256 commitment)
+        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("registerVaccineCommitment(uint256)")
+            .removePrefix("0x").substring(0, 8)
+
+        val encodedFunction = functionSelector + commitment.toString(16).padStart(64, '0')
+
+        sendTransaction(
+            from = userAddress,
+            to = VACCINE_VERIFY_CONTRACT,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+
+    /**
+     * Submit a ZK proof to prove vaccination for a specific vaccine code.
+     * Proof was generated locally on the device via ZkpService.generateVaccineProof().
+     *
+     * @param proofA       Groth16 component A — 2 BigIntegers
+     * @param proofB       Groth16 component B — 2×2 BigIntegers
+     * @param proofC       Groth16 component C — 2 BigIntegers
+     * @param publicInputs Public signals — [isVaccinated=1, commitment, targetVaccine]
+     * @return Transaction hash
+     */
+    suspend fun submitVaccineProof(
+        proofA: List<java.math.BigInteger>,
+        proofB: List<List<java.math.BigInteger>>,
+        proofC: List<java.math.BigInteger>,
+        publicInputs: List<java.math.BigInteger>
+    ): String = withContext(Dispatchers.IO) {
+        val userAddress = WalletManager.getAddress()
+            ?: throw IllegalStateException("No wallet connected")
+
+        if (VACCINE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            throw IllegalStateException(
+                "VaccineVerifyExtension not deployed yet. " +
+                "Deploy and update VACCINE_VERIFY_CONTRACT in BlockchainService.kt"
+            )
+        }
+
+        require(proofA.size == 2)             { "proofA must have 2 elements" }
+        require(proofB.size == 2)             { "proofB must have 2 rows" }
+        require(proofB.all { it.size == 2 })  { "proofB rows must each have 2 elements" }
+        require(proofC.size == 2)             { "proofC must have 2 elements" }
+        require(publicInputs.size == 3)       { "publicInputs must have 3 elements [isVaccinated, commitment, targetVaccine]" }
+        require(publicInputs[0] == java.math.BigInteger.ONE) { "publicInputs[0] (isVaccinated) must be 1" }
+
+        Log.d(TAG, "Submitting ZK vaccine proof for: $userAddress")
+        Log.d(TAG, "Public inputs: isVaccinated=${publicInputs[0]}, commitment=${publicInputs[1].toString(16).take(16)}..., targetVaccine=${publicInputs[2]}")
+
+        // Encode submitVaccineProof(uint[2] a, uint[2][2] b, uint[2] c, uint[3] input)
+        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitVaccineProof(uint256[2],uint256[2][2],uint256[2],uint256[3])")
+            .removePrefix("0x").substring(0, 8)
+
+        val sb = StringBuilder(functionSelector)
+        // a[0], a[1]
+        sb.append(proofA[0].toString(16).padStart(64, '0'))
+        sb.append(proofA[1].toString(16).padStart(64, '0'))
+        // b[0][0], b[0][1], b[1][0], b[1][1]
+        sb.append(proofB[0][0].toString(16).padStart(64, '0'))
+        sb.append(proofB[0][1].toString(16).padStart(64, '0'))
+        sb.append(proofB[1][0].toString(16).padStart(64, '0'))
+        sb.append(proofB[1][1].toString(16).padStart(64, '0'))
+        // c[0], c[1]
+        sb.append(proofC[0].toString(16).padStart(64, '0'))
+        sb.append(proofC[1].toString(16).padStart(64, '0'))
+        // input[0]=isVaccinated, input[1]=commitment, input[2]=targetVaccine
+        sb.append(publicInputs[0].toString(16).padStart(64, '0'))
+        sb.append(publicInputs[1].toString(16).padStart(64, '0'))
+        sb.append(publicInputs[2].toString(16).padStart(64, '0'))
+
+        val encodedFunction = sb.toString()
+
+        sendTransaction(
+            from = userAddress,
+            to = VACCINE_VERIFY_CONTRACT,
+            data = encodedFunction,
+            value = "0x0"
+        )
+    }
+
+    /**
+     * Check if a wallet address has a verified vaccine proof for a specific vaccine code.
+     * Read-only, no gas required.
+     *
+     * @param userAddress  Wallet address to check
+     * @param vaccineCode  Integer vaccine code (1-14) from VaccineCodes
+     * @return true if the address has submitted a valid vaccine proof for that code
+     */
+    suspend fun checkVaccinationStatus(userAddress: String, vaccineCode: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (VACCINE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+                return@withContext false
+            }
+
+            val function = org.web3j.abi.datatypes.Function(
+                "checkVaccinationStatus",
+                listOf(Address(userAddress), Uint256(vaccineCode.toLong())),
+                listOf(object : TypeReference<Bool>() {})
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+
+            val response = executeEthCallWithFallback(
+                encodedFunction = encodedFunction,
+                contractAddress = VACCINE_VERIFY_CONTRACT,
+                fromAddress = null
+            )
+
+            if (response.hasError()) {
+                Log.e(TAG, "checkVaccinationStatus error: ${response.error.message}")
+                return@withContext false
+            }
+
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") return@withContext false
+
+            val decoded = org.web3j.abi.FunctionReturnDecoder.decode(result, function.outputParameters)
+            if (decoded.isEmpty()) return@withContext false
+
+            (decoded[0] as Bool).value
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking vaccination status for $userAddress vaccine=$vaccineCode", e)
+            false
+        }
+    }
+
+    /**
+     * Check if the VaccineVerifyExtension contract is deployed.
+     */
+    fun isVaccineVerifyDeployed(): Boolean =
+        VACCINE_VERIFY_CONTRACT != "0x0000000000000000000000000000000000000000"
 }
+

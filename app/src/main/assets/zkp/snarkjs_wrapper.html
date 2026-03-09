@@ -94,6 +94,90 @@
             window.ZkpBridge.onProofError(err.message || 'Unknown error during proof generation');
         }
     }
+
+    // -------------------------------------------------------
+    // generateVaccineProof(vaccinationId, vaccineName, salt, commitment, targetVaccine)
+    // Called by ZkpService.kt via evaluateJavascript()
+    // vaccinationId and salt are PRIVATE — never sent back to Kotlin
+    // commitment is the Poseidon hash already registered on-chain
+    // -------------------------------------------------------
+    async function generateVaccineProof(vaccinationId, vaccineName, salt, commitment, targetVaccine) {
+        try {
+            if (isNaN(vaccinationId) || vaccinationId < 0) {
+                throw new Error('Invalid vaccinationId: ' + vaccinationId);
+            }
+            if (isNaN(vaccineName) || vaccineName < 1 || vaccineName > 14) {
+                throw new Error('Invalid vaccineName code: ' + vaccineName);
+            }
+            if (!commitment || commitment === '0') {
+                throw new Error('Commitment must be registered first');
+            }
+
+            const wasmBuffer = await fetchLocalAsset('/assets/zkp/VaccineVerify.wasm');
+            const zkeyBuffer = await fetchLocalAsset('/assets/zkp/VaccineVerify_final.zkey');
+
+            // Private inputs — vaccinationId and salt never sent back
+            const input = {
+                vaccinationId: vaccinationId.toString(),
+                vaccineName:   vaccineName.toString(),
+                salt:          salt.toString(),
+                commitment:    commitment.toString(),
+                targetVaccine: targetVaccine.toString()
+            };
+
+            const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+                input,
+                new Uint8Array(wasmBuffer),
+                new Uint8Array(zkeyBuffer)
+            );
+
+            // publicSignals = ["1", commitment, targetVaccine]
+            const result = JSON.stringify({
+                proof: proof,
+                publicSignals: publicSignals
+            });
+
+            window.ZkpBridge.onVaccineProofReady(result);
+
+        } catch (err) {
+            window.ZkpBridge.onProofError(err.message || 'Unknown error during vaccine proof generation');
+        }
+    }
+
+    // computePoseidonHash(a, b, c)
+    // Computes poseidon([a, b, c]) and returns the decimal string commitment.
+    // Used during commitment registration (before proof generation).
+    // Calls window.ZkpBridge.onPoseidonReady(commitment) on success.
+    async function computePoseidonHash(a, b, c) {
+        try {
+            const { buildPoseidon } = await import('/assets/zkp/snarkjs.min.js')
+                .catch(() => snarkjs);
+            // snarkjs exposes circomlibjs separately; use the built-in poseidon via ffjavascript
+            // Fallback: use snarkjs.poseidon if available, else ffjavascript poseidon
+            let poseidonFn;
+            if (typeof snarkjs !== 'undefined' && snarkjs.poseidon) {
+                poseidonFn = snarkjs.poseidon;
+            } else {
+                // Dynamically import circomlibjs poseidon from the snarkjs bundle globals
+                const { poseidon } = await import('/assets/zkp/circomlibjs.min.js').catch(() => ({}));
+                poseidonFn = poseidon;
+            }
+
+            if (!poseidonFn) {
+                // Last resort: use snarkjs groth16 witness calculator Poseidon path
+                throw new Error('Poseidon not available. Ensure circomlibjs is loaded.');
+            }
+
+            const bigA = BigInt(a);
+            const bigB = BigInt(b);
+            const bigC = BigInt(c);
+            const hash = poseidonFn([bigA, bigB, bigC]);
+            const commitment = hash.toString();
+            window.ZkpBridge.onPoseidonReady(commitment);
+        } catch (err) {
+            window.ZkpBridge.onProofError(err.message || 'Unknown error computing Poseidon hash');
+        }
+    }
 </script>
 </body>
 </html>

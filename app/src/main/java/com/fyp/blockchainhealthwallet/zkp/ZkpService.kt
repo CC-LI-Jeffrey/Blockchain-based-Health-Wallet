@@ -45,6 +45,8 @@ class ZkpService(private val activity: Activity) {
 
     private var webView: WebView? = null
     private var proofCallback: ((Result<ZkpProofResult>) -> Unit)? = null
+    private var vaccineProofCallback: ((Result<VaccineZkpProofResult>) -> Unit)? = null
+    private var poseidonCallback: ((Result<String>) -> Unit)? = null
     private var engineReady = false
 
     // -------------------------------------------------------
@@ -111,6 +113,102 @@ class ZkpService(private val activity: Activity) {
     }
 
     /**
+     * Generate a vaccine ZK proof.
+     * Proves "I hold a vaccination record for vaccine [targetVaccine]" without revealing
+     * the vaccinationId or salt.
+     * Must be called from the MAIN THREAD (WebView requirement).
+     *
+     * @param vaccinationId  Blockchain ID of the vaccination record. STAYS ON DEVICE.
+     * @param vaccineName    Integer vaccine code from [VaccineCodes]. STAYS ON DEVICE.
+     * @param salt           Random nonce generated at commitment creation. STAYS ON DEVICE.
+     * @param commitment     Poseidon(vaccinationId, vaccineName, salt) — already on-chain.
+     * @param targetVaccine  The vaccine code to prove (must equal vaccineName in circuit).
+     * @return VaccineZkpProofResult — proof + [isVaccinated=1, commitment, targetVaccine]
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    suspend fun generateVaccineProof(
+        vaccinationId: Long,
+        vaccineName: Int,
+        salt: String,
+        commitment: String,
+        targetVaccine: Int
+    ): VaccineZkpProofResult {
+        Log.d(TAG, "Generating vaccine proof: id=$vaccinationId vaccine=$vaccineName target=$targetVaccine")
+
+        return withTimeout(PROOF_TIMEOUT_MS) {
+            suspendCancellableCoroutine { continuation ->
+
+                if (webView == null) {
+                    initWebView()
+                }
+
+                vaccineProofCallback = { result ->
+                    vaccineProofCallback = null
+                    if (result.isSuccess) {
+                        continuation.resume(result.getOrThrow())
+                    } else {
+                        continuation.resumeWithException(result.exceptionOrNull()!!)
+                    }
+                }
+
+                val runJs = {
+                    Log.d(TAG, "Calling generateVaccineProof in WebView JS")
+                    webView?.evaluateJavascript(
+                        "generateVaccineProof($vaccinationId, $vaccineName, $salt, $commitment, $targetVaccine);",
+                        null
+                    )
+                }
+
+                if (engineReady) {
+                    runJs()
+                } else {
+                    pendingProofAction = { runJs() }
+                }
+
+                continuation.invokeOnCancellation {
+                    vaccineProofCallback = null
+                    pendingProofAction = null
+                }
+            }
+        }
+    }
+
+    /**
+     * Compute poseidon(vaccinationId, vaccineCode, salt) via the JS engine.
+     * Returns the decimal string commitment to register on-chain.
+     * Must be called from the Main thread (WebView requirement).
+     */
+    suspend fun computePoseidonCommitment(
+        vaccinationId: Long,
+        vaccineCode: Int,
+        salt: java.math.BigInteger
+    ): java.math.BigInteger = kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+        if (webView == null) {
+            initWebView()
+        }
+
+        fun runJs() {
+            poseidonCallback = { result ->
+                poseidonCallback = null
+                if (continuation.isActive) continuation.resumeWith(result.map { java.math.BigInteger(it) })
+            }
+
+            Log.d(TAG, "Computing Poseidon commitment via JS")
+            webView?.evaluateJavascript(
+                "computePoseidonHash($vaccinationId, $vaccineCode, '${salt}');",
+                null
+            )
+        }
+
+        if (engineReady) runJs() else pendingProofAction = { runJs() }
+
+        continuation.invokeOnCancellation {
+            poseidonCallback = null
+            pendingProofAction = null
+        }
+    }
+
+    /**
      * Destroy the WebView when done (call from Activity.onDestroy).
      */
     fun destroy() {
@@ -121,6 +219,8 @@ class ZkpService(private val activity: Activity) {
         webView = null
         engineReady = false
         proofCallback = null
+        vaccineProofCallback = null
+        poseidonCallback = null
         pendingProofAction = null
     }
 
@@ -217,10 +317,35 @@ class ZkpService(private val activity: Activity) {
         }
 
         @JavascriptInterface
+        fun onVaccineProofReady(jsonResult: String) {
+            Log.d(TAG, "Vaccine proof received from WebView (${jsonResult.length} chars)")
+            try {
+                val result = parseVaccineProofJson(jsonResult)
+                vaccineProofCallback?.invoke(Result.success(result))
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse vaccine proof JSON", e)
+                vaccineProofCallback?.invoke(Result.failure(e))
+            }
+        }
+
+        @JavascriptInterface
+        fun onPoseidonReady(commitment: String) {
+            Log.d(TAG, "Poseidon ready: ${commitment.take(20)}...")
+            poseidonCallback?.invoke(Result.success(commitment))
+        }
+
+        @JavascriptInterface
         fun onProofError(errorMessage: String) {
             Log.e(TAG, "Proof generation error: $errorMessage")
+            // Route to whichever callback is active
             proofCallback?.invoke(
                 Result.failure(Exception("ZKP proof failed: $errorMessage"))
+            )
+            vaccineProofCallback?.invoke(
+                Result.failure(Exception("ZKP proof failed: $errorMessage"))
+            )
+            poseidonCallback?.invoke(
+                Result.failure(Exception("Poseidon compute failed: $errorMessage"))
             )
         }
     }
@@ -240,6 +365,31 @@ class ZkpService(private val activity: Activity) {
      *   "publicSignals": ["1", "2026", "18"]
      * }
      */
+    private fun parseVaccineProofJson(json: String): VaccineZkpProofResult {
+        val root = JSONObject(json)
+        val proof = root.getJSONObject("proof")
+        val signals = root.getJSONArray("publicSignals")
+
+        fun jsonArrayToList(arr: org.json.JSONArray): List<String> =
+            (0 until arr.length()).map { arr.getString(it) }
+
+        fun jsonArrayToList2D(arr: org.json.JSONArray): List<List<String>> =
+            (0 until arr.length()).map { i -> jsonArrayToList(arr.getJSONArray(i)) }
+
+        val proofA = jsonArrayToList(proof.getJSONArray("pi_a")).take(2)
+        val proofB = jsonArrayToList2D(proof.getJSONArray("pi_b")).take(2)
+        val proofC = jsonArrayToList(proof.getJSONArray("pi_c")).take(2)
+        val publicSignals = jsonArrayToList(signals)
+
+        val result = VaccineZkpProofResult(proofA, proofB, proofC, publicSignals)
+
+        if (!result.isStructureValid()) {
+            throw Exception("Vaccine proof structure invalid — expected 3 public signals [isVaccinated, commitment, targetVaccine]")
+        }
+
+        return result
+    }
+
     private fun parseProofJson(json: String): ZkpProofResult {
         val root = JSONObject(json)
         val proof = root.getJSONObject("proof")

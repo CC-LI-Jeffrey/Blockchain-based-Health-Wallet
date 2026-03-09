@@ -234,6 +234,11 @@
             android:exported="false"
             android:label="Age Verification"
             android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".VaccineVerifyActivity"
+            android:exported="false"
+            android:label="Vaccine ZKP Verification"
+            android:parentActivityName=".MainActivity" />
         
         <!-- FileProvider for sharing decrypted files -->
         <provider
