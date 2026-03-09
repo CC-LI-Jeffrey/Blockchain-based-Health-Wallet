@@ -47,7 +47,7 @@ object BlockchainService {
     //0x8f5b04Eb4EF06c4eFFA98D0cA20576a87A4CcCF6
 
     private const val PARTIAL_SHARE_CONTRACT = "0x1d76341F07Ee1f9442e854863B8Eb6C92F39E70f" // PartialShareExtension contract
-    private const val AGE_VERIFY_CONTRACT = "0x9A855eaa26564F3290be3E4cB3b5af7a7f93E5c9"
+    private const val AGE_VERIFY_CONTRACT = "0x6a2E27B2027efd1A9E4DA3f33a94DE189B991EC1"
 
 
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
@@ -3155,22 +3155,16 @@ object BlockchainService {
         require(proofB.size == 2)             { "proofB must have 2 rows" }
         require(proofB.all { it.size == 2 })  { "proofB rows must each have 2 elements" }
         require(proofC.size == 2)             { "proofC must have 2 elements" }
-        require(publicInputs.size == 3)       { "publicInputs must have 3 elements [isAdult, year, minAge]" }
+        require(publicInputs.size == 5)       { "publicInputs must have 5 elements [isAdult, year, month, day, minAge]" }
         require(publicInputs[0] == java.math.BigInteger.ONE) { "publicInputs[0] (isAdult) must be 1" }
 
         Log.d(TAG, "Submitting ZK age proof for: $userAddress")
-        Log.d(TAG, "Public inputs: isAdult=${publicInputs[0]}, year=${publicInputs[1]}, minAge=${publicInputs[2]}")
+        Log.d(TAG, "Public inputs: isAdult=${publicInputs[0]}, date=${publicInputs[1]}-${publicInputs[2]}-${publicInputs[3]}, minAge=${publicInputs[4]}")
 
-        // Encode submitAgeProof(uint[2] a, uint[2][2] b, uint[2] c, uint[3] input)
-        // We encode manually as the ABI types need static arrays
-        val proofAHex  = proofA.map { "0x${it.toString(16).padStart(64, '0')}" }
-        val proofBHex  = proofB.map { row -> row.map { "0x${it.toString(16).padStart(64, '0')}" } }
-        val proofCHex  = proofC.map { "0x${it.toString(16).padStart(64, '0')}" }
-        val inputsHex  = publicInputs.map { "0x${it.toString(16).padStart(64, '0')}" }
-
-        // Manual ABI encoding for function with static arrays
+        // Encode submitAgeProof(uint[2] a, uint[2][2] b, uint[2] c, uint[5] input)
+        // Manual ABI encoding — static arrays, no dynamic offsets needed
         // Hash.sha3String returns 0x-prefixed hex, so strip the prefix before taking the 4-byte selector
-        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitAgeProof(uint256[2],uint256[2][2],uint256[2],uint256[3])")
+        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitAgeProof(uint256[2],uint256[2][2],uint256[2],uint256[5])")
             .removePrefix("0x").substring(0, 8)
 
         val sb = StringBuilder(functionSelector)
@@ -3185,10 +3179,12 @@ object BlockchainService {
         // c[0], c[1]
         sb.append(proofC[0].toString(16).padStart(64, '0'))
         sb.append(proofC[1].toString(16).padStart(64, '0'))
-        // input[0], input[1], input[2]
+        // input[0]=isAdult, input[1]=currentYear, input[2]=currentMonth, input[3]=currentDay, input[4]=minAge
         sb.append(publicInputs[0].toString(16).padStart(64, '0'))
         sb.append(publicInputs[1].toString(16).padStart(64, '0'))
         sb.append(publicInputs[2].toString(16).padStart(64, '0'))
+        sb.append(publicInputs[3].toString(16).padStart(64, '0'))
+        sb.append(publicInputs[4].toString(16).padStart(64, '0'))
 
         val encodedFunction = sb.toString()
 

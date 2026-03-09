@@ -55,13 +55,18 @@ class ZkpService(private val activity: Activity) {
      * Generate an age proof.
      * Must be called from the MAIN THREAD (WebView requirement).
      *
-     * @param birthYear The user's birth year (e.g. 1995). STAYS ON DEVICE.
-     * @return ZkpProofResult — proof + public signals (no birth year)
+     * @param birthYear  User's birth year  (e.g. 1995). STAYS ON DEVICE.
+     * @param birthMonth User's birth month (1-12).     STAYS ON DEVICE.
+     * @param birthDay   User's birth day   (1-31).     STAYS ON DEVICE.
+     * @return ZkpProofResult — proof + public signals (no birth date)
      */
     @SuppressLint("SetJavaScriptEnabled")
-    suspend fun generateAgeProof(birthYear: Int): ZkpProofResult {
-        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
-        Log.d(TAG, "Generating age proof: birthYear=$birthYear currentYear=$currentYear minAge=18")
+    suspend fun generateAgeProof(birthYear: Int, birthMonth: Int, birthDay: Int): ZkpProofResult {
+        val cal = java.util.Calendar.getInstance()
+        val currentYear  = cal.get(java.util.Calendar.YEAR)
+        val currentMonth = cal.get(java.util.Calendar.MONTH) + 1   // Calendar.MONTH is 0-based
+        val currentDay   = cal.get(java.util.Calendar.DAY_OF_MONTH)
+        Log.d(TAG, "Generating age proof: birth=$birthYear-$birthMonth-$birthDay  current=$currentYear-$currentMonth-$currentDay  minAge=18")
 
         return withTimeout(PROOF_TIMEOUT_MS) {
             suspendCancellableCoroutine { continuation ->
@@ -85,7 +90,7 @@ class ZkpService(private val activity: Activity) {
                 val runJs = {
                     Log.d(TAG, "Calling generateAgeProof in WebView JS")
                     webView?.evaluateJavascript(
-                        "generateAgeProof($birthYear, $currentYear, 18);",
+                        "generateAgeProof($birthYear, $birthMonth, $birthDay, $currentYear, $currentMonth, $currentDay, 18);",
                         null
                     )
                 }

@@ -162,24 +162,27 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Birth Year"
+                        android:text="Date of Birth"
                         android:textSize="14sp"
                         android:textColor="@color/text_secondary"
                         android:layout_marginBottom="8dp" />
 
+                    <!-- Tappable date-of-birth field that opens DatePickerDialog -->
                     <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                        android:hint="e.g. 1995">
+                        android:hint="Select your date of birth">
 
                         <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/etBirthYear"
+                            android:id="@+id/etBirthDate"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:inputType="number"
-                            android:maxLength="4"
-                            android:textSize="20sp" />
+                            android:inputType="none"
+                            android:focusable="false"
+                            android:cursorVisible="false"
+                            android:textSize="16sp"
+                            android:drawableEnd="@drawable/ic_calendar" />
 
                     </com.google.android.material.textfield.TextInputLayout>
 

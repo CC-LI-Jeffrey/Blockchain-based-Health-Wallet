@@ -47,10 +47,11 @@
     }
 
     // -------------------------------------------------------
-    // generateAgeProof(birthYear, currentYear, minAge)
+    // generateAgeProof(birthYear, birthMonth, birthDay, currentYear, currentMonth, currentDay, minAge)
     // Called by ZkpService.kt via evaluateJavascript()
+    // birthYear/Month/Day are PRIVATE — never sent back to Kotlin
     // -------------------------------------------------------
-    async function generateAgeProof(birthYear, currentYear, minAge) {
+    async function generateAgeProof(birthYear, birthMonth, birthDay, currentYear, currentMonth, currentDay, minAge) {
         try {
             // Input validation
             if (isNaN(birthYear) || birthYear < 1900 || birthYear > currentYear) {
@@ -62,24 +63,29 @@
             const wasmBuffer = await fetchLocalAsset('/assets/zkp/AgeVerify.wasm');
             const zkeyBuffer = await fetchLocalAsset('/assets/zkp/AgeVerify_final.zkey');
 
-            // Private input — birthYear stays here, never sent back
+            // Private inputs — birthYear/Month/Day stay here, never sent back
             const input = {
-                birthYear:   birthYear.toString(),
-                currentYear: currentYear.toString(),
-                minAge:      minAge.toString()
+                birthYear:    birthYear.toString(),
+                birthMonth:   birthMonth.toString(),
+                birthDay:     birthDay.toString(),
+                currentYear:  currentYear.toString(),
+                currentMonth: currentMonth.toString(),
+                currentDay:   currentDay.toString(),
+                minAge:       minAge.toString()
             };
 
-            // Generate Groth16 proof — this is the heavy computation (~1-3s on mobile)
+            // Generate Groth16 proof — heavy computation (~1-3s on mobile)
             const { proof, publicSignals } = await snarkjs.groth16.fullProve(
                 input,
                 new Uint8Array(wasmBuffer),
                 new Uint8Array(zkeyBuffer)
             );
 
-            // Send proof back to Kotlin — birthYear is NOT included
+            // Send proof back to Kotlin — birth date is NOT included
+            // publicSignals = ["1", currentYear, currentMonth, currentDay, "18"]
             const result = JSON.stringify({
                 proof: proof,
-                publicSignals: publicSignals   // ["1", "2026", "18"]
+                publicSignals: publicSignals
             });
 
             window.ZkpBridge.onProofReady(result);

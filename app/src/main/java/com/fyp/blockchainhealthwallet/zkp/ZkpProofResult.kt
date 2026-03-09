@@ -6,18 +6,20 @@ import java.math.BigInteger
  * Holds a generated Groth16 ZK proof for age verification.
  *
  * proofA, proofB, proofC are the elliptic curve points that make up the proof.
- * publicSignals contains only:
- *   [0] = isAdult    (always "1" — proof is invalid if 0)
+ * publicSignals contains:
+ *   [0] = isAdult     (always "1" — proof is invalid if 0)
  *   [1] = currentYear
- *   [2] = minAge     (always "18")
+ *   [2] = currentMonth
+ *   [3] = currentDay
+ *   [4] = minAge      (always "18")
  *
- * NOTE: birthYear is NOT in this class — it never leaves the device.
+ * NOTE: birthYear, birthMonth, birthDay are NOT in this class — they never leave the device.
  */
 data class ZkpProofResult(
     val proofA: List<String>,           // 2 field elements
     val proofB: List<List<String>>,     // 2x2 field elements
     val proofC: List<String>,           // 2 field elements
-    val publicSignals: List<String>     // ["1", "2026", "18"]
+    val publicSignals: List<String>     // ["1", "2026", "3", "9", "18"]
 ) {
     /**
      * Convert proof to BigInteger arrays for web3j ABI encoding.
@@ -45,10 +47,12 @@ data class ZkpProofResult(
                 proofB.size == 2 &&
                 proofB.all { it.size == 2 } &&
                 proofC.size == 2 &&
-                publicSignals.size == 3 &&
+                publicSignals.size == 5 &&
                 publicSignals[0] == "1"    // isAdult must be 1
     }
 
-    val currentYear: Int get() = publicSignals.getOrNull(1)?.toIntOrNull() ?: 0
-    val minAge: Int get() = publicSignals.getOrNull(2)?.toIntOrNull() ?: 0
+    val currentYear:  Int get() = publicSignals.getOrNull(1)?.toIntOrNull() ?: 0
+    val currentMonth: Int get() = publicSignals.getOrNull(2)?.toIntOrNull() ?: 0
+    val currentDay:   Int get() = publicSignals.getOrNull(3)?.toIntOrNull() ?: 0
+    val minAge:       Int get() = publicSignals.getOrNull(4)?.toIntOrNull() ?: 0
 }

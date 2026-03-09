@@ -1,5 +1,6 @@
 package com.fyp.blockchainhealthwallet
 
+import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -19,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -43,7 +45,7 @@ class AgeVerifyActivity : AppCompatActivity() {
     private lateinit var tvVerifiedDate: TextView
     private lateinit var btnVerifyMyAge: MaterialButton
     private lateinit var cardGenerateProof: View
-    private lateinit var etBirthYear: TextInputEditText
+    private lateinit var etBirthDate: TextInputEditText
     private lateinit var btnGenerateProof: MaterialButton
     private lateinit var layoutProgress: View
     private lateinit var tvProgressStatus: TextView
@@ -58,6 +60,9 @@ class AgeVerifyActivity : AppCompatActivity() {
     private lateinit var tvCheckResult: TextView
 
     // State
+    private var selectedBirthYear  = 0
+    private var selectedBirthMonth = 0  // 1-12
+    private var selectedBirthDay   = 0  // 1-31
     private var currentProof: ZkpProofResult? = null
     private lateinit var zkpService: ZkpService
 
@@ -86,7 +91,7 @@ class AgeVerifyActivity : AppCompatActivity() {
         tvVerifiedDate     = findViewById(R.id.tvVerifiedDate)
         btnVerifyMyAge     = findViewById(R.id.btnVerifyMyAge)
         cardGenerateProof  = findViewById(R.id.cardGenerateProof)
-        etBirthYear        = findViewById(R.id.etBirthYear)
+        etBirthDate        = findViewById(R.id.etBirthDate)
         btnGenerateProof   = findViewById(R.id.btnGenerateProof)
         layoutProgress     = findViewById(R.id.layoutProgress)
         tvProgressStatus   = findViewById(R.id.tvProgressStatus)
@@ -112,8 +117,12 @@ class AgeVerifyActivity : AppCompatActivity() {
             cardGenerateProof.visibility = View.VISIBLE
             cardProofDetails.visibility = View.GONE
             currentProof = null
-            etBirthYear.requestFocus()
+            selectedBirthYear = 0; selectedBirthMonth = 0; selectedBirthDay = 0
+            etBirthDate.setText("")
         }
+
+        // Open DatePickerDialog when the birth date field is tapped
+        etBirthDate.setOnClickListener { showDatePicker() }
 
         btnGenerateProof.setOnClickListener { onGenerateProofClicked() }
 
@@ -183,22 +192,44 @@ class AgeVerifyActivity : AppCompatActivity() {
     // Generate Proof
     // ─────────────────────────────────────────────
 
+    private fun showDatePicker() {
+        val cal = Calendar.getInstance()
+        // Default picker to 25 years ago
+        val defaultYear  = cal.get(Calendar.YEAR) - 25
+        val defaultMonth = cal.get(Calendar.MONTH)
+        val defaultDay   = cal.get(Calendar.DAY_OF_MONTH)
+
+        DatePickerDialog(this, { _, year, month, day ->
+            selectedBirthYear  = year
+            selectedBirthMonth = month + 1   // DatePickerDialog months are 0-based
+            selectedBirthDay   = day
+            etBirthDate.setText(String.format("%02d/%02d/%d", day, month + 1, year))
+        }, defaultYear, defaultMonth, defaultDay).apply {
+            // Restrict to dates at most today (can't be born in the future)
+            datePicker.maxDate = System.currentTimeMillis()
+            show()
+        }
+    }
+
     private fun onGenerateProofClicked() {
-        val birthYearStr = etBirthYear.text?.toString()?.trim()
-        if (birthYearStr.isNullOrEmpty()) {
-            etBirthYear.error = "Enter your birth year"
+        if (selectedBirthYear == 0) {
+            etBirthDate.error = "Select your date of birth"
+            showDatePicker()
             return
         }
 
-        val birthYear = birthYearStr.toIntOrNull()
-        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val cal = Calendar.getInstance()
+        val currentYear  = cal.get(Calendar.YEAR)
+        val currentMonth = cal.get(Calendar.MONTH) + 1
+        val currentDay   = cal.get(Calendar.DAY_OF_MONTH)
 
-        if (birthYear == null || birthYear < 1900 || birthYear >= currentYear) {
-            etBirthYear.error = "Enter a valid birth year"
-            return
-        }
+        // Full date comparison: must be 18+ as of today
+        val age = currentYear - selectedBirthYear
+        val isBirthdayReached = (currentMonth > selectedBirthMonth) ||
+                (currentMonth == selectedBirthMonth && currentDay >= selectedBirthDay)
+        val isAdult = age > 18 || (age == 18 && isBirthdayReached)
 
-        if (currentYear - birthYear < 18) {
+        if (!isAdult) {
             Toast.makeText(this, "You must be 18 or older", Toast.LENGTH_SHORT).show()
             return
         }
@@ -209,7 +240,7 @@ class AgeVerifyActivity : AppCompatActivity() {
             try {
                 val proof = withContext(Dispatchers.Main) {
                     // ZkpService requires Main thread (WebView)
-                    zkpService.generateAgeProof(birthYear)
+                    zkpService.generateAgeProof(selectedBirthYear, selectedBirthMonth, selectedBirthDay)
                 }
 
                 currentProof = proof
@@ -229,7 +260,7 @@ class AgeVerifyActivity : AppCompatActivity() {
 
     private fun setGeneratingState(isGenerating: Boolean) {
         btnGenerateProof.isEnabled = !isGenerating
-        etBirthYear.isEnabled = !isGenerating
+        etBirthDate.isEnabled = !isGenerating
         layoutProgress.visibility = if (isGenerating) View.VISIBLE else View.GONE
 
         if (isGenerating) {
