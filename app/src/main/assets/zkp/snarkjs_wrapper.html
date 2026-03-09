@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <!--
+        snarkjs WebView wrapper for AgeVerify ZKP
+        Loaded by ZkpService.kt inside a hidden WebView.
+
+        • AgeVerify.wasm and AgeVerify_final.zkey are loaded from Android assets
+          via the custom WebViewAssetLoader path /assets/zkp/
+        • birthYear NEVER leaves this page; only the proof is sent back via the
+          JavaScript bridge (ZkpBridge.onProofReady / ZkpBridge.onProofError)
+        • snarkjs.min.js can be bundled in assets/zkp/ for offline use,
+          or loaded from CDN for development
+    -->
+</head>
+<body>
+<script>
+    // -------------------------------------------------------
+    // Load snarkjs from local assets — no CDN, works offline
+    // -------------------------------------------------------
+    var snarkjsScript = document.createElement('script');
+    snarkjsScript.src = '/assets/zkp/snarkjs.min.js';
+    snarkjsScript.onload = function() {
+        // Signal to Android that the engine is ready
+        if (window.ZkpBridge) {
+            window.ZkpBridge.onEngineReady();
+        }
+    };
+    snarkjsScript.onerror = function() {
+        if (window.ZkpBridge) {
+            window.ZkpBridge.onProofError('Failed to load snarkjs from local assets');
+        }
+    };
+    document.head.appendChild(snarkjsScript);
+
+    // -------------------------------------------------------
+    // Helper: fetch a local asset file as ArrayBuffer
+    // WebViewAssetLoader maps /assets/ → app assets folder
+    // -------------------------------------------------------
+    async function fetchLocalAsset(assetPath) {
+        const response = await fetch(assetPath);
+        if (!response.ok) {
+            throw new Error('Failed to load asset: ' + assetPath + ' (status ' + response.status + ')');
+        }
+        return response.arrayBuffer();
+    }
+
+    // -------------------------------------------------------
+    // generateAgeProof(birthYear, birthMonth, birthDay, currentYear, currentMonth, currentDay, minAge)
+    // Called by ZkpService.kt via evaluateJavascript()
+    // birthYear/Month/Day are PRIVATE — never sent back to Kotlin
+    // -------------------------------------------------------
+    async function generateAgeProof(birthYear, birthMonth, birthDay, currentYear, currentMonth, currentDay, minAge) {
+        try {
+            // Input validation
+            if (isNaN(birthYear) || birthYear < 1900 || birthYear > currentYear) {
+                throw new Error('Invalid birth year: ' + birthYear);
+            }
+
+            // Load circuit files from Android assets
+            // These must exist at: app/src/main/assets/zkp/
+            const wasmBuffer = await fetchLocalAsset('/assets/zkp/AgeVerify.wasm');
+            const zkeyBuffer = await fetchLocalAsset('/assets/zkp/AgeVerify_final.zkey');
+
+            // Private inputs — birthYear/Month/Day stay here, never sent back
+            const input = {
+                birthYear:    birthYear.toString(),
+                birthMonth:   birthMonth.toString(),
+                birthDay:     birthDay.toString(),
+                currentYear:  currentYear.toString(),
+                currentMonth: currentMonth.toString(),
+                currentDay:   currentDay.toString(),
+                minAge:       minAge.toString()
+            };
+
+            // Generate Groth16 proof — heavy computation (~1-3s on mobile)
+            const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+                input,
+                new Uint8Array(wasmBuffer),
+                new Uint8Array(zkeyBuffer)
+            );
+
+            // Send proof back to Kotlin — birth date is NOT included
+            // publicSignals = ["1", currentYear, currentMonth, currentDay, "18"]
+            const result = JSON.stringify({
+                proof: proof,
+                publicSignals: publicSignals
+            });
+
+            window.ZkpBridge.onProofReady(result);
+
+        } catch (err) {
+            window.ZkpBridge.onProofError(err.message || 'Unknown error during proof generation');
+        }
+    }
+</script>
+</body>
+</html>

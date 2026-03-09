@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- ── GRADIENT HEADER ── -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/gradient_background"
+            android:padding="24dp"
+            android:paddingBottom="40dp">
+
+            <ImageButton
+                android:id="@+id/btnBack"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Back"
+                android:src="@drawable/ic_back"
+                app:tint="@color/white" />
+
+            <TextView
+                android:id="@+id/tvTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/btnBack"
+                android:layout_marginTop="16dp"
+                android:text="Age Verification"
+                android:textColor="@color/white"
+                android:textSize="32sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/tvTitle"
+                android:layout_marginTop="8dp"
+                android:alpha="0.9"
+                android:text="Prove you are 18+ without revealing your birthdate"
+                android:textColor="@color/white"
+                android:textSize="16sp" />
+        </RelativeLayout>
+
+        <!-- ── MAIN CONTENT ── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="-20dp"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="32dp">
+
+            <!-- ── MY STATUS CARD ── -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardMyStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="6dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <!-- Status row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <FrameLayout
+                            android:layout_width="56dp"
+                            android:layout_height="56dp"
+                            android:background="@drawable/card_background">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center"
+                                android:text="🔐"
+                                android:textSize="28sp" />
+                        </FrameLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:layout_marginStart="16dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="My Verification Status"
+                                android:textSize="17sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_primary" />
+
+                            <!-- Status badge — text toggled in code -->
+                            <TextView
+                                android:id="@+id/tvMyStatus"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:text="Checking..."
+                                android:textSize="14sp"
+                                android:textColor="@color/text_secondary" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Verified-on row (hidden until verified) -->
+                    <TextView
+                        android:id="@+id/tvVerifiedDate"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary"
+                        android:visibility="gone" />
+
+                    <!-- Verify button -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnVerifyMyAge"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:text="Verify My Age"
+                        android:textSize="16sp" />
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- ── GENERATE PROOF CARD (hidden until user taps Verify My Age) ── -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardGenerateProof"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:visibility="gone"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="6dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Date of Birth"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginBottom="8dp" />
+
+                    <!-- Tappable date-of-birth field that opens DatePickerDialog -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                        android:hint="Select your date of birth">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etBirthDate"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="none"
+                            android:focusable="false"
+                            android:cursorVisible="false"
+                            android:textSize="16sp"
+                            android:drawableEnd="@drawable/ic_calendar" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- Generate button -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnGenerateProof"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="Generate Proof"
+                        android:textSize="16sp" />
+
+                    <!-- Progress indicator (hidden) -->
+                    <LinearLayout
+                        android:id="@+id/layoutProgress"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="16dp"
+                        android:visibility="gone">
+
+                        <ProgressBar
+                            android:id="@+id/progressBar"
+                            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:indeterminate="true" />
+
+                        <TextView
+                            android:id="@+id/tvProgressStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="Generating proof..."
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- ── PROOF DETAILS CARD (hidden until proof is generated) ── -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardProofDetails"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:visibility="gone"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="6dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <!-- Header row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="16dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Proof Details"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="✅ Ready"
+                            android:textSize="14sp"
+                            android:textColor="#2e7d32" />
+                    </LinearLayout>
+
+                    <!-- Divider -->
+                    <View android:layout_width="match_parent" android:layout_height="1dp"
+                        android:background="#e0e0e0" android:layout_marginBottom="12dp"/>
+
+                    <!-- Row: Current Year -->
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:layout_marginBottom="10dp">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                            android:layout_weight="1" android:text="Current Year"
+                            android:textColor="@color/text_secondary" android:textSize="14sp" />
+                        <TextView android:id="@+id/tvDetailYear" android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" android:text="—"
+                            android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Row: Min Age -->
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:layout_marginBottom="10dp">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                            android:layout_weight="1" android:text="Minimum Age"
+                            android:textColor="@color/text_secondary" android:textSize="14sp" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="18" android:textColor="@color/text_primary"
+                            android:textSize="14sp" android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Row: Birth Year — HIDDEN -->
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:layout_marginBottom="10dp">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                            android:layout_weight="1" android:text="Birth Year"
+                            android:textColor="@color/text_secondary" android:textSize="14sp" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:text="Private" android:textColor="#9e9e9e"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <!-- Divider -->
+                    <View android:layout_width="match_parent" android:layout_height="1dp"
+                        android:background="#e0e0e0" android:layout_marginBottom="12dp"/>
+
+                    <!-- Submit button -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSubmitProof"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Submit to Blockchain"
+                        android:textSize="16sp"
+                        app:backgroundTint="#7b1fa2" />
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- ── CHECK ANOTHER USER CARD ── -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardCheckOther"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="6dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="16dp">
+
+                        <FrameLayout
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:background="@drawable/card_background">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center"
+                                android:text="🔍"
+                                android:textSize="24sp" />
+                        </FrameLayout>
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="16dp"
+                            android:text="Check Another User"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                    </LinearLayout>
+
+                    <!-- Address input + QR scan -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                            android:hint="Wallet Address (0x...)">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/etCheckAddress"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="text"
+                                android:maxLines="1"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnScanAddress"
+                            android:layout_width="56dp"
+                            android:layout_height="56dp"
+                            android:layout_marginStart="8dp"
+                            android:padding="0dp"
+                            android:text="📷"
+                            android:textSize="20sp"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                    </LinearLayout>
+
+                    <!-- Check button -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCheckStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Check Status"
+                        android:textSize="16sp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                    <!-- Result (hidden by default) -->
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/cardCheckResult"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:visibility="gone"
+                        app:cardCornerRadius="12dp"
+                        app:cardElevation="2dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="16dp">
+
+                            <TextView
+                                android:id="@+id/tvCheckedAddress"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="12sp"
+                                android:textColor="@color/text_secondary"
+                                android:layout_marginBottom="8dp" />
+
+                            <TextView
+                                android:id="@+id/tvCheckResult"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </androidx.cardview.widget.CardView>
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

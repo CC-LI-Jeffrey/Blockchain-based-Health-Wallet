@@ -73,7 +73,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
 
-    // Reown SDK (WalletConnect) - Updated to latest version
+    // WebView asset loader (for serving .wasm / .zkey from assets in ZkpService)
+    implementation("androidx.webkit:webkit:1.12.1")
+
+    // Reown SDK (WalletConnect)
     implementation(platform("com.reown:android-bom:1.6.8"))
     implementation("com.reown:android-core")
     implementation("com.reown:appkit")

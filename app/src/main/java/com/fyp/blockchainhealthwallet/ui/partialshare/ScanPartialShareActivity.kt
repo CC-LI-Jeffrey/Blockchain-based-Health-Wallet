@@ -174,7 +174,7 @@ class ScanPartialShareActivity : AppCompatActivity() {
     }
     
     private fun displayScannedData(sharePackage: PartialSharePackage) {
-        resultContainer.visibility = LinearLayout.VISIBLE
+        resultContainer.visibility = ScrollView.VISIBLE
         attributesContainer.removeAllViews()
         
         statusText.text = "Scanned ${sharePackage.recordType} record with ${sharePackage.attributes.size} attributes"
