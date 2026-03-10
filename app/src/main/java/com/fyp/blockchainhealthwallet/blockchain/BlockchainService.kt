@@ -48,7 +48,7 @@ object BlockchainService {
 
     private const val PARTIAL_SHARE_CONTRACT = "0x1d76341F07Ee1f9442e854863B8Eb6C92F39E70f" // PartialShareExtension contract
     private const val AGE_VERIFY_CONTRACT = "0x6a2E27B2027efd1A9E4DA3f33a94DE189B991EC1"
-
+    private const val VACCINE_VERIFY_CONTRACT = "0xd23f585359738e848614Ae2B2B8eB6b265D7Bb38"
 
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
     private const val RPC_URL_FALLBACK = "https://rpc.sepolia.org"
@@ -3287,8 +3287,6 @@ object BlockchainService {
     // ============================================
     // ZKP VACCINE VERIFICATION - VaccineVerifyExtension
     // ============================================
-
-    private const val VACCINE_VERIFY_CONTRACT = "0x0000000000000000000000000000000000000000" // TODO: deploy and update
 
     /**
      * Register a Poseidon commitment on-chain for a vaccination record.

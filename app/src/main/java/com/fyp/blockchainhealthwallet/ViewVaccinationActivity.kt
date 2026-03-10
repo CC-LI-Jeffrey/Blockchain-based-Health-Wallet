@@ -45,6 +45,7 @@ class ViewVaccinationActivity : AppCompatActivity() {
     private lateinit var cardCertificate: CardView
     private lateinit var tvCertificateStatus: TextView
     private lateinit var ivCertificatePreview: ImageView
+    private lateinit var btnProveVaccination: MaterialButton
     private lateinit var btnViewCertificate: MaterialButton
     private lateinit var btnShareVaccination: MaterialButton
     private lateinit var btnPartialShareVaccination: MaterialButton
@@ -102,10 +103,21 @@ class ViewVaccinationActivity : AppCompatActivity() {
         cardCertificate = findViewById(R.id.cardCertificate)
         tvCertificateStatus = findViewById(R.id.tvCertificateStatus)
         ivCertificatePreview = findViewById(R.id.ivCertificatePreview)
+        btnProveVaccination = findViewById(R.id.btnProveVaccination)
         btnViewCertificate = findViewById(R.id.btnViewCertificate)
         btnShareVaccination = findViewById(R.id.btnShareVaccination)
         btnPartialShareVaccination = findViewById(R.id.btnPartialShareVaccination)
         btnDeleteVaccination = findViewById(R.id.btnDeleteVaccination)
+
+        btnProveVaccination.setOnClickListener {
+            val id = vaccinationId?.toLongOrNull() ?: 0L
+            val name = tvVaccineNameEn.text.toString().ifEmpty { tvVaccineName.text.toString() }
+            val intent = Intent(this, VaccineVerifyActivity::class.java).apply {
+                putExtra(VaccineVerifyActivity.EXTRA_VACCINATION_ID, id)
+                putExtra(VaccineVerifyActivity.EXTRA_VACCINE_NAME, name)
+            }
+            startActivity(intent)
+        }
 
         btnViewCertificate.setOnClickListener {
             if (certificateIpfsHash != null) {

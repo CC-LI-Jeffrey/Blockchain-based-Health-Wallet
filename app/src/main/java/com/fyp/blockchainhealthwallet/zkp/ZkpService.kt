@@ -154,7 +154,7 @@ class ZkpService(private val activity: Activity) {
                 val runJs = {
                     Log.d(TAG, "Calling generateVaccineProof in WebView JS")
                     webView?.evaluateJavascript(
-                        "generateVaccineProof($vaccinationId, $vaccineName, $salt, $commitment, $targetVaccine);",
+                        "generateVaccineProof($vaccinationId, $vaccineName, '$salt', '$commitment', $targetVaccine);",
                         null
                     )
                 }

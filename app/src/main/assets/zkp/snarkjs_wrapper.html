@@ -35,6 +35,17 @@
     document.head.appendChild(snarkjsScript);
 
     // -------------------------------------------------------
+    // Load circomlibjs Poseidon (t=4, BN128) — no CDN, works offline
+    // Exposes window.buildPoseidon used by computePoseidonHash()
+    // -------------------------------------------------------
+    var circomlibScript = document.createElement('script');
+    circomlibScript.src = '/assets/zkp/circomlibjs.min.js';
+    circomlibScript.onerror = function() {
+        console.error('Failed to load circomlibjs.min.js from local assets');
+    };
+    document.head.appendChild(circomlibScript);
+
+    // -------------------------------------------------------
     // Helper: fetch a local asset file as ArrayBuffer
     // WebViewAssetLoader maps /assets/ → app assets folder
     // -------------------------------------------------------
@@ -150,28 +161,17 @@
     // Calls window.ZkpBridge.onPoseidonReady(commitment) on success.
     async function computePoseidonHash(a, b, c) {
         try {
-            const { buildPoseidon } = await import('/assets/zkp/snarkjs.min.js')
-                .catch(() => snarkjs);
-            // snarkjs exposes circomlibjs separately; use the built-in poseidon via ffjavascript
-            // Fallback: use snarkjs.poseidon if available, else ffjavascript poseidon
-            let poseidonFn;
-            if (typeof snarkjs !== 'undefined' && snarkjs.poseidon) {
-                poseidonFn = snarkjs.poseidon;
-            } else {
-                // Dynamically import circomlibjs poseidon from the snarkjs bundle globals
-                const { poseidon } = await import('/assets/zkp/circomlibjs.min.js').catch(() => ({}));
-                poseidonFn = poseidon;
+            // circomlibjs.min.js exposes window.buildPoseidon as a global.
+            // It is loaded as a <script> tag alongside snarkjs, so it is
+            // available synchronously by the time this function is called.
+            if (typeof window.buildPoseidon !== 'function') {
+                throw new Error('circomlibjs not loaded. Ensure circomlibjs.min.js is in assets/zkp/');
             }
-
-            if (!poseidonFn) {
-                // Last resort: use snarkjs groth16 witness calculator Poseidon path
-                throw new Error('Poseidon not available. Ensure circomlibjs is loaded.');
-            }
-
+            const poseidon = await window.buildPoseidon();
             const bigA = BigInt(a);
             const bigB = BigInt(b);
             const bigC = BigInt(c);
-            const hash = poseidonFn([bigA, bigB, bigC]);
+            const hash = poseidon([bigA, bigB, bigC]);
             const commitment = hash.toString();
             window.ZkpBridge.onPoseidonReady(commitment);
         } catch (err) {

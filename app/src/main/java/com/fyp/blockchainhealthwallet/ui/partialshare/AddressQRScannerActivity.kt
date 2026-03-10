@@ -131,28 +131,45 @@ class AddressQRScannerActivity : AppCompatActivity() {
     }
     
     /**
-     * Extract wallet address from QR code content
-     * Supports both plain addresses (0x...) and JSON format {"type":"WALLET_ADDRESS","address":"0x..."}
+     * Extract wallet address from QR code content.
+     * Supports:
+     *   - Plain Ethereum address (0x...)
+     *   - JSON {"type":"WALLET_ADDRESS","address":"0x..."}
+     *   - JSON {"type":"VACCINE_PASSPORT","address":"0x...","vaccineCode":1,"vaccineName":"COVID-19",...}
+     *
+     * For VACCINE_PASSPORT QR codes, also stores vaccineCode + vaccineName in [pendingVaccineCode]
+     * and [pendingVaccineName] so they can be returned alongside the address.
      */
+    private var pendingVaccineCode: Int = -1
+    private var pendingVaccineName: String = ""
+
     private fun extractWalletAddress(rawValue: String): String? {
         // Try plain Ethereum address
         if (rawValue.startsWith("0x") && rawValue.length == 42) {
             return rawValue
         }
-        
+
         // Try JSON format
         try {
             val json = org.json.JSONObject(rawValue)
-            if (json.has("type") && json.getString("type") == "WALLET_ADDRESS") {
-                val address = json.getString("address")
-                if (address.startsWith("0x") && address.length == 42) {
-                    return address
+            val type = json.optString("type")
+            val address = json.optString("address")
+            if (address.startsWith("0x") && address.length == 42) {
+                when (type) {
+                    "WALLET_ADDRESS" -> return address
+                    "VACCINE_PASSPORT" -> {
+                        pendingVaccineCode = json.optInt("vaccineCode", -1)
+                        pendingVaccineName = json.optString("vaccineName", "")
+                        return address
+                    }
+                    "AGE_PASSPORT" -> return address
+                    else -> if (type.isEmpty()) return address // bare JSON with address field
                 }
             }
         } catch (e: Exception) {
             // Not JSON, ignore
         }
-        
+
         return null
     }
     
@@ -212,6 +229,11 @@ class AddressQRScannerActivity : AppCompatActivity() {
     private fun returnAddress(address: String) {
         val resultIntent = Intent()
         resultIntent.putExtra("ADDRESS", address)
+        resultIntent.putExtra("SCANNED_ADDRESS", address)   // compat alias
+        if (pendingVaccineCode > 0) {
+            resultIntent.putExtra("VACCINE_CODE", pendingVaccineCode)
+            resultIntent.putExtra("VACCINE_NAME", pendingVaccineName)
+        }
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
     }

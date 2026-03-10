@@ -47,6 +47,10 @@ class AgeVerifyActivity : AppCompatActivity() {
     // Views
     private lateinit var tvMyStatus: TextView
     private lateinit var tvVerifiedDate: TextView
+    private lateinit var cardAgePassport: View
+    private lateinit var tvPassportAddress: TextView
+    private lateinit var ivAgePassportQR: android.widget.ImageView
+    private lateinit var btnShowAgeQR: MaterialButton
     private lateinit var btnVerifyMyAge: MaterialButton
     private lateinit var cardGenerateProof: View
     private lateinit var etBirthDate: TextInputEditText
@@ -69,6 +73,7 @@ class AgeVerifyActivity : AppCompatActivity() {
     private var selectedBirthDay   = 0  // 1-31
     private var currentProof: ZkpProofResult? = null
     private lateinit var zkpService: ZkpService
+    private var agePassportQrBitmap: android.graphics.Bitmap? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +98,10 @@ class AgeVerifyActivity : AppCompatActivity() {
     private fun bindViews() {
         tvMyStatus         = findViewById(R.id.tvMyStatus)
         tvVerifiedDate     = findViewById(R.id.tvVerifiedDate)
+        cardAgePassport    = findViewById(R.id.cardAgePassport)
+        tvPassportAddress  = findViewById(R.id.tvPassportAddress)
+        ivAgePassportQR    = findViewById(R.id.ivAgePassportQR)
+        btnShowAgeQR       = findViewById(R.id.btnShowAgeQR)
         btnVerifyMyAge     = findViewById(R.id.btnVerifyMyAge)
         cardGenerateProof  = findViewById(R.id.cardGenerateProof)
         etBirthDate        = findViewById(R.id.etBirthDate)
@@ -145,6 +154,8 @@ class AgeVerifyActivity : AppCompatActivity() {
         }
 
         btnCheckStatus.setOnClickListener { onCheckStatusClicked() }
+
+        btnShowAgeQR.setOnClickListener { shareAgePassportQR() }
     }
 
     // ─────────────────────────────────────────────
@@ -182,6 +193,9 @@ class AgeVerifyActivity : AppCompatActivity() {
                         tvVerifiedDate.text = "Verified on: ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(date)}"
                         tvVerifiedDate.visibility = View.VISIBLE
                     }
+
+                    // Show the Age Passport QR card
+                    showAgePassportCard(address)
                 } else {
                     tvMyStatus.text = "🔴 Not Verified"
                     btnVerifyMyAge.isEnabled = true
@@ -191,6 +205,84 @@ class AgeVerifyActivity : AppCompatActivity() {
                 tvMyStatus.text = "Unable to load status"
                 btnVerifyMyAge.isEnabled = true
             }
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // Age Passport QR
+    // ─────────────────────────────────────────────
+
+    private fun showAgePassportCard(address: String) {
+        tvPassportAddress.text = WalletManager.getFormattedAddress() ?: address.let {
+            if (it.length > 10) "${it.take(6)}...${it.takeLast(4)}" else it
+        }
+
+        val qrJson = org.json.JSONObject().apply {
+            put("type", "AGE_PASSPORT")
+            put("address", address)
+            put("minAge", 18)
+            put("verified", true)
+            put("checkedAt", System.currentTimeMillis())
+            put("timestamp", java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()))
+        }.toString()
+
+        agePassportQrBitmap = generateQrBitmap(qrJson, 200)
+        if (agePassportQrBitmap != null) {
+            ivAgePassportQR.setImageBitmap(agePassportQrBitmap)
+        }
+        cardAgePassport.visibility = View.VISIBLE
+    }
+
+    private fun shareAgePassportQR() {
+        val address = WalletManager.getAddress() ?: return
+        val qrJson = org.json.JSONObject().apply {
+            put("type", "AGE_PASSPORT")
+            put("address", address)
+            put("minAge", 18)
+            put("verified", true)
+            put("checkedAt", System.currentTimeMillis())
+            put("timestamp", java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()))
+        }.toString()
+
+        val fullBitmap = generateQrBitmap(qrJson, 512) ?: run {
+            Toast.makeText(this, "Could not generate QR code", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            val cachePath = java.io.File(cacheDir, "qr_codes")
+            cachePath.mkdirs()
+            val file = java.io.File(cachePath, "age_passport.png")
+            java.io.FileOutputStream(file).use { fos -> fullBitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, fos) }
+
+            val contentUri = androidx.core.content.FileProvider.getUriForFile(
+                this, "${applicationContext.packageName}.fileprovider", file
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                putExtra(Intent.EXTRA_TEXT, "Age Verification Passport\nWallet: ${address.let { if (it.length > 10) "${it.take(6)}...${it.takeLast(4)}" else it }}\n18+ ZK Verified on-chain ✓")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share Age Passport"))
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "QR share failed", e)
+            Toast.makeText(this, "Share failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun generateQrBitmap(content: String, size: Int): android.graphics.Bitmap? {
+        return try {
+            val bitMatrix = com.google.zxing.qrcode.QRCodeWriter()
+                .encode(content, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
+            val bmp = android.graphics.Bitmap.createBitmap(bitMatrix.width, bitMatrix.height, android.graphics.Bitmap.Config.RGB_565)
+            for (x in 0 until bitMatrix.width)
+                for (y in 0 until bitMatrix.height)
+                    bmp.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            bmp
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -333,8 +425,7 @@ class AgeVerifyActivity : AppCompatActivity() {
 
     private fun onGenerateProofClicked() {
         if (selectedBirthYear == 0) {
-            etBirthDate.error = "Select your date of birth"
-            showDatePicker()
+            Toast.makeText(this, "Date of birth not loaded yet. Please wait.", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -505,11 +596,14 @@ class AgeVerifyActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == QR_SCAN_REQUEST && resultCode == RESULT_OK) {
-            val scannedAddress = data?.getStringExtra("SCANNED_ADDRESS")
-                ?: data?.getStringExtra("address")
+        if (requestCode == QR_SCAN_REQUEST && resultCode == RESULT_OK && data != null) {
+            val scannedAddress = data.getStringExtra("ADDRESS")
+                ?: data.getStringExtra("SCANNED_ADDRESS")
+                ?: data.getStringExtra("address")
                 ?: return
             etCheckAddress.setText(scannedAddress)
+            // Auto-check after scan
+            onCheckStatusClicked()
         }
     }
 }
