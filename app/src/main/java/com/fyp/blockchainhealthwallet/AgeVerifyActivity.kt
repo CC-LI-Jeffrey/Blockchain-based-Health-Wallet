@@ -1,21 +1,25 @@
 package com.fyp.blockchainhealthwallet
 
-import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper
+import com.fyp.blockchainhealthwallet.network.ApiClient
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.fyp.blockchainhealthwallet.zkp.ZkpProofResult
 import com.fyp.blockchainhealthwallet.zkp.ZkpService
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
+import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -114,15 +118,17 @@ class AgeVerifyActivity : AppCompatActivity() {
                 Toast.makeText(this, "Please connect your wallet first", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            cardGenerateProof.visibility = View.VISIBLE
+            cardGenerateProof.visibility = View.GONE
             cardProofDetails.visibility = View.GONE
             currentProof = null
             selectedBirthYear = 0; selectedBirthMonth = 0; selectedBirthDay = 0
-            etBirthDate.setText("")
+            loadBirthDateFromProfile()
         }
 
-        // Open DatePickerDialog when the birth date field is tapped
-        etBirthDate.setOnClickListener { showDatePicker() }
+        // DOB is read-only — loaded from profile, not manually entered
+        etBirthDate.isFocusable = false
+        etBirthDate.isClickable = false
+        etBirthDate.inputType = android.text.InputType.TYPE_NULL
 
         btnGenerateProof.setOnClickListener { onGenerateProofClicked() }
 
@@ -192,23 +198,137 @@ class AgeVerifyActivity : AppCompatActivity() {
     // Generate Proof
     // ─────────────────────────────────────────────
 
-    private fun showDatePicker() {
-        val cal = Calendar.getInstance()
-        // Default picker to 25 years ago
-        val defaultYear  = cal.get(Calendar.YEAR) - 25
-        val defaultMonth = cal.get(Calendar.MONTH)
-        val defaultDay   = cal.get(Calendar.DAY_OF_MONTH)
+    // ─────────────────────────────────────────────
+    // Load DOB from user profile (blockchain + IPFS)
+    // ─────────────────────────────────────────────
 
-        DatePickerDialog(this, { _, year, month, day ->
-            selectedBirthYear  = year
-            selectedBirthMonth = month + 1   // DatePickerDialog months are 0-based
-            selectedBirthDay   = day
-            etBirthDate.setText(String.format("%02d/%02d/%d", day, month + 1, year))
-        }, defaultYear, defaultMonth, defaultDay).apply {
-            // Restrict to dates at most today (can't be born in the future)
-            datePicker.maxDate = System.currentTimeMillis()
-            show()
+    private fun loadBirthDateFromProfile() {
+        val address = WalletManager.getAddress() ?: return
+
+        btnVerifyMyAge.isEnabled = false
+        btnVerifyMyAge.text = "Loading profile..."
+
+        lifecycleScope.launch {
+            try {
+                // Step 1: Get IPFS hash from blockchain
+                val personalInfoRef = withContext(Dispatchers.IO) {
+                    BlockchainService.getPersonalInfoRef(address)
+                }
+
+                if (personalInfoRef == null || !personalInfoRef.exists) {
+                    btnVerifyMyAge.isEnabled = true
+                    btnVerifyMyAge.text = "Verify My Age"
+                    AlertDialog.Builder(this@AgeVerifyActivity)
+                        .setTitle("Profile Required")
+                        .setMessage("No profile found. Please set up your profile with your date of birth first.")
+                        .setPositiveButton("Go to Profile") { _, _ ->
+                            startActivity(Intent(this@AgeVerifyActivity, ProfileActivity::class.java))
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                    return@launch
+                }
+
+                // Step 2: Fetch encrypted data from IPFS
+                val response = withContext(Dispatchers.IO) {
+                    ApiClient.api.getFromIPFS(personalInfoRef.encryptedDataIpfsHash)
+                }
+
+                if (!response.isSuccessful || response.body() == null) {
+                    throw Exception("Failed to fetch profile from IPFS")
+                }
+
+                // Step 3: Decrypt
+                val encryptedDataBase64 = response.body()!!.string()
+                val jsonData = if (personalInfoRef.encryptedKey.isNotEmpty()) {
+                    val encryptedBytes = Base64.decode(encryptedDataBase64, Base64.NO_WRAP)
+                    val aesKey = EncryptionHelper.decryptKeyFromBlockchain(personalInfoRef.encryptedKey)
+                    EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                } else {
+                    encryptedDataBase64
+                }
+
+                // Step 4: Parse PersonalInfo
+                val personalInfo = Gson().fromJson(jsonData, PersonalInfo::class.java)
+                val dob = personalInfo.dateOfBirth
+
+                if (dob.isEmpty()) {
+                    btnVerifyMyAge.isEnabled = true
+                    btnVerifyMyAge.text = "Verify My Age"
+                    AlertDialog.Builder(this@AgeVerifyActivity)
+                        .setTitle("Date of Birth Missing")
+                        .setMessage("Your profile does not have a date of birth. Please update your profile first.")
+                        .setPositiveButton("Go to Profile") { _, _ ->
+                            startActivity(Intent(this@AgeVerifyActivity, ProfileActivity::class.java))
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                    return@launch
+                }
+
+                // Step 5: Parse the DOB string into year/month/day
+                val parsed = parseDateOfBirth(dob)
+                if (parsed == null) {
+                    btnVerifyMyAge.isEnabled = true
+                    btnVerifyMyAge.text = "Verify My Age"
+                    Toast.makeText(this@AgeVerifyActivity,
+                        "Could not parse date of birth: \"$dob\"", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                selectedBirthYear  = parsed.first
+                selectedBirthMonth = parsed.second
+                selectedBirthDay   = parsed.third
+
+                etBirthDate.setText(String.format("%02d/%02d/%d",
+                    selectedBirthDay, selectedBirthMonth, selectedBirthYear))
+
+                btnVerifyMyAge.isEnabled = true
+                btnVerifyMyAge.text = "Verify My Age"
+                cardGenerateProof.visibility = View.VISIBLE
+
+                Log.d(TAG, "DOB loaded from profile: $selectedBirthYear-$selectedBirthMonth-$selectedBirthDay")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load DOB from profile", e)
+                btnVerifyMyAge.isEnabled = true
+                btnVerifyMyAge.text = "Verify My Age"
+                Toast.makeText(this@AgeVerifyActivity,
+                    "Could not load profile: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
+    }
+
+    /**
+     * Tries several common date formats to parse the DOB string stored in PersonalInfo.
+     * Returns Triple(year, month 1-12, day).
+     */
+    private fun parseDateOfBirth(dob: String): Triple<Int, Int, Int>? {
+        val formats = listOf(
+            "MMMM dd, yyyy",   // January 15, 2004
+            "MMMM d, yyyy",    // January 5, 2004
+            "dd/MM/yyyy",      // 15/01/2004
+            "MM/dd/yyyy",      // 01/15/2004
+            "yyyy-MM-dd",      // 2004-01-15
+            "dd-MM-yyyy",      // 15-01-2004
+            "d MMM yyyy",      // 15 Jan 2004
+            "dd MMM yyyy"      // 15 Jan 2004
+        )
+        for (fmt in formats) {
+            try {
+                val sdf = SimpleDateFormat(fmt, Locale.ENGLISH)
+                sdf.isLenient = false
+                val date = sdf.parse(dob.trim()) ?: continue
+                val cal = Calendar.getInstance()
+                cal.time = date
+                return Triple(
+                    cal.get(Calendar.YEAR),
+                    cal.get(Calendar.MONTH) + 1,  // 1-based
+                    cal.get(Calendar.DAY_OF_MONTH)
+                )
+            } catch (_: Exception) { }
+        }
+        return null
     }
 
     private fun onGenerateProofClicked() {
@@ -260,7 +380,6 @@ class AgeVerifyActivity : AppCompatActivity() {
 
     private fun setGeneratingState(isGenerating: Boolean) {
         btnGenerateProof.isEnabled = !isGenerating
-        etBirthDate.isEnabled = !isGenerating
         layoutProgress.visibility = if (isGenerating) View.VISIBLE else View.GONE
 
         if (isGenerating) {
