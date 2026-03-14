@@ -14,6 +14,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.db.ProofRecord
 import com.fyp.blockchainhealthwallet.db.VaccineProofRepository
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.fyp.blockchainhealthwallet.zkp.VaccineCodes
@@ -383,13 +384,18 @@ class VaccineVerifyActivity : AppCompatActivity() {
                 layoutProgress.visibility = View.VISIBLE
 
                 withContext(Dispatchers.IO) {
-                    repository.insertVaccineProof(
-                        address = address,
-                        vaccineCode = vaccineCode,
-                        proof = proof.toString(),  // Serialize proof
+                    val proofRecord = ProofRecord(
+                        type = "VACCINE_PASSPORT",
+                        proofHash = proof.proofHash(),
+                        publicInputs = "[${proof.targetVaccine}]",
+                        minValue = vaccineCode.toLong(),
+                        timestamp = System.currentTimeMillis(),
+                        issuerAddress = address,
+                        commitment = proof.commitment.toString(),
                         isVerified = true,
                         verifiedAt = System.currentTimeMillis()
                     )
+                    repository.saveVaccineProof(proofRecord)
                 }
 
                 layoutProgress.visibility = View.GONE

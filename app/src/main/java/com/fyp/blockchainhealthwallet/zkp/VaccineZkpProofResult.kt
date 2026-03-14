@@ -110,4 +110,15 @@ data class VaccineZkpProofResult(
     val isVaccinated:  Boolean get() = publicSignals.getOrNull(0) == "1"
     val commitment:    BigInteger get() = BigInteger(publicSignals.getOrNull(1) ?: "0")
     val targetVaccine: Int get() = publicSignals.getOrNull(2)?.toIntOrNull() ?: 0
+
+    /**
+     * Generate a hash of this proof for database storage and verification tracking.
+     * Uses SHA256 of the concatenated proof + public signals.
+     */
+    fun proofHash(): String {
+        val proofString = "${proofA.joinToString(",")},${proofB.flatten().joinToString(",")},${proofC.joinToString(",")}"
+        val messageDigest = java.security.MessageDigest.getInstance("SHA-256")
+        val hashBytes = messageDigest.digest(proofString.toByteArray())
+        return hashBytes.joinToString("") { "%02x".format(it) }
+    }
 }

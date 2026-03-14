@@ -12,9 +12,10 @@ import androidx.cardview.widget.CardView
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.db.ProofRecord
+import com.fyp.blockchainhealthwallet.db.VaccineProofRepository
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.fyp.blockchainhealthwallet.zkp.VaccineCodes
-import com.fyp.blockchainhealthwallet.db.VaccineProofRepository
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import com.google.zxing.BarcodeFormat
@@ -292,23 +293,23 @@ class VaccinePassportActivity : AppCompatActivity() {
                 
                 val qrJson = buildVaccinePassportJson(address, selectedVaccineCode, selectedVaccineName, proof)
                 val fullBitmap = generateQrBitmap(qrJson, size = 512) ?: run {
-            Toast.makeText(this, "Could not generate QR code", Toast.LENGTH_SHORT).show()
-            return
-        }
+                    Toast.makeText(this@VaccinePassportActivity, "Could not generate QR code", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
 
-        try {
-            val cachePath = File(cacheDir, "qr_codes")
-            cachePath.mkdirs()
-            val file = File(cachePath, "vaccine_passport_${selectedVaccineCode}.png")
-            FileOutputStream(file).use { out ->
-                fullBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
+                try {
+                    val cachePath = File(cacheDir, "qr_codes")
+                    cachePath.mkdirs()
+                    val file = File(cachePath, "vaccine_passport_${selectedVaccineCode}.png")
+                    FileOutputStream(file).use { out ->
+                        fullBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
 
-            val contentUri = FileProvider.getUriForFile(
-                this,
-                "${applicationContext.packageName}.fileprovider",
-                file
-            )
+                    val contentUri = FileProvider.getUriForFile(
+                        this@VaccinePassportActivity,
+                        "${applicationContext.packageName}.fileprovider",
+                        file
+                    )
 
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
@@ -379,19 +380,6 @@ class VaccinePassportActivity : AppCompatActivity() {
         tvWalletStatus.text = if (addr != null) addr else "Not Connected"
     }
 
-    private fun onProofNotFound() {
-        tvProofStatus.text = "⚠ No Verified Proof"
-        tvStatusDetail.text = "No locally verified ZK proof exists for $selectedVaccineName on your device."
-        tvStatusDetail.setTextColor(getColor(android.R.color.holo_orange_dark))
-        tvStatusDetail.visibility = View.VISIBLE
-
-        tvSetupGuide.text = "To prove your $selectedVaccineName vaccination:\n" +
-                "Open the vaccination record for this vaccine and tap \"Prove Vaccination (ZKP)\"."
-
-        cardPassport.visibility = View.GONE
-        cardSetupRequired.visibility = View.VISIBLE
-    }
-
     private fun buildVaccinePassportJson(
         address: String,
         vaccineCode: Int,
@@ -409,49 +397,6 @@ class VaccinePassportActivity : AppCompatActivity() {
             put("timestamp", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date()))
             put("qrVersion", 2)  // Compact format
         }.toString()
-    }
-
-    private fun registerBlockchainCommitment() {
-        // Optional: Register the verified proof commitment on-chain
-        val address = WalletManager.getAddress() ?: run {
-            Toast.makeText(this, "Please connect your wallet first", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        btnCheckProofStatus.isEnabled = false
-        btnCheckProofStatus.text = "Registering on-chain..."
-
-        lifecycleScope.launch {
-            try {
-                val success = withContext(Dispatchers.IO) {
-                    BlockchainService.registerVaccineCommitment(address, selectedVaccineCode)
-                }
-
-                if (success) {
-                    Toast.makeText(
-                        this@VaccinePassportActivity,
-                        "✓ Commitment registered on-chain",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else {
-                    Toast.makeText(
-                        this@VaccinePassportActivity,
-                        "Could not register on-chain (verify it's not already registered)",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Block registration failed", e)
-                Toast.makeText(
-                    this@VaccinePassportActivity,
-                    "Registration error: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } finally {
-                btnCheckProofStatus.isEnabled = true
-                btnCheckProofStatus.text = "Check My Proof Status"
-            }
-        }
     }
 
     private fun generateQrBitmap(content: String, size: Int): Bitmap? {
