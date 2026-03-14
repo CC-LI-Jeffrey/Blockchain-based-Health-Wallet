@@ -330,41 +330,6 @@
                         </LinearLayout>
                     </androidx.cardview.widget.CardView>
 
-                    <!-- Access Logs Card -->
-                    <androidx.cardview.widget.CardView
-                        android:id="@+id/cardAccessLogs"
-                        android:layout_width="0dp"
-                        android:layout_height="140dp"
-                        android:layout_columnWeight="1"
-                        android:layout_margin="8dp"
-                        app:cardCornerRadius="16dp"
-                        app:cardElevation="6dp"
-                        android:clickable="true"
-                        android:foreground="?attr/selectableItemBackground">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:orientation="vertical"
-                            android:gravity="center"
-                            android:padding="20dp">
-
-                            <ImageView
-                                android:layout_width="48dp"
-                                android:layout_height="48dp"
-                                android:src="@drawable/ic_access_logs" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Access Logs"
-                                android:textSize="16sp"
-                                android:textStyle="bold"
-                                android:textColor="@color/text_primary"
-                                android:layout_marginTop="12dp" />
-                        </LinearLayout>
-                    </androidx.cardview.widget.CardView>
-
                     <!-- My Wallet QR Card -->
                     <androidx.cardview.widget.CardView
                         android:id="@+id/cardMyWalletQR"

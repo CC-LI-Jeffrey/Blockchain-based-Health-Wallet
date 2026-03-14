@@ -328,10 +328,6 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, ShareRecordActivity::class.java))
         }
 
-        findViewById<CardView>(R.id.cardAccessLogs).setOnClickListener {
-            startActivity(Intent(this, AccessLogActivity::class.java))
-        }
-
         findViewById<CardView>(R.id.cardMyWalletQR).setOnClickListener {
             showMyWalletQR()
         }

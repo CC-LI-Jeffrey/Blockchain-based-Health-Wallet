@@ -111,14 +111,6 @@
             android:theme="@style/Theme.BlockchainHealthWallet.Fullscreen"
             android:parentActivityName=".ViewReportActivity" />
         <activity
-            android:name=".AccessLogActivity"
-            android:exported="false"
-            android:label="Access Logs" />
-        <activity
-            android:name=".AccessLogDetailActivity"
-            android:exported="false"
-            android:label="Access Log Details" />
-        <activity
             android:name=".ShareRecordActivity"
             android:exported="false"
             android:label="Share Records" />
