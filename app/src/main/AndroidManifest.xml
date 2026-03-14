@@ -221,6 +221,21 @@
             android:name=".ui.partialshare.PartialShareDetailActivity"
             android:exported="false"
             android:label="Partial Share Details" />
+        <activity
+            android:name=".AgeVerifyActivity"
+            android:exported="false"
+            android:label="Age Verification"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".VaccineVerifyActivity"
+            android:exported="false"
+            android:label="Vaccine ZKP Verification"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".VaccinePassportActivity"
+            android:exported="false"
+            android:label="Vaccine Passport"
+            android:parentActivityName=".MainActivity" />
         
         <!-- FileProvider for sharing decrypted files -->
         <provider
