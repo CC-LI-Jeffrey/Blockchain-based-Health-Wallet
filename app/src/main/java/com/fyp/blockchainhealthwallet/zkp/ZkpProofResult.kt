@@ -55,4 +55,15 @@ data class ZkpProofResult(
     val currentMonth: Int get() = publicSignals.getOrNull(2)?.toIntOrNull() ?: 0
     val currentDay:   Int get() = publicSignals.getOrNull(3)?.toIntOrNull() ?: 0
     val minAge:       Int get() = publicSignals.getOrNull(4)?.toIntOrNull() ?: 0
+
+    /**
+     * Generate a hash of this proof for database storage and verification tracking.
+     * Uses SHA256 of the concatenated proof + public signals.
+     */
+    fun proofHash(): String {
+        val proofString = "${proofA.joinToString(",")},${proofB.flatten().joinToString(",")},${proofC.joinToString(",")}"
+        val messageDigest = java.security.MessageDigest.getInstance("SHA-256")
+        val hashBytes = messageDigest.digest(proofString.toByteArray())
+        return hashBytes.joinToString("") { "%02x".format(it) }
+    }
 }

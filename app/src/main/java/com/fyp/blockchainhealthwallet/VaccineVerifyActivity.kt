@@ -1,6 +1,7 @@
 package com.fyp.blockchainhealthwallet
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -13,6 +14,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.db.VaccineProofRepository
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.fyp.blockchainhealthwallet.zkp.VaccineCodes
 import com.fyp.blockchainhealthwallet.zkp.VaccineZkpProofResult
@@ -29,16 +31,17 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * VaccineVerifyActivity
+ * VaccineVerifyActivity (Option A - Hybrid)
  *
- * Allows the user to:
- *   1. See the on-chain vaccination proof status for a specific vaccine code.
- *   2. Register a Poseidon commitment (one-time setup per vaccination record).
+ * Proof generation and verification workflow:
+ *   1. See the vaccination proof status (local or on-chain).
+ *   2. Register a Poseidon commitment one-time (optional, per vaccination record).
  *   3. Generate a ZK proof that proves vaccination without revealing the record.
- *   4. Submit the proof to VaccineVerifyExtension contract.
- *   5. Check any wallet address for a specific vaccine's proof status.
+ *   4. **SAVE THE PROOF LOCALLY** (primary verification for Option A).
+ *   5. Optionally submit to blockchain for anchoring (on-demand).
+ *   6. Redirect to VaccinePassportActivity to view the vaccine passport.
  *
- * Launched from ViewVaccinationActivity with:
+ * Launched from EditVaccineRecordActivity or ViewVaccinationActivity with:
  *   EXTRA_VACCINATION_ID: Long — blockchain ID of the vaccination record
  *   EXTRA_VACCINE_NAME:   String — display name (e.g. "COVID-19 Vaccine")
  */
@@ -81,6 +84,7 @@ class VaccineVerifyActivity : AppCompatActivity() {
     private var vaccineCode: Int = VaccineCodes.OTHER
     private var currentProof: VaccineZkpProofResult? = null
     private lateinit var zkpService: ZkpService
+    private lateinit var repository: VaccineProofRepository
 
     // ─────────────────────────────────────────────────────────
 
@@ -89,6 +93,7 @@ class VaccineVerifyActivity : AppCompatActivity() {
         setContentView(R.layout.activity_vaccine_verify)
 
         zkpService = ZkpService(this)
+        repository = VaccineProofRepository(this)
         BlockchainService.initialize(this)
 
         bindViews()
@@ -352,7 +357,7 @@ class VaccineVerifyActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────────────────────────────────
-    // Submit Proof
+    // Submit Proof (Option A: LOCAL-FIRST, OPTIONAL BLOCKCHAIN)
     // ─────────────────────────────────────────────────────────
 
     private fun onSubmitProofClicked() {
@@ -362,7 +367,71 @@ class VaccineVerifyActivity : AppCompatActivity() {
         }
 
         btnSubmitProof.isEnabled = false
-        btnSubmitProof.text = "Submitting..."
+        btnSubmitProof.text = "Saving locally..."
+
+        lifecycleScope.launch {
+            try {
+                val address = WalletManager.getAddress() ?: run {
+                    Toast.makeText(this@VaccineVerifyActivity, "Wallet not connected", Toast.LENGTH_SHORT).show()
+                    btnSubmitProof.isEnabled = true
+                    btnSubmitProof.text = "Submit Proof"
+                    return@launch
+                }
+
+                // STEP 1: Save proof to local database (PRIMARY for Option A)
+                tvProgressStatus.text = "Saving proof locally..."
+                layoutProgress.visibility = View.VISIBLE
+
+                withContext(Dispatchers.IO) {
+                    repository.insertVaccineProof(
+                        address = address,
+                        vaccineCode = vaccineCode,
+                        proof = proof.toString(),  // Serialize proof
+                        isVerified = true,
+                        verifiedAt = System.currentTimeMillis()
+                    )
+                }
+
+                layoutProgress.visibility = View.GONE
+
+                Log.d(TAG, "✓ Proof saved locally for $address / code $vaccineCode")
+
+                // STEP 2: Ask user if they want to anchor on-chain
+                AlertDialog.Builder(this@VaccineVerifyActivity)
+                    .setTitle("Save Proof & Optional Blockchain Anchor")
+                    .setMessage(
+                        "Your ZK proof has been saved locally.\n\n" +
+                        "You can now view your Vaccine Passport.\n\n" +
+                        "Optionally, submit the proof to the blockchain for additional anchoring?"
+                    )
+                    .setPositiveButton("Yes, Submit to Blockchain") { _, _ ->
+                        submitToBlockchain(proof)
+                    }
+                    .setNegativeButton("Skip, Go to Passport") { _, _ ->
+                        navigateToPassport()
+                    }
+                    .setCancelable(false)
+                    .show()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save proof locally", e)
+                layoutProgress.visibility = View.GONE
+                btnSubmitProof.isEnabled = true
+                btnSubmitProof.text = "Submit Proof"
+
+                AlertDialog.Builder(this@VaccineVerifyActivity)
+                    .setTitle("Save Failed")
+                    .setMessage("Could not save proof: ${e.message}")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
+    }
+
+    private fun submitToBlockchain(proof: VaccineZkpProofResult) {
+        btnSubmitProof.text = "Submitting to blockchain..."
+        layoutProgress.visibility = View.VISIBLE
+        tvProgressStatus.text = "Registering on-chain..."
 
         lifecycleScope.launch {
             try {
@@ -375,26 +444,49 @@ class VaccineVerifyActivity : AppCompatActivity() {
                     )
                 }
 
-                Log.d(TAG, "Vaccine proof submitted! tx=$txHash")
+                layoutProgress.visibility = View.GONE
+                Log.d(TAG, "Vaccine proof also submitted to blockchain! tx=$txHash")
 
                 AlertDialog.Builder(this@VaccineVerifyActivity)
-                    .setTitle("✅ Success")
-                    .setMessage("Vaccination proof submitted!\n\nTransaction: ${txHash.take(20)}...\n\nYour vaccination for ${VaccineCodes.displayNames[proof.targetVaccine]} is now proven on-chain.")
-                    .setPositiveButton("OK") { _, _ -> loadOnChainStatus() }
+                    .setTitle("✅ Complete")
+                    .setMessage(
+                        "Proof saved locally & anchored on-chain.\n\n" +
+                        "Transaction: ${txHash.take(20)}...\n\n" +
+                        "Your vaccination for ${VaccineCodes.displayNames[proof.targetVaccine]} is now proven locally with blockchain anchor."
+                    )
+                    .setPositiveButton("View Passport") { _, _ ->
+                        navigateToPassport()
+                    }
                     .setCancelable(false)
                     .show()
 
             } catch (e: Exception) {
-                Log.e(TAG, "Proof submission failed", e)
-                btnSubmitProof.isEnabled = true
-                btnSubmitProof.text = "Submit Proof On-Chain"
+                Log.e(TAG, "Blockchain submission failed (but proof is saved locally)", e)
+                layoutProgress.visibility = View.GONE
 
                 AlertDialog.Builder(this@VaccineVerifyActivity)
-                    .setTitle("Submission Failed")
-                    .setMessage(e.message ?: "Unknown error")
-                    .setPositiveButton("OK", null)
+                    .setTitle("⚠ Blockchain Submission Failed")
+                    .setMessage(
+                        "Proof is saved locally, but blockchain submission failed:\n\n${e.message}\n\n" +
+                        "No worries — your proof still works locally. Go to your Vaccine Passport to share it."
+                    )
+                    .setPositiveButton("Go to Passport") { _, _ ->
+                        navigateToPassport()
+                    }
+                    .setNegativeButton("Stay and Retry", null)
                     .show()
             }
+        }
+    }
+
+    private fun navigateToPassport() {
+        try {
+            val intent = Intent(this, VaccinePassportActivity::class.java)
+            startActivity(intent)
+            finish()  // Remove VaccineVerifyActivity from stack
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not navigate to VaccinePassportActivity", e)
+            Toast.makeText(this, "Could not navigate to Vaccine Passport", Toast.LENGTH_SHORT).show()
         }
     }
 

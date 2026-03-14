@@ -47,6 +47,8 @@ class ZkpService(private val activity: Activity) {
     private var proofCallback: ((Result<ZkpProofResult>) -> Unit)? = null
     private var vaccineProofCallback: ((Result<VaccineZkpProofResult>) -> Unit)? = null
     private var poseidonCallback: ((Result<String>) -> Unit)? = null
+    private var ageVerificationCallback: ((Result<Boolean>) -> Unit)? = null
+    private var vaccineVerificationCallback: ((Result<Boolean>) -> Unit)? = null
     private var engineReady = false
 
     // -------------------------------------------------------
@@ -63,12 +65,12 @@ class ZkpService(private val activity: Activity) {
      * @return ZkpProofResult — proof + public signals (no birth date)
      */
     @SuppressLint("SetJavaScriptEnabled")
-    suspend fun generateAgeProof(birthYear: Int, birthMonth: Int, birthDay: Int): ZkpProofResult {
+    suspend fun generateAgeProof(birthYear: Int, birthMonth: Int, birthDay: Int, minAge: Int = 18): ZkpProofResult {
         val cal = java.util.Calendar.getInstance()
         val currentYear  = cal.get(java.util.Calendar.YEAR)
         val currentMonth = cal.get(java.util.Calendar.MONTH) + 1   // Calendar.MONTH is 0-based
         val currentDay   = cal.get(java.util.Calendar.DAY_OF_MONTH)
-        Log.d(TAG, "Generating age proof: birth=$birthYear-$birthMonth-$birthDay  current=$currentYear-$currentMonth-$currentDay  minAge=18")
+        Log.d(TAG, "Generating age proof: birth=$birthYear-$birthMonth-$birthDay  current=$currentYear-$currentMonth-$currentDay  minAge=$minAge")
 
         return withTimeout(PROOF_TIMEOUT_MS) {
             suspendCancellableCoroutine { continuation ->
@@ -90,9 +92,9 @@ class ZkpService(private val activity: Activity) {
 
                 // Wait for engine ready, then call JS
                 val runJs = {
-                    Log.d(TAG, "Calling generateAgeProof in WebView JS")
+                    Log.d(TAG, "Calling generateAgeProof in WebView JS with minAge=$minAge")
                     webView?.evaluateJavascript(
-                        "generateAgeProof($birthYear, $birthMonth, $birthDay, $currentYear, $currentMonth, $currentDay, 18);",
+                        "generateAgeProof($birthYear, $birthMonth, $birthDay, $currentYear, $currentMonth, $currentDay, $minAge);",
                         null
                     )
                 }
@@ -209,6 +211,148 @@ class ZkpService(private val activity: Activity) {
     }
 
     /**
+     * Verify an age ZK proof locally (no blockchain call).
+     * @param proof The ZkpProofResult from generateAgeProof()
+     * @param currentYear Current year
+     * @param currentMonth Current month (1-12)
+     * @param currentDay Current day (1-31)
+     * @param minAge Threshold age to verify
+     * @return Boolean — true if proof is valid, false otherwise
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    suspend fun verifyAgeProof(
+        proof: ZkpProofResult,
+        currentYear: Int,
+        currentMonth: Int,
+        currentDay: Int,
+        minAge: Int
+    ): Boolean {
+        Log.d(TAG, "Verifying age proof: minAge=$minAge")
+
+        return withTimeout(PROOF_TIMEOUT_MS) {
+            suspendCancellableCoroutine { continuation ->
+                if (webView == null) {
+                    initWebView()
+                }
+
+                ageVerificationCallback = { result ->
+                    ageVerificationCallback = null
+                    if (result.isSuccess) {
+                        continuation.resume(result.getOrThrow())
+                    } else {
+                        continuation.resumeWithException(result.exceptionOrNull()!!)
+                    }
+                }
+
+                val runJs = {
+                    Log.d(TAG, "Calling verifyAgeProof in WebView JS")
+                    val proofJson = org.json.JSONObject().apply {
+                        put("pi_a", org.json.JSONArray(proof.proofA))
+                        put("pi_b", org.json.JSONArray(listOf(
+                            org.json.JSONArray(proof.proofB[0]),
+                            org.json.JSONArray(proof.proofB[1])
+                        )))
+                        put("pi_c", org.json.JSONArray(proof.proofC))
+                        put("protocol", "groth16")
+                        put("curve", "bn128")
+                    }.toString()
+
+                    val publicInputsJson = org.json.JSONObject().apply {
+                        put("currentYear", currentYear)
+                        put("currentMonth", currentMonth)
+                        put("currentDay", currentDay)
+                        put("minAge", minAge)
+                    }.toString()
+
+                    webView?.evaluateJavascript(
+                        "verifyAgeProof('$proofJson', '$publicInputsJson');",
+                        null
+                    )
+                }
+
+                if (engineReady) {
+                    runJs()
+                } else {
+                    pendingProofAction = { runJs() }
+                }
+
+                continuation.invokeOnCancellation {
+                    ageVerificationCallback = null
+                    pendingProofAction = null
+                }
+            }
+        }
+    }
+
+    /**
+     * Verify a vaccine ZK proof locally (no blockchain call).
+     * @param proof The VaccineZkpProofResult from generateVaccineProof()
+     * @param commitment The Poseidon commitment
+     * @param targetVaccine The vaccine code being verified
+     * @return Boolean — true if proof is valid, false otherwise
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    suspend fun verifyVaccineProof(
+        proof: VaccineZkpProofResult,
+        commitment: String,
+        targetVaccine: Int
+    ): Boolean {
+        Log.d(TAG, "Verifying vaccine proof: targetVaccine=$targetVaccine")
+
+        return withTimeout(PROOF_TIMEOUT_MS) {
+            suspendCancellableCoroutine { continuation ->
+                if (webView == null) {
+                    initWebView()
+                }
+
+                vaccineVerificationCallback = { result ->
+                    vaccineVerificationCallback = null
+                    if (result.isSuccess) {
+                        continuation.resume(result.getOrThrow())
+                    } else {
+                        continuation.resumeWithException(result.exceptionOrNull()!!)
+                    }
+                }
+
+                val runJs = {
+                    Log.d(TAG, "Calling verifyVaccineProof in WebView JS")
+                    val proofJson = org.json.JSONObject().apply {
+                        put("pi_a", org.json.JSONArray(proof.proofA))
+                        put("pi_b", org.json.JSONArray(listOf(
+                            org.json.JSONArray(proof.proofB[0]),
+                            org.json.JSONArray(proof.proofB[1])
+                        )))
+                        put("pi_c", org.json.JSONArray(proof.proofC))
+                        put("protocol", "groth16")
+                        put("curve", "bn128")
+                    }.toString()
+
+                    val publicInputsJson = org.json.JSONObject().apply {
+                        put("commitment", commitment)
+                        put("targetVaccine", targetVaccine)
+                    }.toString()
+
+                    webView?.evaluateJavascript(
+                        "verifyVaccineProof('$proofJson', '$publicInputsJson');",
+                        null
+                    )
+                }
+
+                if (engineReady) {
+                    runJs()
+                } else {
+                    pendingProofAction = { runJs() }
+                }
+
+                continuation.invokeOnCancellation {
+                    vaccineVerificationCallback = null
+                    pendingProofAction = null
+                }
+            }
+        }
+    }
+
+    /**
      * Destroy the WebView when done (call from Activity.onDestroy).
      */
     fun destroy() {
@@ -221,6 +365,8 @@ class ZkpService(private val activity: Activity) {
         proofCallback = null
         vaccineProofCallback = null
         poseidonCallback = null
+        ageVerificationCallback = null
+        vaccineVerificationCallback = null
         pendingProofAction = null
     }
 
@@ -335,6 +481,32 @@ class ZkpService(private val activity: Activity) {
         }
 
         @JavascriptInterface
+        fun onAgeVerificationReady(jsonResult: String) {
+            Log.d(TAG, "Age verification result received from WebView")
+            try {
+                val resultObj = org.json.JSONObject(jsonResult)
+                val isValid = resultObj.getBoolean("valid")
+                ageVerificationCallback?.invoke(Result.success(isValid))
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse age verification result", e)
+                ageVerificationCallback?.invoke(Result.failure(e))
+            }
+        }
+
+        @JavascriptInterface
+        fun onVaccineVerificationReady(jsonResult: String) {
+            Log.d(TAG, "Vaccine verification result received from WebView")
+            try {
+                val resultObj = org.json.JSONObject(jsonResult)
+                val isValid = resultObj.getBoolean("valid")
+                vaccineVerificationCallback?.invoke(Result.success(isValid))
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse vaccine verification result", e)
+                vaccineVerificationCallback?.invoke(Result.failure(e))
+            }
+        }
+
+        @JavascriptInterface
         fun onProofError(errorMessage: String) {
             Log.e(TAG, "Proof generation error: $errorMessage")
             // Route to whichever callback is active
@@ -346,6 +518,12 @@ class ZkpService(private val activity: Activity) {
             )
             poseidonCallback?.invoke(
                 Result.failure(Exception("Poseidon compute failed: $errorMessage"))
+            )
+            ageVerificationCallback?.invoke(
+                Result.failure(Exception("Age verification failed: $errorMessage"))
+            )
+            vaccineVerificationCallback?.invoke(
+                Result.failure(Exception("Vaccine verification failed: $errorMessage"))
             )
         }
     }
