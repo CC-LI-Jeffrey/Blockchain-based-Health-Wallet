@@ -4,10 +4,12 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -31,6 +33,16 @@ class AddressQRScannerActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var btnSelectPhoto: com.google.android.material.button.MaterialButton
     private lateinit var cameraExecutor: ExecutorService
+
+    private val photoPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scanQRFromImage(uri)
+        } else {
+            Toast.makeText(this, "No photo selected", Toast.LENGTH_SHORT).show()
+        }
+    }
     
     companion object {
         private const val REQUEST_CODE_PERMISSIONS = 10
@@ -113,6 +125,7 @@ class AddressQRScannerActivity : AppCompatActivity() {
                 .addOnSuccessListener { barcodes ->
                     for (barcode in barcodes) {
                         val rawValue = barcode.rawValue
+                            if (rawValue != null) lastRawValue = rawValue
                         if (rawValue != null) {
                             val address = extractWalletAddress(rawValue)
                             if (address != null) {
@@ -174,8 +187,7 @@ class AddressQRScannerActivity : AppCompatActivity() {
     }
     
     private fun openPhotoPicker() {
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        startActivityForResult(intent, REQUEST_CODE_PHOTO)
+        photoPickerLauncher.launch("image/*")
     }
     
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -189,12 +201,13 @@ class AddressQRScannerActivity : AppCompatActivity() {
     
     private fun scanQRFromImage(uri: Uri) {
         try {
-            val bitmap = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                val source = android.graphics.ImageDecoder.createSource(contentResolver, uri)
-                android.graphics.ImageDecoder.decodeBitmap(source)
-            } else {
-                @Suppress("DEPRECATION")
-                MediaStore.Images.Media.getBitmap(contentResolver, uri)
+            val bitmap = contentResolver.openInputStream(uri)?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
+
+            if (bitmap == null) {
+                Toast.makeText(this, "Error getting selected photo", Toast.LENGTH_SHORT).show()
+                return
             }
             
             val image = InputImage.fromBitmap(bitmap, 0)
@@ -204,6 +217,7 @@ class AddressQRScannerActivity : AppCompatActivity() {
                 .addOnSuccessListener { barcodes ->
                     if (barcodes.isNotEmpty()) {
                         val rawValue = barcodes[0].rawValue
+                            if (rawValue != null) lastRawValue = rawValue
                         if (!rawValue.isNullOrEmpty()) {
                             val address = extractWalletAddress(rawValue)
                             if (address != null) {
@@ -226,10 +240,12 @@ class AddressQRScannerActivity : AppCompatActivity() {
         }
     }
     
+    private var lastRawValue: String = ""
     private fun returnAddress(address: String) {
         val resultIntent = Intent()
         resultIntent.putExtra("ADDRESS", address)
-        resultIntent.putExtra("SCANNED_ADDRESS", address)   // compat alias
+        resultIntent.putExtra("SCANNED_ADDRESS", address) // compat alias
+        resultIntent.putExtra("SCAN_RESULT", lastRawValue)
         if (pendingVaccineCode > 0) {
             resultIntent.putExtra("VACCINE_CODE", pendingVaccineCode)
             resultIntent.putExtra("VACCINE_NAME", pendingVaccineName)

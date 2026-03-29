@@ -43,13 +43,11 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    private const val CONTRACT_ADDRESS = "0x74995cAB1b0BCe7933bF0CF2805124e76cB297d2"
+    private const val CONTRACT_ADDRESS = "0xe2d60c55212f5EEF2C1496d9D39aa60451E79614"
     //0x8f5b04Eb4EF06c4eFFA98D0cA20576a87A4CcCF6
 
     private const val PARTIAL_SHARE_CONTRACT = "0x1d76341F07Ee1f9442e854863B8Eb6C92F39E70f" // PartialShareExtension contract
-    private const val AGE_VERIFY_CONTRACT = "0x6a2E27B2027efd1A9E4DA3f33a94DE189B991EC1"
-    private const val VACCINE_VERIFY_CONTRACT = "0xd23f585359738e848614Ae2B2B8eB6b265D7Bb38"
-
+    
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
     private const val RPC_URL_FALLBACK = "https://rpc.sepolia.org"
     private const val RPC_URL_FALLBACK2 = "https://rpc2.sepolia.org"
@@ -3143,11 +3141,11 @@ object BlockchainService {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
 
-        if (AGE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+        if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
             throw IllegalStateException(
                 "AgeVerifyExtension not deployed yet. " +
                 "Run: npx hardhat run scripts/deployAgeVerify.js --network sepolia, " +
-                "then update AGE_VERIFY_CONTRACT in BlockchainService.kt"
+                "then update CONTRACT_ADDRESS in BlockchainService.kt"
             )
         }
 
@@ -3190,7 +3188,7 @@ object BlockchainService {
 
         sendTransaction(
             from = userAddress,
-            to = AGE_VERIFY_CONTRACT,
+            to = CONTRACT_ADDRESS,
             data = encodedFunction,
             value = "0x0"
         )
@@ -3205,7 +3203,7 @@ object BlockchainService {
      */
     suspend fun checkAdultStatus(userAddress: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (AGE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
                 return@withContext false
             }
 
@@ -3219,7 +3217,7 @@ object BlockchainService {
 
             val response = executeEthCallWithFallback(
                 encodedFunction = encodedFunction,
-                contractAddress = AGE_VERIFY_CONTRACT,
+                contractAddress = CONTRACT_ADDRESS,
                 fromAddress = null
             )
 
@@ -3248,7 +3246,7 @@ object BlockchainService {
      */
     suspend fun getVerificationTimestamp(userAddress: String): java.math.BigInteger = withContext(Dispatchers.IO) {
         try {
-            if (AGE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
                 return@withContext java.math.BigInteger.ZERO
             }
 
@@ -3265,7 +3263,7 @@ object BlockchainService {
 
             val response = executeEthCallWithFallback(
                 encodedFunction = encodedFunction,
-                contractAddress = AGE_VERIFY_CONTRACT,
+                contractAddress = CONTRACT_ADDRESS,
                 fromAddress = null
             )
 
@@ -3296,30 +3294,32 @@ object BlockchainService {
      * @param commitment  The Poseidon hash as a decimal string (BigInteger)
      * @return Transaction hash
      */
-    suspend fun registerVaccineCommitment(commitment: java.math.BigInteger): String = withContext(Dispatchers.IO) {
+    suspend fun registerVaccineCommitment(vaccineCode: Int, commitment: java.math.BigInteger): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
 
-        if (VACCINE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+        if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
             throw IllegalStateException(
-                "VaccineVerifyExtension not deployed yet. " +
-                "Deploy and update VACCINE_VERIFY_CONTRACT in BlockchainService.kt"
+                "HealthWallet contract not deployed yet. " +
+                "Deploy and update CONTRACT_ADDRESS in BlockchainService.kt"
             )
         }
 
         require(commitment != java.math.BigInteger.ZERO) { "Commitment cannot be zero" }
 
-        Log.d(TAG, "Registering vaccine commitment for: $userAddress  commitment=${commitment.toString(16).take(16)}...")
+        Log.d(TAG, "Registering vaccine commitment for: $userAddress vaccineCode=$vaccineCode commitment=${commitment.toString(16).take(16)}...")
 
-        // Encode registerVaccineCommitment(uint256 commitment)
-        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("registerVaccineCommitment(uint256)")
+        // Encode registerVaccineCommitment(uint256 _vaccineCode, uint256 _commitment)
+        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("registerVaccineCommitment(uint256,uint256)")
             .removePrefix("0x").substring(0, 8)
 
-        val encodedFunction = functionSelector + commitment.toString(16).padStart(64, '0')
+        val encodedFunction = functionSelector +
+                vaccineCode.toString(16).padStart(64, '0') +
+                commitment.toString(16).padStart(64, '0')
 
         sendTransaction(
             from = userAddress,
-            to = VACCINE_VERIFY_CONTRACT,
+            to = CONTRACT_ADDRESS,
             data = encodedFunction,
             value = "0x0"
         )
@@ -3336,57 +3336,37 @@ object BlockchainService {
      * @return Transaction hash
      */
     suspend fun submitVaccineProof(
-        proofA: List<java.math.BigInteger>,
-        proofB: List<List<java.math.BigInteger>>,
-        proofC: List<java.math.BigInteger>,
-        publicInputs: List<java.math.BigInteger>
+        vaccineCode: Int,
+        proofHashHex: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
 
-        if (VACCINE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+        if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
             throw IllegalStateException(
-                "VaccineVerifyExtension not deployed yet. " +
-                "Deploy and update VACCINE_VERIFY_CONTRACT in BlockchainService.kt"
+                "HealthWallet contract not deployed yet. " +
+                "Deploy and update CONTRACT_ADDRESS in BlockchainService.kt"
             )
         }
 
-        require(proofA.size == 2)             { "proofA must have 2 elements" }
-        require(proofB.size == 2)             { "proofB must have 2 rows" }
-        require(proofB.all { it.size == 2 })  { "proofB rows must each have 2 elements" }
-        require(proofC.size == 2)             { "proofC must have 2 elements" }
-        require(publicInputs.size == 3)       { "publicInputs must have 3 elements [isVaccinated, commitment, targetVaccine]" }
-        require(publicInputs[0] == java.math.BigInteger.ONE) { "publicInputs[0] (isVaccinated) must be 1" }
+        Log.d(TAG, "Submitting ZK vaccine proof for: $userAddress, code: $vaccineCode")
 
-        Log.d(TAG, "Submitting ZK vaccine proof for: $userAddress")
-        Log.d(TAG, "Public inputs: isVaccinated=${publicInputs[0]}, commitment=${publicInputs[1].toString(16).take(16)}..., targetVaccine=${publicInputs[2]}")
-
-        // Encode submitVaccineProof(uint[2] a, uint[2][2] b, uint[2] c, uint[3] input)
-        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitVaccineProof(uint256[2],uint256[2][2],uint256[2],uint256[3])")
+        // Encode submitVaccineProof(uint256 _vaccineCode, bytes32 _proofHash)
+        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitVaccineProof(uint256,bytes32)")
             .removePrefix("0x").substring(0, 8)
 
-        val sb = StringBuilder(functionSelector)
-        // a[0], a[1]
-        sb.append(proofA[0].toString(16).padStart(64, '0'))
-        sb.append(proofA[1].toString(16).padStart(64, '0'))
-        // b[0][0], b[0][1], b[1][0], b[1][1]
-        sb.append(proofB[0][0].toString(16).padStart(64, '0'))
-        sb.append(proofB[0][1].toString(16).padStart(64, '0'))
-        sb.append(proofB[1][0].toString(16).padStart(64, '0'))
-        sb.append(proofB[1][1].toString(16).padStart(64, '0'))
-        // c[0], c[1]
-        sb.append(proofC[0].toString(16).padStart(64, '0'))
-        sb.append(proofC[1].toString(16).padStart(64, '0'))
-        // input[0]=isVaccinated, input[1]=commitment, input[2]=targetVaccine
-        sb.append(publicInputs[0].toString(16).padStart(64, '0'))
-        sb.append(publicInputs[1].toString(16).padStart(64, '0'))
-        sb.append(publicInputs[2].toString(16).padStart(64, '0'))
+        val hashHexClean = proofHashHex
+            .removePrefix("0x")
+            .lowercase()
+            .let { if (it.length >= 64) it.takeLast(64) else it.padStart(64, '0') }
 
-        val encodedFunction = sb.toString()
-
+        val encodedFunction = functionSelector +
+            vaccineCode.toString(16).padStart(64, '0') +
+            hashHexClean
+        
         sendTransaction(
             from = userAddress,
-            to = VACCINE_VERIFY_CONTRACT,
+            to = CONTRACT_ADDRESS,
             data = encodedFunction,
             value = "0x0"
         )
@@ -3402,7 +3382,7 @@ object BlockchainService {
      */
     suspend fun checkVaccinationStatus(userAddress: String, vaccineCode: Int): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (VACCINE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
                 return@withContext false
             }
 
@@ -3416,7 +3396,7 @@ object BlockchainService {
 
             val response = executeEthCallWithFallback(
                 encodedFunction = encodedFunction,
-                contractAddress = VACCINE_VERIFY_CONTRACT,
+                contractAddress = CONTRACT_ADDRESS,
                 fromAddress = null
             )
 
@@ -3442,6 +3422,6 @@ object BlockchainService {
      * Check if the VaccineVerifyExtension contract is deployed.
      */
     fun isVaccineVerifyDeployed(): Boolean =
-        VACCINE_VERIFY_CONTRACT != "0x0000000000000000000000000000000000000000"
+        CONTRACT_ADDRESS != "0x0000000000000000000000000000000000000000"
 }
 

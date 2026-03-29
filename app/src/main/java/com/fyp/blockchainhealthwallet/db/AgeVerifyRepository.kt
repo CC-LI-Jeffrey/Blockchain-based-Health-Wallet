@@ -47,4 +47,13 @@ class AgeVerifyRepository(private val context: Context) {
             proofDao.countVerifiedProofs()
         }
     }
+
+    /**
+     * Delete all locally stored age proofs.
+     */
+    suspend fun deleteAllAgeProofs() {
+        return withContext(Dispatchers.IO) {
+            proofDao.deleteProofsByType("AGE_PASSPORT")
+        }
+    }
 }

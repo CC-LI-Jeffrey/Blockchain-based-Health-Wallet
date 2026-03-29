@@ -222,9 +222,10 @@
             const proof = JSON.parse(proofJson);
             const publicInputs = JSON.parse(publicInputsJson);
 
-            // Public inputs must be in order: [currentYear, currentMonth, currentDay, minAge]
+            // Public inputs must be in order: ["1", currentYear, currentMonth, currentDay, minAge]
             // publicInputs should be an object with these keys
             const inputArray = [
+                "1",
                 publicInputs.currentYear.toString(),
                 publicInputs.currentMonth.toString(),
                 publicInputs.currentDay.toString(),
@@ -259,8 +260,9 @@
             const proof = JSON.parse(proofJson);
             const publicInputs = JSON.parse(publicInputsJson);
 
-            // Public inputs must be in order: [commitment, targetVaccine]
+            // Public inputs must be in order: ["1", commitment, targetVaccine]
             const inputArray = [
+                "1",
                 publicInputs.commitment.toString(),
                 publicInputs.targetVaccine.toString()
             ];

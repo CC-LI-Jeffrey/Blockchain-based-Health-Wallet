@@ -74,4 +74,13 @@ class VaccineProofRepository(private val context: Context) {
             proofDao.deleteOldProofs(olderThan)
         }
     }
+
+    /**
+     * Delete all locally stored vaccine proofs.
+     */
+    suspend fun deleteAllVaccineProofs() {
+        return withContext(Dispatchers.IO) {
+            proofDao.deleteProofsByType("VACCINE_PASSPORT")
+        }
+    }
 }

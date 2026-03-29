@@ -300,6 +300,15 @@
                         android:text="Submit Proof On-Chain"
                         app:cornerRadius="8dp" />
                 </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnClearZkpCache"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Clear Local ZKP Cache"
+                    app:cornerRadius="8dp" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 

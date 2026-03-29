@@ -1,15 +1,18 @@
 package com.fyp.blockchainhealthwallet
 
 import android.content.Intent
+import android.content.ContentValues
 import android.os.Bundle
 import android.util.Base64
 import android.util.Log
+import android.view.Gravity
 import android.view.View
 import android.widget.ImageButton
 import android.widget.Spinner
 import android.widget.ArrayAdapter
 import android.widget.TextView
 import android.widget.Toast
+import android.provider.MediaStore
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -58,6 +61,7 @@ class AgeVerifyActivity : AppCompatActivity() {
     private lateinit var ivAgePassportQR: android.widget.ImageView
     private lateinit var btnShowAgeQR: MaterialButton
     private lateinit var btnVerifyMyAge: MaterialButton
+    private lateinit var btnClearAgeProofs: MaterialButton
     private lateinit var cardGenerateProof: View
     private lateinit var spinnerMinAge: Spinner
     private lateinit var etBirthDate: TextInputEditText
@@ -68,9 +72,7 @@ class AgeVerifyActivity : AppCompatActivity() {
     private lateinit var tvDetailYear: TextView
     private lateinit var tvDetailMinAge: TextView
     private lateinit var btnSubmitProof: MaterialButton
-    private lateinit var etCheckAddress: TextInputEditText
     private lateinit var btnScanAddress: MaterialButton
-    private lateinit var btnCheckStatus: MaterialButton
     private lateinit var cardCheckResult: View
     private lateinit var tvCheckedAddress: TextView
     private lateinit var tvCheckResult: TextView
@@ -114,6 +116,7 @@ class AgeVerifyActivity : AppCompatActivity() {
         ivAgePassportQR    = findViewById(R.id.ivAgePassportQR)
         btnShowAgeQR       = findViewById(R.id.btnShowAgeQR)
         btnVerifyMyAge     = findViewById(R.id.btnVerifyMyAge)
+        btnClearAgeProofs  = findViewById(R.id.btnClearAgeProofs)
         cardGenerateProof  = findViewById(R.id.cardGenerateProof)
         spinnerMinAge      = findViewById(R.id.spinnerMinAge)
         etBirthDate        = findViewById(R.id.etBirthDate)
@@ -124,9 +127,7 @@ class AgeVerifyActivity : AppCompatActivity() {
         tvDetailYear       = findViewById(R.id.tvDetailYear)
         tvDetailMinAge     = findViewById(R.id.tvDetailMinAge)
         btnSubmitProof     = findViewById(R.id.btnSubmitProof)
-        etCheckAddress     = findViewById(R.id.etCheckAddress)
         btnScanAddress     = findViewById(R.id.btnScanAddress)
-        btnCheckStatus     = findViewById(R.id.btnCheckStatus)
         cardCheckResult    = findViewById(R.id.cardCheckResult)
         tvCheckedAddress   = findViewById(R.id.tvCheckedAddress)
         tvCheckResult      = findViewById(R.id.tvCheckResult)
@@ -180,9 +181,43 @@ class AgeVerifyActivity : AppCompatActivity() {
             }
         }
 
-        btnCheckStatus.setOnClickListener { onCheckStatusClicked() }
+        // check status removed
 
         btnShowAgeQR.setOnClickListener { shareAgePassportQR() }
+        ivAgePassportQR.setOnClickListener {
+            val qrBitmap = agePassportQrBitmap
+            if (qrBitmap != null) {
+                showQrFullscreenDialog(qrBitmap, "age_passport") {
+                    shareAgePassportQR()
+                }
+            } else {
+                Toast.makeText(this, "No QR code available yet", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnClearAgeProofs.setOnClickListener { onClearAgeProofsClicked() }
+    }
+
+    private fun onClearAgeProofsClicked() {
+        AlertDialog.Builder(this)
+            .setTitle("Clear Local Age Proofs")
+            .setMessage("This removes all locally stored age proofs from this device.")
+            .setPositiveButton("Clear") { _, _ ->
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        repository.deleteAllAgeProofs()
+                    }
+                    tvMyStatus.text = "🔴 Not Verified Locally"
+                    tvVerifiedDate.visibility = View.GONE
+                    cardAgePassport.visibility = View.GONE
+                    cardProofDetails.visibility = View.GONE
+                    cardGenerateProof.visibility = View.GONE
+                    btnVerifyMyAge.text = "Verify My Age"
+                    Toast.makeText(this@AgeVerifyActivity, "Local age proofs cleared", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // ─────────────────────────────────────────────
@@ -210,8 +245,8 @@ class AgeVerifyActivity : AppCompatActivity() {
                     val minAge = mostRecent.minValue
                     tvMyStatus.text = "✅ Age Verified (${minAge}+)"
                     tvMyStatus.setTextColor(getColor(android.R.color.holo_green_dark))
-                    btnVerifyMyAge.isEnabled = false
-                    btnVerifyMyAge.text = "Verified Locally"
+                    btnVerifyMyAge.isEnabled = true
+                    btnVerifyMyAge.text = "Regenerate Proof"
 
                     if (mostRecent.verifiedAt > 0) {
                         val date = Date(mostRecent.verifiedAt)
@@ -334,6 +369,108 @@ class AgeVerifyActivity : AppCompatActivity() {
             bmp
         } catch (e: Exception) {
             null
+        }
+    }
+
+    private fun showQrFullscreenDialog(
+        bitmap: android.graphics.Bitmap,
+        filePrefix: String,
+        onShare: (() -> Unit)? = null
+    ) {
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+
+        val root = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+
+        val image = android.widget.ImageView(this).apply {
+            setImageBitmap(bitmap)
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+        }
+
+        val controls = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(24, 24, 24, 24)
+            setBackgroundColor(0x88000000.toInt())
+        }
+
+        val saveButton = android.widget.Button(this).apply {
+            text = "Save Image"
+            setOnClickListener {
+                val saved = saveQrToGallery(bitmap, filePrefix)
+                if (saved) {
+                    Toast.makeText(this@AgeVerifyActivity, "QR saved to gallery", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@AgeVerifyActivity, "Failed to save QR image", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        controls.addView(saveButton)
+
+        if (onShare != null) {
+            val shareButton = android.widget.Button(this).apply {
+                text = "Share"
+                setOnClickListener { onShare.invoke() }
+            }
+            controls.addView(shareButton)
+        }
+
+        val closeButton = android.widget.Button(this).apply {
+            text = "Close"
+            setOnClickListener { dialog.dismiss() }
+        }
+        controls.addView(closeButton)
+
+        root.addView(
+            image,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        root.addView(
+            controls,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+            )
+        )
+
+        dialog.setContentView(root)
+        dialog.show()
+    }
+
+    private fun saveQrToGallery(bitmap: android.graphics.Bitmap, filePrefix: String): Boolean {
+        return try {
+            val filename = "${filePrefix}_${System.currentTimeMillis()}.png"
+            val resolver = contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/BlockchainHealthWallet")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                ?: return false
+
+            val wrote = resolver.openOutputStream(uri)?.use { out ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+            } ?: false
+
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+
+            wrote
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save QR image", e)
+            false
         }
     }
 
@@ -602,17 +739,18 @@ class AgeVerifyActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) {
                     repository.saveAgeProof(proofRecord)
                 }
+                
+                layoutProgress.visibility = View.GONE
 
                 Log.d(TAG, "Age proof verified and saved locally")
 
                 Toast.makeText(
                     this@AgeVerifyActivity,
-                    "✅ Verified Locally!",
+                    "Proof Created Internally!",
                     Toast.LENGTH_LONG
                 ).show()
 
-                // Update UI
-                btnSubmitProof.text = "Verified ✓"
+                btnSubmitProof.text = "Verified"
                 cardGenerateProof.visibility = View.GONE
                 cardProofDetails.visibility = View.GONE
 
@@ -654,13 +792,33 @@ class AgeVerifyActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == QR_SCAN_REQUEST && resultCode == RESULT_OK && data != null) {
-            val scannedAddress = data.getStringExtra("ADDRESS")
-                ?: data.getStringExtra("SCANNED_ADDRESS")
-                ?: data.getStringExtra("address")
-                ?: return
-            etCheckAddress.setText(scannedAddress)
-            // Auto-check after scan
-            onCheckStatusClicked()
+            val scanResult = data.getStringExtra("SCAN_RESULT") ?: return
+            
+            try {
+                val json = org.json.JSONObject(scanResult)
+                val type = json.optString("type")
+                if (type == "AGE_PASSPORT") {
+                    val address = json.optString("address")
+                    val verified = json.optBoolean("verified")
+                    val minAge = json.optInt("minAge")
+                    
+                    cardCheckResult.visibility = View.VISIBLE
+                    tvCheckedAddress.text = "Wallet: ${address.take(6)}...${address.takeLast(4)}"
+                    
+                    if (verified) {
+                        tvCheckResult.text = "✓ Offline Proof Valid (>= ${minAge})"
+                        tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_green_dark))
+                    } else {
+                        tvCheckResult.text = "✗ Age Proof Verification Failed (Local)"
+                        tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_red_dark))
+                    }
+                } else {
+                    Toast.makeText(this, "Invalid QR Code type for Age", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(this, "Invalid QR Format", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 }
