@@ -233,9 +233,9 @@ class VaccinePassportActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                // Check database for most recent verified vaccine proof
+                // Check database for most recent verified proof for the selected vaccine code
                 val mostRecent = withContext(Dispatchers.IO) {
-                    repository.getMostRecentVaccineProof()
+                    repository.getMostRecentVaccineProofByCode(selectedVaccineCode)
                 }
 
                 if (mostRecent != null && mostRecent.isVerified) {
@@ -309,9 +309,9 @@ class VaccinePassportActivity : AppCompatActivity() {
         
         lifecycleScope.launch {
             try {
-                // Get most recent verified proof
+                // Get most recent verified proof for the selected vaccine code
                 val proof = withContext(Dispatchers.IO) {
-                    repository.getMostRecentVaccineProof()
+                    repository.getMostRecentVaccineProofByCode(selectedVaccineCode)
                 }
                 
                 if (proof == null || !proof.isVerified) {
@@ -393,9 +393,16 @@ class VaccinePassportActivity : AppCompatActivity() {
                     val vName = json.optString("vaccineName", "Unknown Vaccine")
                     val vCode = json.optInt("vaccineCode", -1)
                     val isVerified = json.optBoolean("verified", false)
+                    val qrProofHash = normalizeProofHash(json.optString("proofHash", ""))
                     
                     cardVerifyResult.visibility = View.VISIBLE
                     tvVerifyResultAddress.text = "Wallet: ${address.take(6)}...${address.takeLast(4)}"
+
+                    if (vCode < 0) {
+                        tvVerifyResult.text = "Invalid vaccine code in QR payload."
+                        tvVerifyResult.setTextColor(Color.RED)
+                        return
+                    }
                     
                     if (isVerified) {
                         tvVerifyResult.text = "Checking blockchain anchor..."
@@ -407,8 +414,22 @@ class VaccinePassportActivity : AppCompatActivity() {
                                     BlockchainService.checkVaccinationStatus(address, vCode)
                                 }
                                 if (isAnchored) {
-                                    tvVerifyResult.text = "Proof Verified & Anchored\nVaccine: $vName\nBlockchain Confirmed."
-                                    tvVerifyResult.setTextColor(getColor(R.color.success))
+                                    val anchoredProofHash = withContext(Dispatchers.IO) {
+                                        BlockchainService.getVaccineProofHash(address, vCode)
+                                    }
+                                    val normalizedAnchoredHash = normalizeProofHash(anchoredProofHash)
+                                    val exactMatch = qrProofHash != null && normalizedAnchoredHash != null && qrProofHash == normalizedAnchoredHash
+
+                                    if (exactMatch) {
+                                        tvVerifyResult.text = "Proof Verified & Anchored\nVaccine: $vName\nBlockchain hash matches this QR proof."
+                                        tvVerifyResult.setTextColor(getColor(R.color.success))
+                                    } else if (qrProofHash == null) {
+                                        tvVerifyResult.text = "Offline Valid, anchor exists, but QR has no proof hash.\nVaccine: $vName"
+                                        tvVerifyResult.setTextColor(getColor(android.R.color.holo_orange_dark))
+                                    } else {
+                                        tvVerifyResult.text = "Offline Valid, but this QR proof is not the anchored one.\nVaccine: $vName"
+                                        tvVerifyResult.setTextColor(Color.RED)
+                                    }
                                 } else {
                                     tvVerifyResult.text = "Offline Valid, but no blockchain anchor found.\nVaccine: $vName"
                                     tvVerifyResult.setTextColor(Color.RED)
@@ -448,11 +469,27 @@ class VaccinePassportActivity : AppCompatActivity() {
             put("vaccineCode", vaccineCode)
             put("vaccineName", vaccineName)
             put("verified", proof.isVerified)
+            put("proofHash", normalizeProofHash(proof.proofHash) ?: proof.proofHash)
             put("proofTimestamp", proof.verifiedAt)
             put("checkedAt", System.currentTimeMillis())
             put("timestamp", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date()))
             put("qrVersion", 2)  // Compact format
         }.toString()
+    }
+
+    private fun normalizeProofHash(hash: String?): String? {
+        if (hash.isNullOrBlank()) return null
+
+        val cleaned = hash.trim()
+            .removePrefix("0x")
+            .removePrefix("0X")
+            .lowercase()
+
+        if (cleaned.length != 64) return null
+        if (!cleaned.all { it in '0'..'9' || it in 'a'..'f' }) return null
+        if (cleaned == "0".repeat(64)) return null
+
+        return "0x$cleaned"
     }
 
     private fun generateQrBitmap(content: String, size: Int): Bitmap? {

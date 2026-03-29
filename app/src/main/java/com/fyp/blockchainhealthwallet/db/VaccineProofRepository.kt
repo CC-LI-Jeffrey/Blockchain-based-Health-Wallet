@@ -22,6 +22,15 @@ class VaccineProofRepository(private val context: Context) {
     }
 
     /**
+     * Get the most recent verified vaccine proof for a specific vaccine code.
+     */
+    suspend fun getMostRecentVaccineProofByCode(vaccineCode: Int): ProofRecord? {
+        return withContext(Dispatchers.IO) {
+            proofDao.getMostRecentProofByTypeAndMinValue("VACCINE_PASSPORT", vaccineCode.toLong())
+        }
+    }
+
+    /**
      * Get all verified vaccine proofs.
      */
     suspend fun getAllVaccineProofs(): List<ProofRecord> {

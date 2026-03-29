@@ -744,18 +744,8 @@ class AgeVerifyActivity : AppCompatActivity() {
 
                 Log.d(TAG, "Age proof verified and saved locally")
 
-                Toast.makeText(
-                    this@AgeVerifyActivity,
-                    "Proof Created Internally!",
-                    Toast.LENGTH_LONG
-                ).show()
-
-                btnSubmitProof.text = "Verified"
-                cardGenerateProof.visibility = View.GONE
-                cardProofDetails.visibility = View.GONE
-
-                // Reload status to show the QR passport
-                loadMyStatus()
+                // Step 2: Attempt blockchain anchor (optional, local proof remains valid if this fails)
+                anchorAgeProofToBlockchain(proof)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Proof verification failed", e)
@@ -766,6 +756,53 @@ class AgeVerifyActivity : AppCompatActivity() {
                 ).show()
                 btnSubmitProof.isEnabled = true
                 btnSubmitProof.text = "Verify Locally"
+            }
+        }
+    }
+
+    private fun anchorAgeProofToBlockchain(proof: ZkpProofResult) {
+        btnSubmitProof.text = "Anchoring..."
+        layoutProgress.visibility = View.VISIBLE
+        tvProgressStatus.text = "Anchoring age proof on-chain..."
+
+        lifecycleScope.launch {
+            try {
+                val proofHashHex = proof.proofHash()
+                val commitment = java.math.BigInteger(proofHashHex, 16)
+                val txHash = withContext(Dispatchers.IO) {
+                    BlockchainService.submitAgeProof(
+                        minAge = selectedMinAge,
+                        commitment = commitment,
+                        proofHashHex = proofHashHex
+                    )
+                }
+
+                layoutProgress.visibility = View.GONE
+                btnSubmitProof.text = "Verified & Anchored"
+                cardGenerateProof.visibility = View.GONE
+                cardProofDetails.visibility = View.GONE
+                loadMyStatus()
+
+                Toast.makeText(
+                    this@AgeVerifyActivity,
+                    "Proof verified locally and anchored on-chain. Tx: ${txHash.take(16)}...",
+                    Toast.LENGTH_LONG
+                ).show()
+            } catch (e: Exception) {
+                Log.e(TAG, "Age proof anchor failed", e)
+                layoutProgress.visibility = View.GONE
+                btnSubmitProof.text = "Verified (Local)"
+                cardGenerateProof.visibility = View.GONE
+                cardProofDetails.visibility = View.GONE
+                loadMyStatus()
+
+                AlertDialog.Builder(this@AgeVerifyActivity)
+                    .setTitle("Local Verify Complete")
+                    .setMessage(
+                        "Proof is valid and saved locally, but blockchain anchor failed:\n\n${e.message}\n\nYou can still use local verification."
+                    )
+                    .setPositiveButton("OK", null)
+                    .show()
             }
         }
     }
@@ -801,13 +838,39 @@ class AgeVerifyActivity : AppCompatActivity() {
                     val address = json.optString("address")
                     val verified = json.optBoolean("verified")
                     val minAge = json.optInt("minAge")
+                    val qrProofHash = json.optString("proofHash", "").lowercase().removePrefix("0x")
                     
                     cardCheckResult.visibility = View.VISIBLE
                     tvCheckedAddress.text = "Wallet: ${address.take(6)}...${address.takeLast(4)}"
                     
                     if (verified) {
-                        tvCheckResult.text = "✓ Offline Proof Valid (>= ${minAge})"
-                        tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_green_dark))
+                        tvCheckResult.text = "Offline proof valid (>= ${minAge}). Checking blockchain anchor..."
+                        tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_orange_dark))
+
+                        lifecycleScope.launch {
+                            try {
+                                val isAnchored = withContext(Dispatchers.IO) {
+                                    BlockchainService.checkAdultStatus(address)
+                                }
+                                val chainProofHash = withContext(Dispatchers.IO) {
+                                    BlockchainService.getAgeProofHash(address)
+                                }?.lowercase()?.removePrefix("0x")
+
+                                if (isAnchored && !chainProofHash.isNullOrBlank() && chainProofHash == qrProofHash) {
+                                    tvCheckResult.text = "Proof Verified & Anchored\nSubject is >= ${minAge}"
+                                    tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this@AgeVerifyActivity, android.R.color.holo_green_dark))
+                                } else if (isAnchored) {
+                                    tvCheckResult.text = "Offline proof valid (>= ${minAge}), but this QR proof is not the currently anchored proof."
+                                    tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this@AgeVerifyActivity, android.R.color.holo_orange_dark))
+                                } else {
+                                    tvCheckResult.text = "Offline proof valid (>= ${minAge}), but no blockchain anchor found."
+                                    tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this@AgeVerifyActivity, android.R.color.holo_orange_dark))
+                                }
+                            } catch (e: Exception) {
+                                tvCheckResult.text = "Offline proof valid (>= ${minAge}), but anchor check failed."
+                                tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this@AgeVerifyActivity, android.R.color.holo_orange_dark))
+                            }
+                        }
                     } else {
                         tvCheckResult.text = "✗ Age Proof Verification Failed (Local)"
                         tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this, android.R.color.holo_red_dark))

@@ -399,7 +399,7 @@
                         android:id="@+id/btnSubmitProof"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Verify Locally"
+                        android:text="Verify &amp; Anchor"
                         android:textSize="16sp"
                         app:backgroundTint="#7b1fa2" />
 

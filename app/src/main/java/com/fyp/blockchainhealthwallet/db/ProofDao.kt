@@ -36,6 +36,13 @@ interface ProofDao {
     fun getMostRecentProof(type: String): ProofRecord?
 
     /**
+     * Get the most recent proof of a given type and value bucket.
+     * For vaccine proofs, minValue stores vaccineCode.
+     */
+    @Query("SELECT * FROM proof_records WHERE type = :type AND minValue = :minValue ORDER BY timestamp DESC LIMIT 1")
+    fun getMostRecentProofByTypeAndMinValue(type: String, minValue: Long): ProofRecord?
+
+    /**
      * Check if a specific proof (by hash) has been verified.
      */
     @Query("SELECT COUNT(*) FROM proof_records WHERE proofHash = :proofHash AND isVerified = 1")
