@@ -159,6 +159,8 @@ class AgeVerifyActivity : AppCompatActivity() {
             cardProofDetails.visibility = View.GONE
             currentProof = null
             selectedBirthYear = 0; selectedBirthMonth = 0; selectedBirthDay = 0
+            btnSubmitProof.isEnabled = true
+            btnSubmitProof.text = "Verify & Anchor"
             loadBirthDateFromProfile()
         }
 
@@ -213,6 +215,8 @@ class AgeVerifyActivity : AppCompatActivity() {
                     cardProofDetails.visibility = View.GONE
                     cardGenerateProof.visibility = View.GONE
                     btnVerifyMyAge.text = "Verify My Age"
+                    btnSubmitProof.isEnabled = true
+                    btnSubmitProof.text = "Verify & Anchor"
                     Toast.makeText(this@AgeVerifyActivity, "Local age proofs cleared", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -290,7 +294,7 @@ class AgeVerifyActivity : AppCompatActivity() {
             put("minAge", proofRecord.minValue)
             put("verified", true)
             put("verifiedAt", proofRecord.verifiedAt)
-            put("proofHash", proofRecord.proofHash)
+            put("proofHash", normalizeProofHash(proofRecord.proofHash) ?: proofRecord.proofHash)
             put("timestamp", proofRecord.timestamp)
         }.toString()
 
@@ -322,7 +326,7 @@ class AgeVerifyActivity : AppCompatActivity() {
                     put("minAge", proofRecord.minValue)
                     put("verified", true)
                     put("verifiedAt", proofRecord.verifiedAt)
-                    put("proofHash", proofRecord.proofHash)
+                    put("proofHash", normalizeProofHash(proofRecord.proofHash) ?: proofRecord.proofHash)
                 }.toString()
 
                 val fullBitmap = generateQrBitmap(qrJson, 512) ?: run {
@@ -673,6 +677,8 @@ class AgeVerifyActivity : AppCompatActivity() {
         tvDetailYear.text = proof.currentYear.toString()
         tvDetailMinAge.text = selectedMinAge.toString()
         cardProofDetails.visibility = View.VISIBLE
+        btnSubmitProof.isEnabled = true
+        btnSubmitProof.text = "Verify & Anchor"
 
         Toast.makeText(this, "Proof generated successfully", Toast.LENGTH_SHORT).show()
     }
@@ -838,7 +844,7 @@ class AgeVerifyActivity : AppCompatActivity() {
                     val address = json.optString("address")
                     val verified = json.optBoolean("verified")
                     val minAge = json.optInt("minAge")
-                    val qrProofHash = json.optString("proofHash", "").lowercase().removePrefix("0x")
+                    val qrProofHash = normalizeProofHash(json.optString("proofHash", ""))
                     
                     cardCheckResult.visibility = View.VISIBLE
                     tvCheckedAddress.text = "Wallet: ${address.take(6)}...${address.takeLast(4)}"
@@ -854,13 +860,24 @@ class AgeVerifyActivity : AppCompatActivity() {
                                 }
                                 val chainProofHash = withContext(Dispatchers.IO) {
                                     BlockchainService.getAgeProofHash(address)
-                                }?.lowercase()?.removePrefix("0x")
+                                }
 
-                                if (isAnchored && !chainProofHash.isNullOrBlank() && chainProofHash == qrProofHash) {
+                                val normalizedChainProofHash = normalizeProofHash(chainProofHash)
+                                val exactMatch = qrProofHash != null && normalizedChainProofHash != null && qrProofHash == normalizedChainProofHash
+
+                                if (isAnchored && exactMatch) {
                                     tvCheckResult.text = "Proof Verified & Anchored\nSubject is >= ${minAge}"
                                     tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this@AgeVerifyActivity, android.R.color.holo_green_dark))
+                                } else if (isAnchored && normalizedChainProofHash == null) {
+                                    tvCheckResult.text = "Offline proof valid (>= ${minAge}), anchor exists, but on-chain proof hash is unavailable. Ensure app contract address matches the latest deployment."
+                                    tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this@AgeVerifyActivity, android.R.color.holo_orange_dark))
+                                } else if (isAnchored && qrProofHash == null) {
+                                    tvCheckResult.text = "Offline proof valid (>= ${minAge}), anchor exists, but this QR has no proof hash."
+                                    tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this@AgeVerifyActivity, android.R.color.holo_orange_dark))
                                 } else if (isAnchored) {
-                                    tvCheckResult.text = "Offline proof valid (>= ${minAge}), but this QR proof is not the currently anchored proof."
+                                    val qrShort = qrProofHash?.take(8) ?: "n/a"
+                                    val chainShort = normalizedChainProofHash?.take(8) ?: "n/a"
+                                    tvCheckResult.text = "Offline proof valid (>= ${minAge}), but this QR proof is not the currently anchored proof.\nQR: ${qrShort}... Chain: ${chainShort}..."
                                     tvCheckResult.setTextColor(androidx.core.content.ContextCompat.getColor(this@AgeVerifyActivity, android.R.color.holo_orange_dark))
                                 } else {
                                     tvCheckResult.text = "Offline proof valid (>= ${minAge}), but no blockchain anchor found."
@@ -883,5 +900,20 @@ class AgeVerifyActivity : AppCompatActivity() {
                 Toast.makeText(this, "Invalid QR Format", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun normalizeProofHash(hash: String?): String? {
+        if (hash.isNullOrBlank()) return null
+
+        val cleaned = hash.trim()
+            .removePrefix("0x")
+            .removePrefix("0X")
+            .lowercase()
+
+        if (cleaned.length != 64) return null
+        if (!cleaned.all { it in '0'..'9' || it in 'a'..'f' }) return null
+        if (cleaned == "0".repeat(64)) return null
+
+        return "0x$cleaned"
     }
 }

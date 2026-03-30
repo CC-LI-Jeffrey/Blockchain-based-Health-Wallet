@@ -191,6 +191,8 @@ class VaccineVerifyActivity : AppCompatActivity() {
 
         currentProof = null
         layoutProofReady.visibility = View.GONE
+        btnSubmitProof.isEnabled = true
+        btnSubmitProof.text = "Verify & Anchor"
         setGeneratingState(true)
 
         lifecycleScope.launch {
@@ -238,6 +240,8 @@ class VaccineVerifyActivity : AppCompatActivity() {
 
     private fun showProofReady(proof: VaccineZkpProofResult) {
         layoutProofReady.visibility = View.VISIBLE
+        btnSubmitProof.isEnabled = true
+        btnSubmitProof.text = "Verify & Anchor"
         tvProofDetails.text =
             "Vaccine code: ${proof.targetVaccine} (${VaccineCodes.displayNames[proof.targetVaccine]})\n" +
             "Commitment: ${proof.commitment.toString(16).take(20)}..."
@@ -340,6 +344,8 @@ class VaccineVerifyActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Blockchain submission failed (but proof is saved locally)", e)
                 layoutProgress.visibility = View.GONE
+                btnSubmitProof.isEnabled = true
+                btnSubmitProof.text = "Verify & Anchor"
 
                 AlertDialog.Builder(this@VaccineVerifyActivity)
                     .setTitle("⚠ Blockchain Submission Failed")
@@ -391,7 +397,7 @@ class VaccineVerifyActivity : AppCompatActivity() {
                     cardProve.visibility = View.VISIBLE
                     btnGenerateProof.isEnabled = true
                     btnSubmitProof.isEnabled = true
-                    btnSubmitProof.text = "Submit Proof On-Chain"
+                    btnSubmitProof.text = "Verify & Anchor"
                     Toast.makeText(this@VaccineVerifyActivity, "Local cache and vaccine proofs cleared", Toast.LENGTH_SHORT).show()
                 }
             }

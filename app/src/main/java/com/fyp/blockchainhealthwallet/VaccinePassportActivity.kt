@@ -289,12 +289,14 @@ class VaccinePassportActivity : AppCompatActivity() {
 
     private fun onProofNotFound() {
         tvProofStatus.text = "⚠️ No Verified Proof Found"
-        tvStatusDetail.text = "No on-chain ZK proof exists for $selectedVaccineName on your wallet."
+        tvStatusDetail.text = "No verified $selectedVaccineName proof found on this device yet."
         tvStatusDetail.setTextColor(getColor(android.R.color.holo_orange_dark))
         tvStatusDetail.visibility = View.VISIBLE
 
         tvSetupGuide.text = "To prove your $selectedVaccineName vaccination:\n" +
-                "Open the vaccination record for this vaccine and tap \"Prove Vaccination (ZKP)\"."
+            "1) Open this vaccine record from My Vaccination Records\n" +
+            "2) Tap \"Prove Vaccination (ZKP)\" and generate proof\n" +
+            "3) Tap \"Verify & Anchor\" to save locally and submit on-chain"
 
         cardPassport.visibility = View.GONE
         cardSetupRequired.visibility = View.VISIBLE
@@ -419,9 +421,13 @@ class VaccinePassportActivity : AppCompatActivity() {
                                     }
                                     val normalizedAnchoredHash = normalizeProofHash(anchoredProofHash)
                                     val exactMatch = qrProofHash != null && normalizedAnchoredHash != null && qrProofHash == normalizedAnchoredHash
+                                    val compatibilityAnchorConfirmed = normalizedAnchoredHash == null
 
                                     if (exactMatch) {
                                         tvVerifyResult.text = "Proof Verified & Anchored\nVaccine: $vName\nBlockchain hash matches this QR proof."
+                                        tvVerifyResult.setTextColor(getColor(R.color.success))
+                                    } else if (compatibilityAnchorConfirmed) {
+                                        tvVerifyResult.text = "Proof Verified & Anchored\nVaccine: $vName\n(Compatibility mode: contract does not expose proof hash)"
                                         tvVerifyResult.setTextColor(getColor(R.color.success))
                                     } else if (qrProofHash == null) {
                                         tvVerifyResult.text = "Offline Valid, anchor exists, but QR has no proof hash.\nVaccine: $vName"

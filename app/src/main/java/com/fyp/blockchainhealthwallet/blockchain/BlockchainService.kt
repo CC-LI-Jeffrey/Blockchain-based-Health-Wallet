@@ -43,7 +43,7 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    private const val CONTRACT_ADDRESS = "0x4E472a6A0d4D525EdD0BfD8Ab63DE591f9BDc337"
+    private const val CONTRACT_ADDRESS = "0x6ED9Fd51db9A827511994dd5b16637eB36EAb177"
     //0x8f5b04Eb4EF06c4eFFA98D0cA20576a87A4CcCF6
 
     private const val PARTIAL_SHARE_CONTRACT = "0x1d76341F07Ee1f9442e854863B8Eb6C92F39E70f" // PartialShareExtension contract
