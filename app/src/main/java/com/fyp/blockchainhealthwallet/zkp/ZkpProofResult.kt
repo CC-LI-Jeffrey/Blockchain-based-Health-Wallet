@@ -58,7 +58,8 @@ data class ZkpProofResult(
 
     /**
      * Generate a hash of this proof for database storage and verification tracking.
-     * Uses SHA256 of the concatenated proof + public signals.
+     * Uses SHA256 of concatenated proof points only (A, B, C).
+     * publicSignals are intentionally not included in this hash.
      */
     fun proofHash(): String {
         val proofString = "${proofA.joinToString(",")},${proofB.flatten().joinToString(",")},${proofC.joinToString(",")}"
