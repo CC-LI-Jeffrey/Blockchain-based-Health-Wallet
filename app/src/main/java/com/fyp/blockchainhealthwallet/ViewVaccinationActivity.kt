@@ -355,7 +355,11 @@ class ViewVaccinationActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val vaccId = BigInteger(vaccinationId)
+                val idRaw = vaccinationId
+                if (idRaw.isNullOrBlank()) {
+                    throw IllegalStateException("Missing vaccination ID")
+                }
+                val vaccId = BigInteger(idRaw)
                 val txHash = BlockchainService.deleteVaccination(vaccId)
 
                 progressDialog.dismiss()

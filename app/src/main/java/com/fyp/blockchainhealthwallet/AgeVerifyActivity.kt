@@ -684,7 +684,7 @@ class AgeVerifyActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────────────────────
-    // Verify Proof Locally (Option A - No Blockchain)
+    // Verify & Anchor (local verification + blockchain anchor)
     // ─────────────────────────────────────────────
 
     private fun onVerifyProofLocally() {
@@ -722,7 +722,7 @@ class AgeVerifyActivity : AppCompatActivity() {
                         Toast.LENGTH_LONG
                     ).show()
                     btnSubmitProof.isEnabled = true
-                    btnSubmitProof.text = "Verify Locally"
+                    btnSubmitProof.text = "Verify & Anchor"
                     return@launch
                 }
 
@@ -761,7 +761,7 @@ class AgeVerifyActivity : AppCompatActivity() {
                     Toast.LENGTH_LONG
                 ).show()
                 btnSubmitProof.isEnabled = true
-                btnSubmitProof.text = "Verify Locally"
+                btnSubmitProof.text = "Verify & Anchor"
             }
         }
     }

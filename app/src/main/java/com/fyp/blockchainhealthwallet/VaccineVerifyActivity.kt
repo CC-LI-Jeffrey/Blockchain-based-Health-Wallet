@@ -248,7 +248,7 @@ class VaccineVerifyActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────────────────────────────────
-    // Submit Proof (Option A: LOCAL-FIRST, OPTIONAL BLOCKCHAIN)
+    // Verify & Anchor (local verification + blockchain anchor)
     // ─────────────────────────────────────────────────────────
 
     private fun onSubmitProofClicked() {
@@ -265,7 +265,7 @@ class VaccineVerifyActivity : AppCompatActivity() {
                 val address = WalletManager.getAddress() ?: run {
                     Toast.makeText(this@VaccineVerifyActivity, "Wallet not connected", Toast.LENGTH_SHORT).show()
                     btnSubmitProof.isEnabled = true
-                    btnSubmitProof.text = "Submit Proof"
+                    btnSubmitProof.text = "Verify & Anchor"
                     return@launch
                 }
 
@@ -299,7 +299,7 @@ class VaccineVerifyActivity : AppCompatActivity() {
                 Log.e(TAG, "Failed to save proof locally", e)
                 layoutProgress.visibility = View.GONE
                 btnSubmitProof.isEnabled = true
-                btnSubmitProof.text = "Submit Proof"
+                btnSubmitProof.text = "Verify & Anchor"
 
                 AlertDialog.Builder(this@VaccineVerifyActivity)
                     .setTitle("Save Failed")
