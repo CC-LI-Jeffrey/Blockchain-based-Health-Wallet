@@ -390,54 +390,6 @@
                     android:text="Go to My Vaccination Records"
                     android:textSize="14sp"
                     app:cornerRadius="8dp" />
-
-                <!-- OR: generate proof if commitment exists -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnGenerateProofHere"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Generate Proof Here"
-                    android:textSize="14sp"
-                    android:visibility="gone"
-                    app:cornerRadius="8dp" />
-
-                <!-- Progress while generating -->
-                <LinearLayout
-                    android:id="@+id/layoutProgress"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:visibility="gone">
-
-                    <ProgressBar
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:indeterminate="true" />
-
-                    <TextView
-                        android:id="@+id/tvProgressStatus"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="Computing proof..."
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-                </LinearLayout>
-
-                <!-- Submit proof button (shown after proof is generated) -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnSubmitProofHere"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Submit Proof to Blockchain"
-                    android:textSize="14sp"
-                    android:visibility="gone"
-                    app:cornerRadius="8dp" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
