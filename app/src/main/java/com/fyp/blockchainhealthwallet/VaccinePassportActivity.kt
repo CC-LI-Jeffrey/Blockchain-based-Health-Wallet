@@ -1,17 +1,22 @@
 package com.fyp.blockchainhealthwallet
 
 import android.content.Intent
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
+import android.view.Gravity
 import android.view.View
 import android.widget.*
+import android.provider.MediaStore
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.db.ProofRecord
+import com.fyp.blockchainhealthwallet.db.VaccineProofRepository
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.fyp.blockchainhealthwallet.zkp.VaccineCodes
 import com.google.android.material.button.MaterialButton
@@ -29,17 +34,18 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * VaccinePassportActivity
+ * VaccinePassportActivity (Option A - Hybrid)
  *
  * Standalone "Vaccine Passport" screen. The user:
  *   1. Selects a vaccine type from a dropdown.
- *   2. Checks whether their wallet address has a verified on-chain ZK proof for that vaccine.
- *   3. If verified: sees a visual Vaccine Passport card with a shareable QR code.
+ *   2. Checks whether they have a locally verified ZK proof for that vaccine.
+ *   3. If verified locally: sees a visual Vaccine Passport card with a shareable QR code.
  *   4. If not yet verified: sees a guided setup flow directing them to their vaccination records.
- *   5. Can also verify any arbitrary wallet address.
+ *   5. Can optionally register the commitment on-chain (blockchain anchor).
+ *   6. Can also verify any arbitrary user's vaccine QR code locally.
  *
- * This screen is read-only with respect to proofs — proof generation is handled in
- * VaccineVerifyActivity, which is launched from the specific vaccination record view.
+ * This screen is read-only with respect to proofs — proof generation/verification is handled in
+ * VaccineVerifyActivity or when editing vaccination records.
  */
 class VaccinePassportActivity : AppCompatActivity() {
 
@@ -52,6 +58,7 @@ class VaccinePassportActivity : AppCompatActivity() {
     private lateinit var tvWalletStatus: TextView
     private lateinit var spinnerVaccine: Spinner
     private lateinit var btnCheckProofStatus: MaterialButton
+    private lateinit var btnClearVaccineProofs: MaterialButton
 
     private lateinit var cardStatus: CardView
     private lateinit var tvProofStatus: TextView
@@ -68,8 +75,8 @@ class VaccinePassportActivity : AppCompatActivity() {
     private lateinit var tvSetupGuide: TextView
     private lateinit var btnGoToRecords: MaterialButton
 
-    private lateinit var etVerifyAddress: TextInputEditText
-    private lateinit var btnVerifyAddress: MaterialButton
+    
+    
     private lateinit var btnScanVaccineQR: MaterialButton
     private lateinit var cardVerifyResult: CardView
     private lateinit var tvVerifyResultAddress: TextView
@@ -79,6 +86,7 @@ class VaccinePassportActivity : AppCompatActivity() {
     private var selectedVaccineCode: Int = VaccineCodes.COVID_19
     private var selectedVaccineName: String = ""
     private var passportQrBitmap: Bitmap? = null
+    private lateinit var repository: VaccineProofRepository
 
     // ─────────────────────────────────────────────────────────────────────────
     // Lifecycle
@@ -89,6 +97,7 @@ class VaccinePassportActivity : AppCompatActivity() {
         setContentView(R.layout.activity_vaccine_passport)
 
         BlockchainService.initialize(this)
+        repository = VaccineProofRepository(this)
 
         bindViews()
         setupSpinner()
@@ -104,6 +113,7 @@ class VaccinePassportActivity : AppCompatActivity() {
         tvWalletStatus          = findViewById(R.id.tvWalletStatus)
         spinnerVaccine          = findViewById(R.id.spinnerVaccine)
         btnCheckProofStatus     = findViewById(R.id.btnCheckProofStatus)
+        btnClearVaccineProofs   = findViewById(R.id.btnClearVaccineProofs)
 
         cardStatus              = findViewById(R.id.cardStatus)
         tvProofStatus           = findViewById(R.id.tvProofStatus)
@@ -118,10 +128,7 @@ class VaccinePassportActivity : AppCompatActivity() {
 
         cardSetupRequired       = findViewById(R.id.cardSetupRequired)
         tvSetupGuide            = findViewById(R.id.tvSetupGuide)
-        btnGoToRecords          = findViewById(R.id.btnGoToRecords)
-
-        etVerifyAddress         = findViewById(R.id.etVerifyAddress)
-        btnVerifyAddress        = findViewById(R.id.btnVerifyAddress)
+        btnGoToRecords = findViewById(R.id.btnGoToRecords)
         btnScanVaccineQR        = findViewById(R.id.btnScanVaccineQR)
         cardVerifyResult        = findViewById(R.id.cardVerifyResult)
         tvVerifyResultAddress   = findViewById(R.id.tvVerifyResultAddress)
@@ -155,19 +162,58 @@ class VaccinePassportActivity : AppCompatActivity() {
 
     private fun setupClickListeners() {
         btnCheckProofStatus.setOnClickListener { checkMyProofStatus() }
-        btnShowFullQR.setOnClickListener { sharePassportQR() }
+        btnClearVaccineProofs.setOnClickListener { onClearVaccineProofsClicked() }
+        btnShowFullQR.setOnClickListener {
+            val qrBitmap = passportQrBitmap
+            if (qrBitmap != null) {
+                showQrFullscreenDialog(qrBitmap, "vaccine_passport_${selectedVaccineCode}") {
+                    sharePassportQR()
+                }
+            } else {
+                Toast.makeText(this, "No QR code available yet", Toast.LENGTH_SHORT).show()
+            }
+        }
+        ivPassportQR.setOnClickListener {
+            val qrBitmap = passportQrBitmap
+            if (qrBitmap != null) {
+                showQrFullscreenDialog(qrBitmap, "vaccine_passport_${selectedVaccineCode}") {
+                    sharePassportQR()
+                }
+            } else {
+                Toast.makeText(this, "No QR code available yet", Toast.LENGTH_SHORT).show()
+            }
+        }
         btnGoToRecords.setOnClickListener {
             // Navigate back to main screen; user can open their vaccination records there
             startActivity(Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             })
         }
-        btnVerifyAddress.setOnClickListener { verifyOtherAddress() }
         btnScanVaccineQR.setOnClickListener { openQRScanner() }
     }
 
+    private fun onClearVaccineProofsClicked() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Clear Local Vaccine Proofs")
+            .setMessage("This removes all locally stored vaccine proofs from this device.")
+            .setPositiveButton("Clear") { _, _ ->
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        repository.deleteAllVaccineProofs()
+                    }
+                    cardStatus.visibility = View.GONE
+                    cardPassport.visibility = View.GONE
+                    cardSetupRequired.visibility = View.GONE
+                    cardVerifyResult.visibility = View.GONE
+                    Toast.makeText(this@VaccinePassportActivity, "Local vaccine proofs cleared", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
-    // Check own proof status
+    // Check own proof status (LOCAL VERIFICATION HISTORY)
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun checkMyProofStatus() {
@@ -180,19 +226,20 @@ class VaccinePassportActivity : AppCompatActivity() {
         btnCheckProofStatus.text = "Checking..."
 
         cardStatus.visibility = View.VISIBLE
-        tvProofStatus.text = "Checking on-chain status…"
+        tvProofStatus.text = "Checking local status…"
         tvStatusDetail.visibility = View.GONE
         cardPassport.visibility = View.GONE
         cardSetupRequired.visibility = View.GONE
 
         lifecycleScope.launch {
             try {
-                val verified = withContext(Dispatchers.IO) {
-                    BlockchainService.checkVaccinationStatus(address, selectedVaccineCode)
+                // Check database for most recent verified proof for the selected vaccine code
+                val mostRecent = withContext(Dispatchers.IO) {
+                    repository.getMostRecentVaccineProofByCode(selectedVaccineCode)
                 }
 
-                if (verified) {
-                    onProofVerified(address)
+                if (mostRecent != null && mostRecent.isVerified) {
+                    onProofVerified(address, mostRecent)
                 } else {
                     onProofNotFound()
                 }
@@ -211,19 +258,26 @@ class VaccinePassportActivity : AppCompatActivity() {
         }
     }
 
-    private fun onProofVerified(address: String) {
-        tvProofStatus.text = "✅ Proof Verified On-Chain"
-        tvStatusDetail.text = "Your ZK proof for $selectedVaccineName is verified on the blockchain."
+    private fun onProofVerified(address: String, proof: ProofRecord) {
+        tvProofStatus.text = "✅ Proof Verified Locally"
+        tvStatusDetail.text = "Your ZK proof for $selectedVaccineName is verified locally on this device."
         tvStatusDetail.setTextColor(getColor(R.color.success))
         tvStatusDetail.visibility = View.VISIBLE
 
         // Populate passport card
         tvPassportVaccineName.text = selectedVaccineName
         tvPassportAddress.text = WalletManager.getFormattedAddress() ?: address.abbreviate()
-        tvPassportVerifiedDate.text = "On-chain ✓"
+        
+        // Show verification timestamp
+        if (proof.verifiedAt > 0) {
+            val dateFormat = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
+            tvPassportVerifiedDate.text = "Verified: " + dateFormat.format(Date(proof.verifiedAt))
+        } else {
+            tvPassportVerifiedDate.text = "Locally verified ✓"
+        }
 
-        // Generate compact QR for the passport card
-        val qrJson = buildPassportJson(address, selectedVaccineCode, selectedVaccineName, true)
+        // Generate compact QR for the passport card (includes proof data)
+        val qrJson = buildVaccinePassportJson(address, selectedVaccineCode, selectedVaccineName, proof)
         passportQrBitmap = generateQrBitmap(qrJson, size = 200)
         if (passportQrBitmap != null) {
             ivPassportQR.setImageBitmap(passportQrBitmap)
@@ -235,108 +289,79 @@ class VaccinePassportActivity : AppCompatActivity() {
 
     private fun onProofNotFound() {
         tvProofStatus.text = "⚠️ No Verified Proof Found"
-        tvStatusDetail.text = "No on-chain ZK proof exists for $selectedVaccineName on your wallet."
+        tvStatusDetail.text = "No verified $selectedVaccineName proof found on this device yet."
         tvStatusDetail.setTextColor(getColor(android.R.color.holo_orange_dark))
         tvStatusDetail.visibility = View.VISIBLE
 
         tvSetupGuide.text = "To prove your $selectedVaccineName vaccination:\n" +
-                "Open the vaccination record for this vaccine and tap \"Prove Vaccination (ZKP)\"."
+            "1) Open this vaccine record from My Vaccination Records\n" +
+            "2) Tap \"Prove Vaccination (ZKP)\" and generate proof\n" +
+            "3) Tap \"Verify & Anchor\" to save locally and submit on-chain"
 
         cardPassport.visibility = View.GONE
         cardSetupRequired.visibility = View.VISIBLE
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Verify another address
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private fun verifyOtherAddress() {
-        val address = etVerifyAddress.text?.toString()?.trim() ?: ""
-        if (address.isEmpty() || !address.startsWith("0x") || address.length < 10) {
-            Toast.makeText(this, "Enter a valid wallet address (0x...)", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        btnVerifyAddress.isEnabled = false
-        btnVerifyAddress.text = "Checking..."
-        cardVerifyResult.visibility = View.GONE
-
-        lifecycleScope.launch {
-            try {
-                val verified = withContext(Dispatchers.IO) {
-                    BlockchainService.checkVaccinationStatus(address, selectedVaccineCode)
-                }
-
-                cardVerifyResult.visibility = View.VISIBLE
-                tvVerifyResultAddress.text = "Address: ${address.abbreviate()}"
-                if (verified) {
-                    tvVerifyResult.text = "✅ Verified — $selectedVaccineName proof found"
-                    tvVerifyResult.setTextColor(getColor(R.color.success))
-                } else {
-                    tvVerifyResult.text = "❌ Not verified — no proof for $selectedVaccineName"
-                    tvVerifyResult.setTextColor(getColor(android.R.color.holo_red_dark))
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Verify address failed", e)
-                cardVerifyResult.visibility = View.VISIBLE
-                tvVerifyResultAddress.text = "Address: ${address.abbreviate()}"
-                tvVerifyResult.text = "Error: ${e.message ?: "check failed"}"
-                tvVerifyResult.setTextColor(getColor(android.R.color.holo_orange_dark))
-            } finally {
-                btnVerifyAddress.isEnabled = true
-                btnVerifyAddress.text = "Check Vaccination Status"
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // QR Code
+    // Verify another address (via QR code scanning)
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun sharePassportQR() {
         val address = WalletManager.getAddress() ?: return
-        val qrJson = buildPassportJson(address, selectedVaccineCode, selectedVaccineName, true)
-        val fullBitmap = generateQrBitmap(qrJson, size = 512) ?: run {
-            Toast.makeText(this, "Could not generate QR code", Toast.LENGTH_SHORT).show()
-            return
-        }
+        
+        lifecycleScope.launch {
+            try {
+                // Get most recent verified proof for the selected vaccine code
+                val proof = withContext(Dispatchers.IO) {
+                    repository.getMostRecentVaccineProofByCode(selectedVaccineCode)
+                }
+                
+                if (proof == null || !proof.isVerified) {
+                    Toast.makeText(this@VaccinePassportActivity, "No verified vaccine proof found", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                
+                val qrJson = buildVaccinePassportJson(address, selectedVaccineCode, selectedVaccineName, proof)
+                val fullBitmap = generateQrBitmap(qrJson, size = 512) ?: run {
+                    Toast.makeText(this@VaccinePassportActivity, "Could not generate QR code", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
 
-        try {
-            val cachePath = File(cacheDir, "qr_codes")
-            cachePath.mkdirs()
-            val file = File(cachePath, "vaccine_passport_${selectedVaccineCode}.png")
-            FileOutputStream(file).use { out ->
-                fullBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
+                try {
+                    val cachePath = File(cacheDir, "qr_codes")
+                    cachePath.mkdirs()
+                    val file = File(cachePath, "vaccine_passport_${selectedVaccineCode}.png")
+                    FileOutputStream(file).use { out ->
+                        fullBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
 
-            val contentUri = FileProvider.getUriForFile(
-                this,
-                "${applicationContext.packageName}.fileprovider",
-                file
-            )
+                    val contentUri = FileProvider.getUriForFile(
+                        this@VaccinePassportActivity,
+                        "${applicationContext.packageName}.fileprovider",
+                        file
+                    )
 
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
                 putExtra(Intent.EXTRA_STREAM, contentUri)
                 putExtra(
                     Intent.EXTRA_TEXT,
-                    "Vaccine Passport — $selectedVaccineName\nWallet: ${address.abbreviate()}\nZK Verified on-chain ✓"
-                )
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(Intent.createChooser(shareIntent, "Share Vaccine Passport"))
+                            "Vaccine Passport — $selectedVaccineName\nWallet: ${address.abbreviate()}\nZK Verified Locally ✓"
+                        )
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(Intent.createChooser(shareIntent, "Share Vaccine Passport"))
 
-        } catch (e: Exception) {
-            Log.e(TAG, "QR share failed", e)
-            Toast.makeText(this, "Share failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Log.e(TAG, "QR share failed", e)
+                    Toast.makeText(this@VaccinePassportActivity, "Share failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sharing QR", e)
+                Toast.makeText(this@VaccinePassportActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
     // ─────────────────────────────────────────────────────────────────────────
     // QR Scanner
     // ─────────────────────────────────────────────────────────────────────────
@@ -359,24 +384,77 @@ class VaccinePassportActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == QR_SCAN_REQUEST && resultCode == RESULT_OK && data != null) {
-            val address = data.getStringExtra("ADDRESS")
-                ?: data.getStringExtra("SCANNED_ADDRESS")
-                ?: return
+            val scanResult = data.getStringExtra("SCAN_RESULT") ?: return
+            
+            try {
+                val json = JSONObject(scanResult)
+                val type = json.optString("type")
+                
+                if (type == "VACCINE_PASSPORT") {
+                    val address = json.optString("address", "Unknown")
+                    val vName = json.optString("vaccineName", "Unknown Vaccine")
+                    val vCode = json.optInt("vaccineCode", -1)
+                    val isVerified = json.optBoolean("verified", false)
+                    val qrProofHash = normalizeProofHash(json.optString("proofHash", ""))
+                    
+                    cardVerifyResult.visibility = View.VISIBLE
+                    tvVerifyResultAddress.text = "Wallet: ${address.take(6)}...${address.takeLast(4)}"
 
-            // Fill in the address field
-            etVerifyAddress.setText(address)
+                    if (vCode < 0) {
+                        tvVerifyResult.text = "Invalid vaccine code in QR payload."
+                        tvVerifyResult.setTextColor(Color.RED)
+                        return
+                    }
+                    
+                    if (isVerified) {
+                        tvVerifyResult.text = "Checking blockchain anchor..."
+                        tvVerifyResult.setTextColor(getColor(android.R.color.holo_orange_dark))
+                        
+                        lifecycleScope.launch {
+                            try {
+                                val isAnchored = withContext(Dispatchers.IO) {
+                                    BlockchainService.checkVaccinationStatus(address, vCode)
+                                }
+                                if (isAnchored) {
+                                    val anchoredProofHash = withContext(Dispatchers.IO) {
+                                        BlockchainService.getVaccineProofHash(address, vCode)
+                                    }
+                                    val normalizedAnchoredHash = normalizeProofHash(anchoredProofHash)
+                                    val exactMatch = qrProofHash != null && normalizedAnchoredHash != null && qrProofHash == normalizedAnchoredHash
+                                    val compatibilityAnchorConfirmed = normalizedAnchoredHash == null
 
-            // If the scanned QR had vaccine info, switch the spinner to that vaccine
-            val vaccineCode = data.getIntExtra("VACCINE_CODE", -1)
-            val vaccineName = data.getStringExtra("VACCINE_NAME") ?: ""
-            if (vaccineCode > 0 && vaccineCode <= VaccineCodes.spinnerItems.size) {
-                spinnerVaccine.setSelection(vaccineCode - 1)  // spinner is 0-indexed, codes are 1-indexed
-                selectedVaccineCode = vaccineCode
-                selectedVaccineName = vaccineName.ifEmpty { VaccineCodes.spinnerItems[vaccineCode - 1] }
+                                    if (exactMatch) {
+                                        tvVerifyResult.text = "Proof Verified & Anchored\nVaccine: $vName\nBlockchain hash matches this QR proof."
+                                        tvVerifyResult.setTextColor(getColor(R.color.success))
+                                    } else if (compatibilityAnchorConfirmed) {
+                                        tvVerifyResult.text = "Proof Verified & Anchored\nVaccine: $vName\n(Compatibility mode: contract does not expose proof hash)"
+                                        tvVerifyResult.setTextColor(getColor(R.color.success))
+                                    } else if (qrProofHash == null) {
+                                        tvVerifyResult.text = "Offline Valid, anchor exists, but QR has no proof hash.\nVaccine: $vName"
+                                        tvVerifyResult.setTextColor(getColor(android.R.color.holo_orange_dark))
+                                    } else {
+                                        tvVerifyResult.text = "Offline Valid, but this QR proof is not the anchored one.\nVaccine: $vName"
+                                        tvVerifyResult.setTextColor(Color.RED)
+                                    }
+                                } else {
+                                    tvVerifyResult.text = "Offline Valid, but no blockchain anchor found.\nVaccine: $vName"
+                                    tvVerifyResult.setTextColor(Color.RED)
+                                }
+                            } catch (e: Exception) {
+                                tvVerifyResult.text = "Offline Verified\nCould not reach blockchain to check anchor."
+                                tvVerifyResult.setTextColor(getColor(android.R.color.holo_orange_dark))
+                            }
+                        }
+                    } else {
+                        tvVerifyResult.text = "Unverified Proof\nVaccine: $vName"
+                        tvVerifyResult.setTextColor(Color.RED)
+                    }
+                } else {
+                    Toast.makeText(this, "Not a valid Vaccine Passport QR", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this, "Invalid QR code format", Toast.LENGTH_SHORT).show()
             }
-
-            // Auto-trigger verification with the scanned address
-            verifyOtherAddress()
         }
     }
 
@@ -385,21 +463,39 @@ class VaccinePassportActivity : AppCompatActivity() {
         tvWalletStatus.text = if (addr != null) addr else "Not Connected"
     }
 
-    private fun buildPassportJson(
+    private fun buildVaccinePassportJson(
         address: String,
         vaccineCode: Int,
         vaccineName: String,
-        verified: Boolean
+        proof: ProofRecord
     ): String {
         return JSONObject().apply {
             put("type", "VACCINE_PASSPORT")
             put("address", address)
             put("vaccineCode", vaccineCode)
             put("vaccineName", vaccineName)
-            put("verified", verified)
+            put("verified", proof.isVerified)
+            put("proofHash", normalizeProofHash(proof.proofHash) ?: proof.proofHash)
+            put("proofTimestamp", proof.verifiedAt)
             put("checkedAt", System.currentTimeMillis())
             put("timestamp", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date()))
+            put("qrVersion", 2)  // Compact format
         }.toString()
+    }
+
+    private fun normalizeProofHash(hash: String?): String? {
+        if (hash.isNullOrBlank()) return null
+
+        val cleaned = hash.trim()
+            .removePrefix("0x")
+            .removePrefix("0X")
+            .lowercase()
+
+        if (cleaned.length != 64) return null
+        if (!cleaned.all { it in '0'..'9' || it in 'a'..'f' }) return null
+        if (cleaned == "0".repeat(64)) return null
+
+        return "0x$cleaned"
     }
 
     private fun generateQrBitmap(content: String, size: Int): Bitmap? {
@@ -415,6 +511,107 @@ class VaccinePassportActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "QR generation failed", e)
             null
+        }
+    }
+
+    private fun showQrFullscreenDialog(
+        bitmap: Bitmap,
+        filePrefix: String,
+        onShare: (() -> Unit)? = null
+    ) {
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+
+        val image = ImageView(this).apply {
+            setImageBitmap(bitmap)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+        }
+
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(24, 24, 24, 24)
+            setBackgroundColor(0x88000000.toInt())
+        }
+
+        val saveButton = Button(this).apply {
+            text = "Save Image"
+            setOnClickListener {
+                val saved = saveQrToGallery(bitmap, filePrefix)
+                if (saved) {
+                    Toast.makeText(this@VaccinePassportActivity, "QR saved to gallery", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@VaccinePassportActivity, "Failed to save QR image", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        controls.addView(saveButton)
+
+        if (onShare != null) {
+            val shareButton = Button(this).apply {
+                text = "Share"
+                setOnClickListener { onShare.invoke() }
+            }
+            controls.addView(shareButton)
+        }
+
+        val closeButton = Button(this).apply {
+            text = "Close"
+            setOnClickListener { dialog.dismiss() }
+        }
+        controls.addView(closeButton)
+
+        root.addView(
+            image,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        root.addView(
+            controls,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+            )
+        )
+
+        dialog.setContentView(root)
+        dialog.show()
+    }
+
+    private fun saveQrToGallery(bitmap: Bitmap, filePrefix: String): Boolean {
+        return try {
+            val filename = "${filePrefix}_${System.currentTimeMillis()}.png"
+            val resolver = contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/BlockchainHealthWallet")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                ?: return false
+
+            val wrote = resolver.openOutputStream(uri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            } ?: false
+
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+
+            wrote
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save QR image", e)
+            false
         }
     }
 

@@ -43,13 +43,11 @@ object BlockchainService {
     // ============================================
     // CONTRACT CONFIGURATION - SEPOLIA TESTNET
     // ============================================
-    private const val CONTRACT_ADDRESS = "0x74995cAB1b0BCe7933bF0CF2805124e76cB297d2"
+    private const val CONTRACT_ADDRESS = "0x6ED9Fd51db9A827511994dd5b16637eB36EAb177"
     //0x8f5b04Eb4EF06c4eFFA98D0cA20576a87A4CcCF6
 
     private const val PARTIAL_SHARE_CONTRACT = "0x1d76341F07Ee1f9442e854863B8Eb6C92F39E70f" // PartialShareExtension contract
-    private const val AGE_VERIFY_CONTRACT = "0x6a2E27B2027efd1A9E4DA3f33a94DE189B991EC1"
-    private const val VACCINE_VERIFY_CONTRACT = "0xd23f585359738e848614Ae2B2B8eB6b265D7Bb38"
-
+    
     private const val RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
     private const val RPC_URL_FALLBACK = "https://rpc.sepolia.org"
     private const val RPC_URL_FALLBACK2 = "https://rpc2.sepolia.org"
@@ -3135,62 +3133,40 @@ object BlockchainService {
      * @return Transaction hash
      */
     suspend fun submitAgeProof(
-        proofA: List<java.math.BigInteger>,
-        proofB: List<List<java.math.BigInteger>>,
-        proofC: List<java.math.BigInteger>,
-        publicInputs: List<java.math.BigInteger>
+        minAge: Int,
+        commitment: java.math.BigInteger,
+        proofHashHex: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
 
-        if (AGE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+        if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
             throw IllegalStateException(
                 "AgeVerifyExtension not deployed yet. " +
                 "Run: npx hardhat run scripts/deployAgeVerify.js --network sepolia, " +
-                "then update AGE_VERIFY_CONTRACT in BlockchainService.kt"
+                "then update CONTRACT_ADDRESS in BlockchainService.kt"
             )
         }
 
-        require(proofA.size == 2)             { "proofA must have 2 elements" }
-        require(proofB.size == 2)             { "proofB must have 2 rows" }
-        require(proofB.all { it.size == 2 })  { "proofB rows must each have 2 elements" }
-        require(proofC.size == 2)             { "proofC must have 2 elements" }
-        require(publicInputs.size == 5)       { "publicInputs must have 5 elements [isAdult, year, month, day, minAge]" }
-        require(publicInputs[0] == java.math.BigInteger.ONE) { "publicInputs[0] (isAdult) must be 1" }
+        Log.d(TAG, "Submitting age proof anchor for: $userAddress, minAge=$minAge")
 
-        Log.d(TAG, "Submitting ZK age proof for: $userAddress")
-        Log.d(TAG, "Public inputs: isAdult=${publicInputs[0]}, date=${publicInputs[1]}-${publicInputs[2]}-${publicInputs[3]}, minAge=${publicInputs[4]}")
-
-        // Encode submitAgeProof(uint[2] a, uint[2][2] b, uint[2] c, uint[5] input)
-        // Manual ABI encoding — static arrays, no dynamic offsets needed
-        // Hash.sha3String returns 0x-prefixed hex, so strip the prefix before taking the 4-byte selector
-        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitAgeProof(uint256[2],uint256[2][2],uint256[2],uint256[5])")
+        // Encode submitAgeProof(uint256 _minAge, uint256 _commitment, bytes32 _proofHash)
+        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitAgeProof(uint256,uint256,bytes32)")
             .removePrefix("0x").substring(0, 8)
 
-        val sb = StringBuilder(functionSelector)
-        // a[0], a[1]
-        sb.append(proofA[0].toString(16).padStart(64, '0'))
-        sb.append(proofA[1].toString(16).padStart(64, '0'))
-        // b[0][0], b[0][1], b[1][0], b[1][1]
-        sb.append(proofB[0][0].toString(16).padStart(64, '0'))
-        sb.append(proofB[0][1].toString(16).padStart(64, '0'))
-        sb.append(proofB[1][0].toString(16).padStart(64, '0'))
-        sb.append(proofB[1][1].toString(16).padStart(64, '0'))
-        // c[0], c[1]
-        sb.append(proofC[0].toString(16).padStart(64, '0'))
-        sb.append(proofC[1].toString(16).padStart(64, '0'))
-        // input[0]=isAdult, input[1]=currentYear, input[2]=currentMonth, input[3]=currentDay, input[4]=minAge
-        sb.append(publicInputs[0].toString(16).padStart(64, '0'))
-        sb.append(publicInputs[1].toString(16).padStart(64, '0'))
-        sb.append(publicInputs[2].toString(16).padStart(64, '0'))
-        sb.append(publicInputs[3].toString(16).padStart(64, '0'))
-        sb.append(publicInputs[4].toString(16).padStart(64, '0'))
+        val hashHexClean = proofHashHex
+            .removePrefix("0x")
+            .lowercase()
+            .let { if (it.length >= 64) it.takeLast(64) else it.padStart(64, '0') }
 
-        val encodedFunction = sb.toString()
+        val encodedFunction = functionSelector +
+            minAge.toString(16).padStart(64, '0') +
+            commitment.toString(16).padStart(64, '0') +
+            hashHexClean
 
         sendTransaction(
             from = userAddress,
-            to = AGE_VERIFY_CONTRACT,
+            to = CONTRACT_ADDRESS,
             data = encodedFunction,
             value = "0x0"
         )
@@ -3205,7 +3181,7 @@ object BlockchainService {
      */
     suspend fun checkAdultStatus(userAddress: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (AGE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
                 return@withContext false
             }
 
@@ -3219,7 +3195,7 @@ object BlockchainService {
 
             val response = executeEthCallWithFallback(
                 encodedFunction = encodedFunction,
-                contractAddress = AGE_VERIFY_CONTRACT,
+                contractAddress = CONTRACT_ADDRESS,
                 fromAddress = null
             )
 
@@ -3248,7 +3224,7 @@ object BlockchainService {
      */
     suspend fun getVerificationTimestamp(userAddress: String): java.math.BigInteger = withContext(Dispatchers.IO) {
         try {
-            if (AGE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
                 return@withContext java.math.BigInteger.ZERO
             }
 
@@ -3265,7 +3241,7 @@ object BlockchainService {
 
             val response = executeEthCallWithFallback(
                 encodedFunction = encodedFunction,
-                contractAddress = AGE_VERIFY_CONTRACT,
+                contractAddress = CONTRACT_ADDRESS,
                 fromAddress = null
             )
 
@@ -3284,46 +3260,49 @@ object BlockchainService {
         }
     }
 
+    /**
+     * Get latest anchored age proof hash for a wallet address.
+     * Returns null if unavailable.
+     */
+    suspend fun getAgeProofHash(userAddress: String): String? = withContext(Dispatchers.IO) {
+        try {
+            if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
+                return@withContext null
+            }
+
+            val function = org.web3j.abi.datatypes.Function(
+                "getAgeProofHash",
+                listOf(Address(userAddress)),
+                listOf(object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {})
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+            val response = executeEthCallWithFallback(
+                encodedFunction = encodedFunction,
+                contractAddress = CONTRACT_ADDRESS,
+                fromAddress = null
+            )
+
+            if (response.hasError()) return@withContext null
+
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") return@withContext null
+
+            val decoded = org.web3j.abi.FunctionReturnDecoder.decode(result, function.outputParameters)
+            if (decoded.isEmpty()) return@withContext null
+
+            val bytes = (decoded[0] as org.web3j.abi.datatypes.generated.Bytes32).value
+            val hex = Numeric.toHexString(bytes).lowercase()
+            if (hex == "0x" + "00".repeat(32)) null else hex
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting age proof hash for $userAddress", e)
+            null
+        }
+    }
+
     // ============================================
     // ZKP VACCINE VERIFICATION - VaccineVerifyExtension
     // ============================================
-
-    /**
-     * Register a Poseidon commitment on-chain for a vaccination record.
-     * Must be called once when a vaccination record is added.
-     * commitment = poseidon(vaccinationId, vaccineName, salt) — computed in JS
-     *
-     * @param commitment  The Poseidon hash as a decimal string (BigInteger)
-     * @return Transaction hash
-     */
-    suspend fun registerVaccineCommitment(commitment: java.math.BigInteger): String = withContext(Dispatchers.IO) {
-        val userAddress = WalletManager.getAddress()
-            ?: throw IllegalStateException("No wallet connected")
-
-        if (VACCINE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
-            throw IllegalStateException(
-                "VaccineVerifyExtension not deployed yet. " +
-                "Deploy and update VACCINE_VERIFY_CONTRACT in BlockchainService.kt"
-            )
-        }
-
-        require(commitment != java.math.BigInteger.ZERO) { "Commitment cannot be zero" }
-
-        Log.d(TAG, "Registering vaccine commitment for: $userAddress  commitment=${commitment.toString(16).take(16)}...")
-
-        // Encode registerVaccineCommitment(uint256 commitment)
-        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("registerVaccineCommitment(uint256)")
-            .removePrefix("0x").substring(0, 8)
-
-        val encodedFunction = functionSelector + commitment.toString(16).padStart(64, '0')
-
-        sendTransaction(
-            from = userAddress,
-            to = VACCINE_VERIFY_CONTRACT,
-            data = encodedFunction,
-            value = "0x0"
-        )
-    }
 
     /**
      * Submit a ZK proof to prove vaccination for a specific vaccine code.
@@ -3336,57 +3315,39 @@ object BlockchainService {
      * @return Transaction hash
      */
     suspend fun submitVaccineProof(
-        proofA: List<java.math.BigInteger>,
-        proofB: List<List<java.math.BigInteger>>,
-        proofC: List<java.math.BigInteger>,
-        publicInputs: List<java.math.BigInteger>
+        vaccineCode: Int,
+        commitment: java.math.BigInteger,
+        proofHashHex: String
     ): String = withContext(Dispatchers.IO) {
         val userAddress = WalletManager.getAddress()
             ?: throw IllegalStateException("No wallet connected")
 
-        if (VACCINE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+        if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
             throw IllegalStateException(
-                "VaccineVerifyExtension not deployed yet. " +
-                "Deploy and update VACCINE_VERIFY_CONTRACT in BlockchainService.kt"
+                "HealthWallet contract not deployed yet. " +
+                "Deploy and update CONTRACT_ADDRESS in BlockchainService.kt"
             )
         }
 
-        require(proofA.size == 2)             { "proofA must have 2 elements" }
-        require(proofB.size == 2)             { "proofB must have 2 rows" }
-        require(proofB.all { it.size == 2 })  { "proofB rows must each have 2 elements" }
-        require(proofC.size == 2)             { "proofC must have 2 elements" }
-        require(publicInputs.size == 3)       { "publicInputs must have 3 elements [isVaccinated, commitment, targetVaccine]" }
-        require(publicInputs[0] == java.math.BigInteger.ONE) { "publicInputs[0] (isVaccinated) must be 1" }
+        Log.d(TAG, "Submitting ZK vaccine proof for: $userAddress, code: $vaccineCode")
 
-        Log.d(TAG, "Submitting ZK vaccine proof for: $userAddress")
-        Log.d(TAG, "Public inputs: isVaccinated=${publicInputs[0]}, commitment=${publicInputs[1].toString(16).take(16)}..., targetVaccine=${publicInputs[2]}")
-
-        // Encode submitVaccineProof(uint[2] a, uint[2][2] b, uint[2] c, uint[3] input)
-        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitVaccineProof(uint256[2],uint256[2][2],uint256[2],uint256[3])")
+        // Encode submitVaccineProof(uint256 _vaccineCode, uint256 _commitment, bytes32 _proofHash)
+        val functionSelector = "0x" + org.web3j.crypto.Hash.sha3String("submitVaccineProof(uint256,uint256,bytes32)")
             .removePrefix("0x").substring(0, 8)
 
-        val sb = StringBuilder(functionSelector)
-        // a[0], a[1]
-        sb.append(proofA[0].toString(16).padStart(64, '0'))
-        sb.append(proofA[1].toString(16).padStart(64, '0'))
-        // b[0][0], b[0][1], b[1][0], b[1][1]
-        sb.append(proofB[0][0].toString(16).padStart(64, '0'))
-        sb.append(proofB[0][1].toString(16).padStart(64, '0'))
-        sb.append(proofB[1][0].toString(16).padStart(64, '0'))
-        sb.append(proofB[1][1].toString(16).padStart(64, '0'))
-        // c[0], c[1]
-        sb.append(proofC[0].toString(16).padStart(64, '0'))
-        sb.append(proofC[1].toString(16).padStart(64, '0'))
-        // input[0]=isVaccinated, input[1]=commitment, input[2]=targetVaccine
-        sb.append(publicInputs[0].toString(16).padStart(64, '0'))
-        sb.append(publicInputs[1].toString(16).padStart(64, '0'))
-        sb.append(publicInputs[2].toString(16).padStart(64, '0'))
+        val hashHexClean = proofHashHex
+            .removePrefix("0x")
+            .lowercase()
+            .let { if (it.length >= 64) it.takeLast(64) else it.padStart(64, '0') }
 
-        val encodedFunction = sb.toString()
-
+        val encodedFunction = functionSelector +
+            vaccineCode.toString(16).padStart(64, '0') +
+            commitment.toString(16).padStart(64, '0') +
+            hashHexClean
+        
         sendTransaction(
             from = userAddress,
-            to = VACCINE_VERIFY_CONTRACT,
+            to = CONTRACT_ADDRESS,
             data = encodedFunction,
             value = "0x0"
         )
@@ -3402,7 +3363,7 @@ object BlockchainService {
      */
     suspend fun checkVaccinationStatus(userAddress: String, vaccineCode: Int): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (VACCINE_VERIFY_CONTRACT == "0x0000000000000000000000000000000000000000") {
+            if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
                 return@withContext false
             }
 
@@ -3416,7 +3377,7 @@ object BlockchainService {
 
             val response = executeEthCallWithFallback(
                 encodedFunction = encodedFunction,
-                contractAddress = VACCINE_VERIFY_CONTRACT,
+                contractAddress = CONTRACT_ADDRESS,
                 fromAddress = null
             )
 
@@ -3439,9 +3400,49 @@ object BlockchainService {
     }
 
     /**
+     * Get latest anchored vaccine proof hash for a wallet address and vaccine code.
+     * Returns null if unavailable.
+     */
+    suspend fun getVaccineProofHash(userAddress: String, vaccineCode: Int): String? = withContext(Dispatchers.IO) {
+        try {
+            if (CONTRACT_ADDRESS == "0x0000000000000000000000000000000000000000") {
+                return@withContext null
+            }
+
+            val function = org.web3j.abi.datatypes.Function(
+                "getVaccineProofHash",
+                listOf(Address(userAddress), Uint256(vaccineCode.toLong())),
+                listOf(object : TypeReference<org.web3j.abi.datatypes.generated.Bytes32>() {})
+            )
+
+            val encodedFunction = FunctionEncoder.encode(function)
+            val response = executeEthCallWithFallback(
+                encodedFunction = encodedFunction,
+                contractAddress = CONTRACT_ADDRESS,
+                fromAddress = null
+            )
+
+            if (response.hasError()) return@withContext null
+
+            val result = response.value
+            if (result.isNullOrEmpty() || result == "0x") return@withContext null
+
+            val decoded = org.web3j.abi.FunctionReturnDecoder.decode(result, function.outputParameters)
+            if (decoded.isEmpty()) return@withContext null
+
+            val bytes = (decoded[0] as org.web3j.abi.datatypes.generated.Bytes32).value
+            val hex = Numeric.toHexString(bytes).lowercase()
+            if (hex == "0x" + "00".repeat(32)) null else hex
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting vaccine proof hash for $userAddress vaccine=$vaccineCode", e)
+            null
+        }
+    }
+
+    /**
      * Check if the VaccineVerifyExtension contract is deployed.
      */
     fun isVaccineVerifyDeployed(): Boolean =
-        VACCINE_VERIFY_CONTRACT != "0x0000000000000000000000000000000000000000"
+        CONTRACT_ADDRESS != "0x0000000000000000000000000000000000000000"
 }
 

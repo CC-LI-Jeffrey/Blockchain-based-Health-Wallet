@@ -173,6 +173,15 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnClearVaccineProofs"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginBottom="12dp"
+            android:text="Clear Local Vaccine Proofs" />
+
         <!-- Vaccine Passport Card (shown when proof is verified) -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardPassport"
@@ -334,7 +343,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="You need a vaccination record for this vaccine and must register a ZKP commitment before generating a proof."
+                    android:text="Use your vaccination record to generate a ZKP proof, then verify and anchor it."
                     android:textColor="@color/text_secondary"
                     android:textSize="13sp" />
 
@@ -358,7 +367,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="2️⃣  Register ZKP commitment (from record view)"
+                        android:text="2️⃣  Open the record and tap Prove Vaccination (ZKP)"
                         android:textSize="13sp"
                         android:textColor="@color/text_primary" />
 
@@ -367,7 +376,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="3️⃣  Generate &amp; submit ZK proof"
+                        android:text="3️⃣  Tap Verify &amp; Anchor"
                         android:textSize="13sp"
                         android:textColor="@color/text_primary" />
                 </LinearLayout>
@@ -389,7 +398,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="I Have a Commitment — Generate Proof"
+                    android:text="Generate Proof Here"
                     android:textSize="14sp"
                     android:visibility="gone"
                     app:cornerRadius="8dp" />
@@ -458,24 +467,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Check if any wallet address has a proven vaccination"
+                    android:text="Scan a Vaccine Passport QR code to verify its authenticity instantly (100% offline via Zero-Knowledge Proofs)."
                     android:textColor="@color/text_secondary"
                     android:textSize="13sp" />
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:hint="Wallet address (0x...)"
-                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/etVerifyAddress"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="text"
-                        android:maxLines="1" />
-                </com.google.android.material.textfield.TextInputLayout>
 
                 <!-- Scan vaccine passport QR instead of typing address -->
                 <com.google.android.material.button.MaterialButton
@@ -483,18 +477,8 @@
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="12dp"
                     android:text="📷  Scan Vaccine Passport QR"
-                    android:textSize="14sp"
-                    app:cornerRadius="8dp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnVerifyAddress"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="Check Vaccination Status"
                     android:textSize="14sp"
                     app:cornerRadius="8dp" />
 

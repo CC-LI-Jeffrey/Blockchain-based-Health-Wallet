@@ -45,7 +45,7 @@
                 android:layout_below="@id/tvTitle"
                 android:layout_marginTop="8dp"
                 android:alpha="0.9"
-                android:text="Prove you are 18+ without revealing your birthdate"
+                android:text="Prove your age locally without revealing your birthdate"
                 android:textColor="@color/white"
                 android:textSize="16sp" />
         </RelativeLayout>
@@ -204,6 +204,14 @@
                         android:text="Verify My Age"
                         android:textSize="16sp" />
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnClearAgeProofs"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="Clear Local Age Proofs" />
+
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -249,6 +257,22 @@
                             android:drawableEnd="@drawable/ic_calendar" />
 
                     </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- Age threshold spinner -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Minimum Age to Verify"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginTop="16dp"
+                        android:layout_marginBottom="8dp" />
+
+                    <Spinner
+                        android:id="@+id/spinnerMinAge"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp" />
 
                     <!-- Generate button -->
                     <com.google.android.material.button.MaterialButton
@@ -350,7 +374,7 @@
                         <TextView android:layout_width="0dp" android:layout_height="wrap_content"
                             android:layout_weight="1" android:text="Minimum Age"
                             android:textColor="@color/text_secondary" android:textSize="14sp" />
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        <TextView android:id="@+id/tvDetailMinAge" android:layout_width="wrap_content" android:layout_height="wrap_content"
                             android:text="18" android:textColor="@color/text_primary"
                             android:textSize="14sp" android:textStyle="bold" />
                     </LinearLayout>
@@ -370,12 +394,12 @@
                     <View android:layout_width="match_parent" android:layout_height="1dp"
                         android:background="#e0e0e0" android:layout_marginBottom="12dp"/>
 
-                    <!-- Submit button -->
+                    <!-- Verify button (local verification) -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnSubmitProof"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Submit to Blockchain"
+                        android:text="Verify &amp; Anchor"
                         android:textSize="16sp"
                         app:backgroundTint="#7b1fa2" />
 
@@ -427,48 +451,27 @@
                             android:textColor="@color/text_primary" />
                     </LinearLayout>
 
-                    <!-- Address input + QR scan -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
+                                      <TextView
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="4dp"
+                      android:text="Scan an Age Passport QR code to verify it instantly (100% offline via Zero-Knowledge Proofs)."
+                      android:textColor="@color/text_secondary"
+                      android:textSize="13sp" />
 
-                        <com.google.android.material.textfield.TextInputLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                            android:hint="Wallet Address (0x...)">
-
-                            <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/etCheckAddress"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:inputType="text"
-                                android:maxLines="1"
-                                android:textSize="13sp" />
-                        </com.google.android.material.textfield.TextInputLayout>
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnScanAddress"
-                            android:layout_width="56dp"
-                            android:layout_height="56dp"
-                            android:layout_marginStart="8dp"
-                            android:padding="0dp"
-                            android:text="📷"
-                            android:textSize="20sp"
-                            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-                    </LinearLayout>
-
-                    <!-- Check button -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnCheckStatus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="Check Status"
-                        android:textSize="16sp"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                  <com.google.android.material.button.MaterialButton
+                      android:id="@+id/btnScanAddress"
+                      android:layout_width="match_parent"
+                      android:layout_height="60dp"
+                      android:layout_marginTop="16dp"
+                      android:text="Scan Age QR"
+                      android:textColor="@color/white"
+                      android:textSize="16sp"
+                      app:backgroundTint="@color/primary"
+                      app:cornerRadius="12dp"
+                      app:icon="@drawable/ic_qr_code"
+                      app:iconGravity="textStart"
+                      app:iconPadding="8dp" />
 
                     <!-- Result (hidden by default) -->
                     <androidx.cardview.widget.CardView

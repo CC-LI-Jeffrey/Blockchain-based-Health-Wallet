@@ -1,9 +1,7 @@
 package com.fyp.blockchainhealthwallet
 
-import android.content.Context
+import android.content.Intent
 import android.os.Bundle
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import android.util.Log
 import android.view.View
 import android.widget.ImageButton
@@ -13,32 +11,31 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.fyp.blockchainhealthwallet.blockchain.BlockchainService
+import com.fyp.blockchainhealthwallet.db.ProofRecord
+import com.fyp.blockchainhealthwallet.db.VaccineProofRepository
 import com.fyp.blockchainhealthwallet.wallet.WalletManager
 import com.fyp.blockchainhealthwallet.zkp.VaccineCodes
 import com.fyp.blockchainhealthwallet.zkp.VaccineZkpProofResult
 import com.fyp.blockchainhealthwallet.zkp.ZkpService
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.math.BigInteger
 import java.security.SecureRandom
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
- * VaccineVerifyActivity
+ * VaccineVerifyActivity (Option A - Hybrid)
  *
- * Allows the user to:
- *   1. See the on-chain vaccination proof status for a specific vaccine code.
- *   2. Register a Poseidon commitment (one-time setup per vaccination record).
+ * Proof generation and verification workflow:
+ *   1. See the vaccination proof status (local or on-chain).
+ *   2. Register a Poseidon commitment one-time (optional, per vaccination record).
  *   3. Generate a ZK proof that proves vaccination without revealing the record.
- *   4. Submit the proof to VaccineVerifyExtension contract.
- *   5. Check any wallet address for a specific vaccine's proof status.
+ *   4. **SAVE THE PROOF LOCALLY** (primary verification for Option A).
+ *   5. Optionally submit to blockchain for anchoring (on-demand).
+ *   6. Redirect to VaccinePassportActivity to view the vaccine passport.
  *
- * Launched from ViewVaccinationActivity with:
+ * Launched from EditVaccineRecordActivity or ViewVaccinationActivity with:
  *   EXTRA_VACCINATION_ID: Long — blockchain ID of the vaccination record
  *   EXTRA_VACCINE_NAME:   String — display name (e.g. "COVID-19 Vaccine")
  */
@@ -48,10 +45,6 @@ class VaccineVerifyActivity : AppCompatActivity() {
         private const val TAG = "VaccineVerifyActivity"
         const val EXTRA_VACCINATION_ID = "vaccination_id"
         const val EXTRA_VACCINE_NAME   = "vaccine_name"
-
-        private const val PREFS_NAME   = "vaccine_zkp_prefs"
-        private const val SALT_KEY_PREFIX = "salt_"         // "salt_{vaccinationId}"
-        private const val COMMITMENT_KEY_PREFIX = "commitment_" // "commitment_{vaccinationId}"
     }
 
     // ── Views ────────────────────────────────────────────────
@@ -60,8 +53,6 @@ class VaccineVerifyActivity : AppCompatActivity() {
     private lateinit var tvVaccinationId:   TextView
     private lateinit var tvOnChainStatus:   TextView
     private lateinit var tvOnChainDate:     TextView
-    private lateinit var cardSetupZkp:      View
-    private lateinit var btnRegisterCommitment: MaterialButton
     private lateinit var cardProve:         View
     private lateinit var layoutProgress:    View
     private lateinit var tvProgressStatus:  TextView
@@ -69,11 +60,8 @@ class VaccineVerifyActivity : AppCompatActivity() {
     private lateinit var layoutProofReady:  View
     private lateinit var tvProofDetails:    TextView
     private lateinit var btnSubmitProof:    MaterialButton
-    private lateinit var etCheckAddress:    TextInputEditText
-    private lateinit var btnCheckStatus:    MaterialButton
-    private lateinit var cardCheckResult:   View
-    private lateinit var tvCheckedAddress:  TextView
-    private lateinit var tvCheckResult:     TextView
+    private lateinit var btnClearZkpCache:  MaterialButton
+    
 
     // ── State ────────────────────────────────────────────────
     private var vaccinationId: Long = 0L
@@ -81,6 +69,7 @@ class VaccineVerifyActivity : AppCompatActivity() {
     private var vaccineCode: Int = VaccineCodes.OTHER
     private var currentProof: VaccineZkpProofResult? = null
     private lateinit var zkpService: ZkpService
+    private lateinit var repository: VaccineProofRepository
 
     // ─────────────────────────────────────────────────────────
 
@@ -89,6 +78,7 @@ class VaccineVerifyActivity : AppCompatActivity() {
         setContentView(R.layout.activity_vaccine_verify)
 
         zkpService = ZkpService(this)
+        repository = VaccineProofRepository(this)
         BlockchainService.initialize(this)
 
         bindViews()
@@ -113,8 +103,6 @@ class VaccineVerifyActivity : AppCompatActivity() {
         tvVaccinationId     = findViewById(R.id.tvVaccinationId)
         tvOnChainStatus     = findViewById(R.id.tvOnChainStatus)
         tvOnChainDate       = findViewById(R.id.tvOnChainDate)
-        cardSetupZkp        = findViewById(R.id.cardSetupZkp)
-        btnRegisterCommitment = findViewById(R.id.btnRegisterCommitment)
         cardProve           = findViewById(R.id.cardProve)
         layoutProgress      = findViewById(R.id.layoutProgress)
         tvProgressStatus    = findViewById(R.id.tvProgressStatus)
@@ -122,11 +110,8 @@ class VaccineVerifyActivity : AppCompatActivity() {
         layoutProofReady    = findViewById(R.id.layoutProofReady)
         tvProofDetails      = findViewById(R.id.tvProofDetails)
         btnSubmitProof      = findViewById(R.id.btnSubmitProof)
-        etCheckAddress      = findViewById(R.id.etCheckAddress)
-        btnCheckStatus      = findViewById(R.id.btnCheckStatus)
-        cardCheckResult     = findViewById(R.id.cardCheckResult)
-        tvCheckedAddress    = findViewById(R.id.tvCheckedAddress)
-        tvCheckResult       = findViewById(R.id.tvCheckResult)
+        btnClearZkpCache     = findViewById(R.id.btnClearZkpCache)
+        
 
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
     }
@@ -144,10 +129,10 @@ class VaccineVerifyActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
-        btnRegisterCommitment.setOnClickListener { onRegisterCommitmentClicked() }
         btnGenerateProof.setOnClickListener { onGenerateProofClicked() }
         btnSubmitProof.setOnClickListener { onSubmitProofClicked() }
-        btnCheckStatus.setOnClickListener { onCheckStatusClicked() }
+        btnClearZkpCache.setOnClickListener { onClearZkpCacheClicked() }
+        
     }
 
     // ─────────────────────────────────────────────────────────
@@ -189,97 +174,9 @@ class VaccineVerifyActivity : AppCompatActivity() {
     // ─────────────────────────────────────────────────────────
 
     private fun determineSetupState() {
-        val hasSalt = loadSalt() != null
-        if (hasSalt) {
-            // Commitment already set up — show the prove card
-            cardSetupZkp.visibility = View.GONE
-            cardProve.visibility    = View.VISIBLE
-        } else {
-            // No salt yet — user needs to register commitment first
-            cardSetupZkp.visibility = View.VISIBLE
-            cardProve.visibility    = View.GONE
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────
-    // Register Commitment (one-time setup)
-    // ─────────────────────────────────────────────────────────
-
-    private fun onRegisterCommitmentClicked() {
-        if (!WalletManager.isConnected()) {
-            Toast.makeText(this, "Please connect your wallet first", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (vaccinationId == 0L) {
-            Toast.makeText(this, "Invalid vaccination record ID", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("Register ZKP Commitment")
-            .setMessage("This generates a random secret (salt) stored locally on your device and registers a cryptographic commitment on-chain.\n\nThis is a one-time setup per vaccination record and costs a small gas fee.")
-            .setPositiveButton("Register") { _, _ -> doRegisterCommitment() }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun doRegisterCommitment() {
-        btnRegisterCommitment.isEnabled = false
-        btnRegisterCommitment.text = "Registering..."
-
-        lifecycleScope.launch {
-            try {
-                // 1. Generate a random 31-byte salt (fits in a BN128 field element)
-                val saltBytes = ByteArray(31)
-                SecureRandom().nextBytes(saltBytes)
-                val saltBigInt = BigInteger(1, saltBytes)  // positive, always < field size
-
-                // 2. Compute commitment via Poseidon in JS (reuse snarkjs WebView)
-                tvProgressStatus.text = "Computing Poseidon commitment..."
-                layoutProgress.visibility = View.VISIBLE
-
-                val commitment = withContext(Dispatchers.Main) {
-                    zkpService.computePoseidonCommitment(vaccinationId, vaccineCode, saltBigInt)
-                }
-
-                layoutProgress.visibility = View.GONE
-
-                Log.d(TAG, "Computed commitment: ${commitment.toString(16).take(16)}...")
-
-                // 3. Store salt and commitment locally (encrypted SharedPreferences)
-                saveSalt(saltBigInt.toString())
-                saveCommitment(commitment.toString())
-
-                // 4. Register commitment on-chain
-                btnRegisterCommitment.text = "Sending transaction..."
-
-                val txHash = withContext(Dispatchers.IO) {
-                    BlockchainService.registerVaccineCommitment(commitment)
-                }
-
-                Log.d(TAG, "Commitment registration tx: $txHash")
-
-                // 5. Show success and reveal the prove card
-                cardSetupZkp.visibility = View.GONE
-                cardProve.visibility    = View.VISIBLE
-
-                Toast.makeText(this@VaccineVerifyActivity,
-                    "Commitment registered! You can now generate proofs.",
-                    Toast.LENGTH_LONG).show()
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Commitment registration failed", e)
-                layoutProgress.visibility = View.GONE
-                btnRegisterCommitment.isEnabled = true
-                btnRegisterCommitment.text = "Register Commitment On-Chain"
-
-                AlertDialog.Builder(this@VaccineVerifyActivity)
-                    .setTitle("Registration Failed")
-                    .setMessage(e.message ?: "Unknown error")
-                    .setPositiveButton("OK", null)
-                    .show()
-            }
-        }
+        // One-step flow: always show proof card directly.
+        cardProve.visibility = View.VISIBLE
+        layoutProofReady.visibility = View.GONE
     }
 
     // ─────────────────────────────────────────────────────────
@@ -292,24 +189,21 @@ class VaccineVerifyActivity : AppCompatActivity() {
             return
         }
 
-        val saltStr = loadSalt()
-        val commitmentStr = loadCommitment()
-
-        if (saltStr == null || commitmentStr == null) {
-            Toast.makeText(this, "No commitment found. Please re-register.", Toast.LENGTH_SHORT).show()
-            cardSetupZkp.visibility = View.VISIBLE
-            cardProve.visibility    = View.GONE
-            return
-        }
-
         currentProof = null
         layoutProofReady.visibility = View.GONE
+        btnSubmitProof.isEnabled = true
+        btnSubmitProof.text = "Verify & Anchor"
         setGeneratingState(true)
 
         lifecycleScope.launch {
             try {
-                val saltBigInt = BigInteger(saltStr)
-                val commitment = commitmentStr
+                val saltBytes = ByteArray(31)
+                SecureRandom().nextBytes(saltBytes)
+                val saltBigInt = BigInteger(1, saltBytes)
+
+                val commitment = withContext(Dispatchers.Main) {
+                    zkpService.computePoseidonCommitment(vaccinationId, vaccineCode, saltBigInt)
+                }.toString()
 
                 val proof = withContext(Dispatchers.Main) {
                     zkpService.generateVaccineProof(
@@ -346,13 +240,15 @@ class VaccineVerifyActivity : AppCompatActivity() {
 
     private fun showProofReady(proof: VaccineZkpProofResult) {
         layoutProofReady.visibility = View.VISIBLE
+        btnSubmitProof.isEnabled = true
+        btnSubmitProof.text = "Verify & Anchor"
         tvProofDetails.text =
             "Vaccine code: ${proof.targetVaccine} (${VaccineCodes.displayNames[proof.targetVaccine]})\n" +
             "Commitment: ${proof.commitment.toString(16).take(20)}..."
     }
 
     // ─────────────────────────────────────────────────────────
-    // Submit Proof
+    // Submit Proof (Option A: LOCAL-FIRST, OPTIONAL BLOCKCHAIN)
     // ─────────────────────────────────────────────────────────
 
     private fun onSubmitProofClicked() {
@@ -362,39 +258,118 @@ class VaccineVerifyActivity : AppCompatActivity() {
         }
 
         btnSubmitProof.isEnabled = false
-        btnSubmitProof.text = "Submitting..."
+        btnSubmitProof.text = "Saving locally..."
+
+        lifecycleScope.launch {
+            try {
+                val address = WalletManager.getAddress() ?: run {
+                    Toast.makeText(this@VaccineVerifyActivity, "Wallet not connected", Toast.LENGTH_SHORT).show()
+                    btnSubmitProof.isEnabled = true
+                    btnSubmitProof.text = "Submit Proof"
+                    return@launch
+                }
+
+                // STEP 1: Save proof to local database (PRIMARY for Option A)
+                tvProgressStatus.text = "Saving proof locally..."
+                layoutProgress.visibility = View.VISIBLE
+
+                withContext(Dispatchers.IO) {
+                    val proofRecord = ProofRecord(
+                        type = "VACCINE_PASSPORT",
+                        proofHash = proof.proofHash(),
+                        publicInputs = "[${proof.targetVaccine}]",
+                        minValue = vaccineCode.toLong(),
+                        timestamp = System.currentTimeMillis(),
+                        issuerAddress = address,
+                        commitment = proof.commitment.toString(),
+                        isVerified = true,
+                        verifiedAt = System.currentTimeMillis()
+                    )
+                    repository.saveVaccineProof(proofRecord)
+                }
+
+                layoutProgress.visibility = View.GONE
+
+                Log.d(TAG, "✓ Proof saved locally for $address / code $vaccineCode")
+
+                // STEP 2: Automatically submit to blockchain
+                submitToBlockchain(proof)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save proof locally", e)
+                layoutProgress.visibility = View.GONE
+                btnSubmitProof.isEnabled = true
+                btnSubmitProof.text = "Submit Proof"
+
+                AlertDialog.Builder(this@VaccineVerifyActivity)
+                    .setTitle("Save Failed")
+                    .setMessage("Could not save proof: ${e.message}")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }
+    }
+
+    private fun submitToBlockchain(proof: VaccineZkpProofResult) {
+        btnSubmitProof.text = "Submitting to blockchain..."
+        layoutProgress.visibility = View.VISIBLE
+        tvProgressStatus.text = "Registering on-chain..."
 
         lifecycleScope.launch {
             try {
                 val txHash = withContext(Dispatchers.IO) {
                     BlockchainService.submitVaccineProof(
-                        proofA = proof.toA(),
-                        proofB = proof.toB(),
-                        proofC = proof.toC(),
-                        publicInputs = proof.toPublicInputs()
+                        vaccineCode = proof.targetVaccine,
+                        commitment = proof.commitment,
+                        proofHashHex = proof.proofHash()
                     )
                 }
 
-                Log.d(TAG, "Vaccine proof submitted! tx=$txHash")
+                layoutProgress.visibility = View.GONE
+                Log.d(TAG, "Vaccine proof also submitted to blockchain! tx=$txHash")
 
                 AlertDialog.Builder(this@VaccineVerifyActivity)
-                    .setTitle("✅ Success")
-                    .setMessage("Vaccination proof submitted!\n\nTransaction: ${txHash.take(20)}...\n\nYour vaccination for ${VaccineCodes.displayNames[proof.targetVaccine]} is now proven on-chain.")
-                    .setPositiveButton("OK") { _, _ -> loadOnChainStatus() }
+                    .setTitle("✅ Complete")
+                    .setMessage(
+                        "Proof saved locally & anchored on-chain.\n\n" +
+                        "Transaction: ${txHash.take(20)}...\n\n" +
+                        "Your vaccination for ${VaccineCodes.displayNames[proof.targetVaccine]} is now proven locally with blockchain anchor."
+                    )
+                    .setPositiveButton("View Passport") { _, _ ->
+                        navigateToPassport()
+                    }
                     .setCancelable(false)
                     .show()
 
             } catch (e: Exception) {
-                Log.e(TAG, "Proof submission failed", e)
+                Log.e(TAG, "Blockchain submission failed (but proof is saved locally)", e)
+                layoutProgress.visibility = View.GONE
                 btnSubmitProof.isEnabled = true
-                btnSubmitProof.text = "Submit Proof On-Chain"
+                btnSubmitProof.text = "Verify & Anchor"
 
                 AlertDialog.Builder(this@VaccineVerifyActivity)
-                    .setTitle("Submission Failed")
-                    .setMessage(e.message ?: "Unknown error")
-                    .setPositiveButton("OK", null)
+                    .setTitle("⚠ Blockchain Submission Failed")
+                    .setMessage(
+                        "Proof is saved locally, but blockchain submission failed:\n\n${e.message}\n\n" +
+                        "No worries — your proof still works locally. Go to your Vaccine Passport to share it."
+                    )
+                    .setPositiveButton("Go to Passport") { _, _ ->
+                        navigateToPassport()
+                    }
+                    .setNegativeButton("Stay and Retry", null)
                     .show()
             }
+        }
+    }
+
+    private fun navigateToPassport() {
+        try {
+            val intent = Intent(this, VaccinePassportActivity::class.java)
+            startActivity(intent)
+            finish()  // Remove VaccineVerifyActivity from stack
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not navigate to VaccinePassportActivity", e)
+            Toast.makeText(this, "Could not navigate to Vaccine Passport", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -402,54 +377,31 @@ class VaccineVerifyActivity : AppCompatActivity() {
     // Check Another Address
     // ─────────────────────────────────────────────────────────
 
-    private fun onCheckStatusClicked() {
-        val address = etCheckAddress.text?.toString()?.trim()
-        if (address.isNullOrEmpty() || !address.startsWith("0x") || address.length != 42) {
-            Toast.makeText(this, "Enter a valid 0x wallet address", Toast.LENGTH_SHORT).show()
-            return
-        }
+    
 
-        cardCheckResult.visibility = View.GONE
+    // ─────────────────────────────────────────────────────────
+    // Local cache cleanup helpers
+    // ─────────────────────────────────────────────────────────
 
-        lifecycleScope.launch {
-            try {
-                val verified = withContext(Dispatchers.IO) {
-                    BlockchainService.checkVaccinationStatus(address, vaccineCode)
+    private fun onClearZkpCacheClicked() {
+        AlertDialog.Builder(this)
+            .setTitle("Clear Local ZKP Cache")
+            .setMessage("This removes all locally stored vaccine ZKP cache and local vaccine proofs on this device.")
+            .setPositiveButton("Clear") { _, _ ->
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        repository.deleteAllVaccineProofs()
+                    }
+                    currentProof = null
+                    layoutProofReady.visibility = View.GONE
+                    cardProve.visibility = View.VISIBLE
+                    btnGenerateProof.isEnabled = true
+                    btnSubmitProof.isEnabled = true
+                    btnSubmitProof.text = "Verify & Anchor"
+                    Toast.makeText(this@VaccineVerifyActivity, "Local cache and vaccine proofs cleared", Toast.LENGTH_SHORT).show()
                 }
-
-                tvCheckedAddress.text = "Address: ${address.take(10)}...${address.takeLast(6)}"
-                tvCheckResult.text    = if (verified) "🟢 Vaccinated (on-chain proof)" else "🔴 No on-chain proof"
-                tvCheckResult.setTextColor(
-                    getColor(if (verified) android.R.color.holo_green_dark else android.R.color.holo_red_light)
-                )
-                cardCheckResult.visibility = View.VISIBLE
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking address status", e)
-                Toast.makeText(this@VaccineVerifyActivity,
-                    "Check failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-        }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
-
-    // ─────────────────────────────────────────────────────────
-    // Local Storage helpers (salt + commitment per vaccinationId)
-    // ─────────────────────────────────────────────────────────
-
-    private fun prefs() = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-
-    private fun saltKey()       = "$SALT_KEY_PREFIX$vaccinationId"
-    private fun commitmentKey() = "$COMMITMENT_KEY_PREFIX$vaccinationId"
-
-    private fun saveSalt(salt: String) {
-        prefs().edit().putString(saltKey(), salt).apply()
-    }
-
-    private fun loadSalt(): String? = prefs().getString(saltKey(), null)
-
-    private fun saveCommitment(commitment: String) {
-        prefs().edit().putString(commitmentKey(), commitment).apply()
-    }
-
-    private fun loadCommitment(): String? = prefs().getString(commitmentKey(), null)
 }

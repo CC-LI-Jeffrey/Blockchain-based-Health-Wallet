@@ -154,50 +154,6 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Setup ZKP (only shown when no commitment registered yet) -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardSetupZkp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
-            android:layout_marginEnd="16dp"
-            android:layout_marginBottom="16dp"
-            android:visibility="gone"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="One-Time ZKP Setup Required"
-                    android:textColor="@color/primary"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="This registers a cryptographic commitment for this vaccination record on-chain. Required once before you can generate proofs."
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnRegisterCommitment"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Register Commitment On-Chain"
-                    app:cornerRadius="8dp" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
         <!-- Generate + Submit Proof card -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardProve"
@@ -300,6 +256,15 @@
                         android:text="Submit Proof On-Chain"
                         app:cornerRadius="8dp" />
                 </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnClearZkpCache"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Clear Local ZKP Cache"
+                    app:cornerRadius="8dp" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
