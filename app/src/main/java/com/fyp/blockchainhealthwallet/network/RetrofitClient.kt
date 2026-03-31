@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    private const val BASE_URL = "http://10.0.2.2:3000" // For Android emulator (localhost:3000)
+    private const val BASE_URL = "http://10.0.2.2:3000/" // For Android emulator (localhost:3000)
     // For physical device, use: "http://YOUR_IP_ADDRESS:3000/"
     //https://ashely-restricted-augustina.ngrok-free.dev/
     private val loggingInterceptor = HttpLoggingInterceptor().apply {

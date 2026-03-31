@@ -990,7 +990,12 @@ class PartialShareActivity : AppCompatActivity() {
             // Get recordId from intent (from PartialShareSelectorActivity)
             val recordIdString = intent.getStringExtra("RECORD_ID") ?: "0"
             val recordId = try {
-                java.math.BigInteger(recordIdString)
+                if (recordIdString.startsWith("0x", ignoreCase = true)) {
+                    // Extracting the bytes of the address and converting to BigInteger or stripping 0x
+                    java.math.BigInteger(recordIdString.substring(2), 16)
+                } else {
+                    java.math.BigInteger(recordIdString)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("PartialShare", "Invalid recordId: $recordIdString", e)
                 Toast.makeText(this, "Invalid record ID", Toast.LENGTH_SHORT).show()
