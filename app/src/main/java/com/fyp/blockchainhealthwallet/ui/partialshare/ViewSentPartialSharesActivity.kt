@@ -119,13 +119,9 @@ class ViewSentPartialSharesActivity : AppCompatActivity() {
         android.util.Log.d("SentPartialShares", "Receiver: ${shareInfo.receiver}")
         android.util.Log.d("SentPartialShares", "IPFS Hash: ${shareInfo.ipfsHash}")
         
-        // Display shorter record ID
-        val recordIdStr = shareInfo.recordId.toString()
-        val shortId = if (recordIdStr.length > 8) "...${recordIdStr.takeLast(4)}" else recordIdStr
-        
         // Show details
         Toast.makeText(this, 
-            "Record #$shortId\n" +
+            "Share Details\n" +
             "Shared with: ${shareInfo.receiver.take(10)}...\n" +
             "IPFS: ${shareInfo.ipfsHash.take(20)}...\n" +
             "Expiry: ${formatTimestamp(shareInfo.expiryTime.toLong())}\n" +

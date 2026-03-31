@@ -139,6 +139,7 @@ class RecordSelectorActivity : AppCompatActivity() {
         return withContext(Dispatchers.IO) {
             try {
                 val ids = BlockchainService.getMedicationIds(address)
+                var counter = 1
                 ids.mapNotNull { id ->
                     try {
                         val med = BlockchainService.getMedicationRef(id)
@@ -146,7 +147,7 @@ class RecordSelectorActivity : AppCompatActivity() {
                         if (med != null && !med.isDeleted) {
                             SelectableRecord(
                                 id = id.toString(),
-                                title = "Medication #$id",
+                                title = "Medication #${counter++}",
                                 subtitle = if (med.isActive) "Active medication" else "Inactive",
                                 category = RecordCategory.MEDICATIONS
                             )
@@ -167,6 +168,7 @@ class RecordSelectorActivity : AppCompatActivity() {
         return withContext(Dispatchers.IO) {
             try {
                 val ids = BlockchainService.getVaccinationIds(address)
+                var counter = 1
                 ids.mapNotNull { id ->
                     try {
                         val vacc = BlockchainService.getVaccinationRef(id)
@@ -174,7 +176,7 @@ class RecordSelectorActivity : AppCompatActivity() {
                         if (vacc != null && !vacc.isDeleted) {
                             SelectableRecord(
                                 id = id.toString(),
-                                title = "Vaccination #$id",
+                                title = "Vaccination #${counter++}",
                                 subtitle = "Vaccination record",
                                 category = RecordCategory.VACCINATIONS
                             )
@@ -195,6 +197,7 @@ class RecordSelectorActivity : AppCompatActivity() {
         return withContext(Dispatchers.IO) {
             try {
                 val ids = BlockchainService.getReportIds(address)
+                var counter = 1
                 ids.mapNotNull { id ->
                     try {
                         val report = BlockchainService.getReportRef(id)
@@ -202,7 +205,7 @@ class RecordSelectorActivity : AppCompatActivity() {
                         if (report != null && !report.isDeleted) {
                             SelectableRecord(
                                 id = id.toString(),
-                                title = "Report #$id",
+                                title = "Report #${counter++}",
                                 subtitle = report.reportType.name.replace("_", " "),
                                 category = RecordCategory.REPORTS
                             )

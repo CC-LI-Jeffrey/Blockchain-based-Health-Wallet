@@ -22,7 +22,7 @@ class SentPartialShareAdapter(
     }
     
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind(getItem(position), position + 1)
     }
     
     class ViewHolder(
@@ -36,15 +36,9 @@ class SentPartialShareAdapter(
         private val tvExpiry: TextView = itemView.findViewById(R.id.tvExpiry)
         private val tvStatus: TextView = itemView.findViewById(R.id.tvStatus)
         
-        fun bind(shareInfo: SentPartialShareInfo) {
-            // Display shorter, more readable record ID
-            val recordIdStr = shareInfo.recordId.toString()
-            val shortId = if (recordIdStr.length > 8) {
-                "#...${recordIdStr.takeLast(4)}"
-            } else {
-                "#${recordIdStr}"
-            }
-            tvRecordId.text = "Shared Record $shortId"
+        fun bind(shareInfo: SentPartialShareInfo, displayNumber: Int) {
+            // Display sequential number for cleaner UI
+            tvRecordId.text = "Shared Record #$displayNumber"
             
             tvReceiver.text = "To: ${shareInfo.receiver.take(10)}...${shareInfo.receiver.takeLast(8)}"
             tvIpfsHash.text = "IPFS: ${shareInfo.ipfsHash.take(15)}..."

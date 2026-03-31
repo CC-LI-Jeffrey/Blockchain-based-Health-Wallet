@@ -987,23 +987,40 @@ class PartialShareActivity : AppCompatActivity() {
                 return
             }
             
-            // Get recordId from intent (from PartialShareSelectorActivity)
+            // Get recordId from intent (from PartialShareSelectorActivity or other activities)
             val recordIdString = intent.getStringExtra("RECORD_ID") ?: "0"
+            val recordCategory = intent.getStringExtra("RECORD_CATEGORY") 
+                ?: intent.getStringExtra("RECORD_TYPE") 
+                ?: "UNKNOWN"
+            
+            val userAddress = com.fyp.blockchainhealthwallet.wallet.WalletManager.getAddress()
+                ?: throw IllegalStateException("No wallet connected")
+                
+            // Convert to globally unique recordId to prevent collisions across record types and users
+            // in the PartialShareExtension contract.
             val recordId = try {
-                if (recordIdString.startsWith("0x", ignoreCase = true)) {
-                    // Extracting the bytes of the address and converting to BigInteger or stripping 0x
-                    java.math.BigInteger(recordIdString.substring(2), 16)
+                if (recordIdString.startsWith("0x", ignoreCase = true) || recordIdString.length > 20) {
+                    // Already a hashed/large ID (like Personal Info)
+                    if (recordIdString.startsWith("0x", ignoreCase = true)) {
+                        java.math.BigInteger(recordIdString.substring(2), 16)
+                    } else {
+                        java.math.BigInteger(recordIdString)
+                    }
                 } else {
-                    java.math.BigInteger(recordIdString)
+                    // It's a small numerical ID (like 1, 2, 3 for medications) - make it globally unique
+                    val dataToHash = "$recordCategory:$userAddress:$recordIdString"
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    val hashBytes = digest.digest(dataToHash.toByteArray())
+                    java.math.BigInteger(1, hashBytes)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("PartialShare", "Invalid recordId: $recordIdString", e)
-                Toast.makeText(this, "Invalid record ID", Toast.LENGTH_SHORT).show()
+                android.util.Log.e("PartialShare", "Invalid recordId format: $recordIdString", e)
+                Toast.makeText(this, "Error generating unique record ID", Toast.LENGTH_SHORT).show()
                 progressBar.visibility = View.GONE
                 return
             }
             
-            android.util.Log.d("PartialShare", "Starting blockchain upload for recordId: $recordId")
+            android.util.Log.d("PartialShare", "Starting blockchain upload for global recordId: $recordId")
             
             statusText.text = "Encrypting share package..."
             
@@ -1034,9 +1051,6 @@ class PartialShareActivity : AppCompatActivity() {
             val currentOwner = withContext(kotlinx.coroutines.Dispatchers.IO) {
                 com.fyp.blockchainhealthwallet.blockchain.BlockchainService.getPartialShareRecordOwner(recordId)
             }
-            
-            val userAddress = com.fyp.blockchainhealthwallet.wallet.WalletManager.getAddress()
-                ?: throw IllegalStateException("No wallet connected")
             
             var needsWait = false
             

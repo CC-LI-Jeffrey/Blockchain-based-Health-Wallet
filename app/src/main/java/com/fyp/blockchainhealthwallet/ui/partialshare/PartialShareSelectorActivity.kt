@@ -167,13 +167,14 @@ class PartialShareSelectorActivity : AppCompatActivity() {
         return withContext(Dispatchers.IO) {
             try {
                 val ids = BlockchainService.getMedicationIds(address)
+                var counter = 1
                 ids.mapNotNull { id ->
                     try {
                         val med = BlockchainService.getMedicationRef(id)
                         if (med != null && !med.isDeleted) {
                             RecordItem(
                                 id = id.toString(),
-                                title = "Medication #$id",
+                                title = "Medication #${counter++}",
                                 subtitle = if (med.isActive) "Active medication" else "Inactive",
                                 icon = R.drawable.ic_medication
                             )
@@ -192,13 +193,14 @@ class PartialShareSelectorActivity : AppCompatActivity() {
         return withContext(Dispatchers.IO) {
             try {
                 val ids = BlockchainService.getVaccinationIds(address)
+                var counter = 1
                 ids.mapNotNull { id ->
                     try {
                         val vac = BlockchainService.getVaccinationRef(id)
                         if (vac != null && !vac.isDeleted) {
                             RecordItem(
                                 id = id.toString(),
-                                title = "Vaccination #$id",
+                                title = "Vaccination #${counter++}",
                                 subtitle = "Vaccination record",
                                 icon = R.drawable.ic_vaccination
                             )
@@ -217,13 +219,14 @@ class PartialShareSelectorActivity : AppCompatActivity() {
         return withContext(Dispatchers.IO) {
             try {
                 val ids = BlockchainService.getReportIds(address)
+                var counter = 1
                 ids.mapNotNull { id ->
                     try {
                         val report = BlockchainService.getReportRef(id)
                         if (report != null && !report.isDeleted) {
                             RecordItem(
                                 id = id.toString(),
-                                title = "Report #$id",
+                                title = "Report #${counter++}",
                                 subtitle = "Medical report",
                                 icon = R.drawable.ic_document
                             )
