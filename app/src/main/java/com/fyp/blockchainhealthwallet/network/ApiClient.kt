@@ -13,7 +13,7 @@ object ApiClient {
     // Change this to your backend IP address
     // For Android emulator: 10.0.2.2 points to host machine's localhost
     // For physical device: use actual IP like "192.168.1.100"
-    private const val BASE_URL = "https://ashely-restricted-augustina.ngrok-free.dev/"
+    private const val BASE_URL = "http://10.0.2.2:3000/"
     
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.HEADERS
