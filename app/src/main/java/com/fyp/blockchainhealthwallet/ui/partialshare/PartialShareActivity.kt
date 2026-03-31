@@ -358,12 +358,24 @@ class PartialShareActivity : AppCompatActivity() {
                     throw Exception("Failed to download from IPFS")
                 }
                 
-                val encryptedDataBase64 = response.body()!!.string()
+                val responseBody = response.body()!!
+                val contentType = response.headers()["Content-Type"] ?: "application/octet-stream"
                 
-                // Decrypt data
-                val encryptedBytes = android.util.Base64.decode(encryptedDataBase64, android.util.Base64.NO_WRAP)
-                val aesKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptKeyFromBlockchain(personalInfoRef.encryptedKey)
-                val jsonData = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                val encryptedBytes = if (contentType.contains("text/plain") || contentType.contains("application/json")) {
+                    android.util.Base64.decode(responseBody.string(), android.util.Base64.NO_WRAP)
+                } else {
+                    responseBody.bytes()
+                }
+                
+                val jsonData = if (personalInfoRef.encryptedKey.isNotEmpty()) {
+                    val aesKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptKeyFromBlockchain(personalInfoRef.encryptedKey)
+                    com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                } else {
+                    com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithCategory(
+                        encryptedBytes,
+                        com.fyp.blockchainhealthwallet.blockchain.BlockchainService.DataCategory.PERSONAL_INFO
+                    )
+                }
                 
                 // Parse JSON as Map
                 val gson = com.google.gson.Gson()
@@ -422,12 +434,24 @@ class PartialShareActivity : AppCompatActivity() {
                     throw Exception("Failed to download from IPFS")
                 }
                 
-                val encryptedDataBase64 = response.body()!!.string()
+                val responseBody = response.body()!!
+                val contentType = response.headers()["Content-Type"] ?: "application/octet-stream"
                 
-                // Decrypt data
-                val encryptedBytes = android.util.Base64.decode(encryptedDataBase64, android.util.Base64.NO_WRAP)
-                val aesKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptKeyFromBlockchain(medicationRef.encryptedKey)
-                val jsonData = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                val encryptedBytes = if (contentType.contains("text/plain") || contentType.contains("application/json")) {
+                    android.util.Base64.decode(responseBody.string(), android.util.Base64.NO_WRAP)
+                } else {
+                    responseBody.bytes()
+                }
+                
+                val jsonData = if (medicationRef.encryptedKey.isNotEmpty()) {
+                    val aesKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptKeyFromBlockchain(medicationRef.encryptedKey)
+                    com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                } else {
+                    com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithCategory(
+                        encryptedBytes,
+                        com.fyp.blockchainhealthwallet.blockchain.BlockchainService.DataCategory.MEDICATION_RECORDS
+                    )
+                }
                 
                 // Parse JSON as Map
                 val gson = com.google.gson.Gson()
@@ -489,12 +513,24 @@ class PartialShareActivity : AppCompatActivity() {
                     throw Exception("Failed to download from IPFS")
                 }
                 
-                val encryptedDataBase64 = response.body()!!.string()
+                val responseBody = response.body()!!
+                val contentType = response.headers()["Content-Type"] ?: "application/octet-stream"
                 
-                // Decrypt data
-                val encryptedBytes = android.util.Base64.decode(encryptedDataBase64, android.util.Base64.NO_WRAP)
-                val aesKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptKeyFromBlockchain(vaccinationRef.encryptedKey)
-                val jsonData = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                val encryptedBytes = if (contentType.contains("text/plain") || contentType.contains("application/json")) {
+                    android.util.Base64.decode(responseBody.string(), android.util.Base64.NO_WRAP)
+                } else {
+                    responseBody.bytes()
+                }
+                
+                val jsonData = if (vaccinationRef.encryptedKey.isNotEmpty()) {
+                    val aesKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptKeyFromBlockchain(vaccinationRef.encryptedKey)
+                    com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                } else {
+                    com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithCategory(
+                        encryptedBytes,
+                        com.fyp.blockchainhealthwallet.blockchain.BlockchainService.DataCategory.VACCINATION_RECORDS
+                    )
+                }
                 
                 // Parse JSON as Map
                 val gson = com.google.gson.Gson()
@@ -549,12 +585,26 @@ class PartialShareActivity : AppCompatActivity() {
                     throw Exception("Failed to download from IPFS")
                 }
                 
-                val encryptedDataBase64 = response.body()!!.string()
+                val responseBody = response.body()!!
+                val contentType = response.headers()["Content-Type"] ?: "application/octet-stream"
                 
-                // Decrypt data
-                val encryptedBytes = android.util.Base64.decode(encryptedDataBase64, android.util.Base64.NO_WRAP)
-                val aesKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptKeyFromBlockchain(reportRef.encryptedKey)
-                val jsonData = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                // Handle both Base64 string and raw binary data from IPFS
+                val encryptedBytes = if (contentType.contains("text/plain") || contentType.contains("application/json")) {
+                    android.util.Base64.decode(responseBody.string(), android.util.Base64.NO_WRAP)
+                } else {
+                    responseBody.bytes()
+                }
+                
+                // Decrypt data depending on whether there's an encrypted key or legacy mode
+                val jsonData = if (reportRef.encryptedKey.isNotEmpty()) {
+                    val aesKey = com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptKeyFromBlockchain(reportRef.encryptedKey)
+                    com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithKey(encryptedBytes, aesKey)
+                } else {
+                    com.fyp.blockchainhealthwallet.blockchain.EncryptionHelper.decryptBytesWithCategory(
+                        encryptedBytes,
+                        com.fyp.blockchainhealthwallet.blockchain.BlockchainService.DataCategory.MEDICAL_REPORTS
+                    )
+                }
                 
                 // Parse JSON as Map
                 val gson = com.google.gson.Gson()
