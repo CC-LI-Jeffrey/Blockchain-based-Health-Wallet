@@ -3,7 +3,9 @@ package com.fyp.blockchainhealthwallet.zkp
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.fyp.blockchainhealthwallet.AgeVerifyActivity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -22,14 +24,17 @@ class ZkpSecurityValidationTest {
 
     // Helper block to safely get the ZkpService initialized with the Activity
     private suspend fun <T> withZkpService(block: suspend (ZkpService) -> T): T {
-        var result: T? = null
+        var service: ZkpService? = null
         activityRule.scenario.onActivity { activity ->
-            val service = ZkpService(activity)
-            runBlocking {
-                result = block(service)
-            }
+            // Service creation might need to happen on the main thread
+            service = ZkpService(activity)
         }
-        return result!!
+        
+        // Execute the suspending block on the Main dispatcher so the WebView
+        // can process events on the UI thread without blocking it.
+        return withContext(Dispatchers.Main) {
+            block(service!!)
+        }
     }
 
     @Test
@@ -49,12 +54,8 @@ class ZkpSecurityValidationTest {
 
         // Verify the proof
         withZkpService { zkp ->
-            val isValid = zkp.verifyAgeProof(
-                proofResult!!.pi_a,
-                proofResult.pi_b,
-                proofResult.pi_c,
-                proofResult.publicSignals
-            )
+            // Assume the verification date is during 2026 for the sake of the test
+            val isValid = zkp.verifyAgeProof(proofResult!!, 2026, 4, 4, 18)
             assertTrue("A valid age above threshold must produce a verifiable proof", isValid)
         }
     }
@@ -73,12 +74,7 @@ class ZkpSecurityValidationTest {
         if (result.isSuccess && result.getOrNull() != null) {
             withZkpService { zkp ->
                 val proofResult = result.getOrNull()!!
-                val isValid = zkp.verifyAgeProof(
-                    proofResult.pi_a,
-                    proofResult.pi_b,
-                    proofResult.pi_c,
-                    proofResult.publicSignals
-                )
+                val isValid = zkp.verifyAgeProof(proofResult, 2026, 4, 4, 18)
                 assertFalse("Snarkjs must not verify a proof that violates the threshold constraint", isValid)
             }
         } else {
@@ -94,50 +90,51 @@ class ZkpSecurityValidationTest {
         }
         assertNotNull("Setup failed: Proof result should not be null", proofResult)
 
-        // TC-ZKP-03: Attacker intercepts the payload and alters the public claim 
-        // Pretending the proof was generated for a higher threshold age (e.g., altered to 21 based on your circom setup)
-        // Public signals are an array of strings. AgeVerify usually has [thresholdAge, currentYear...]
-        val tamperedPublicSignals = proofResult!!.publicSignals.toMutableList()
-        if (tamperedPublicSignals.isNotEmpty()) {
-            tamperedPublicSignals[0] = "21" // Tamper the claim
-        } else {
-            // Failsafe if format differs
-            tamperedPublicSignals.add("21") 
-        }
-        
+        // TC-ZKP-03: Attacker intercepts the proof and tries to reuse it for a higher threshold (minAge = 21)
+        // Since the proof is generated for minAge = 18, verifying it for minAge = 21 must fail.
         withZkpService { zkp ->
-            val isValid = zkp.verifyAgeProof(
-                proofResult.pi_a,
-                proofResult.pi_b,
-                proofResult.pi_c,
-                tamperedPublicSignals
-            )
-            assertFalse("Verification MUST fail if public inputs do not perfectly match the proof hash", isValid)
+            val isValid = zkp.verifyAgeProof(proofResult!!, 2026, 4, 4, 21)
+            assertFalse("Verification MUST fail if public inputs (minAge 21) do not match the proof (minAge 18)", isValid)
         }
     }
 
     @Test
     fun verifyVaccineProof_succeeds() = runBlocking {
         // TC-ZKP-04: Test the secondary circuit (Vaccine verify)
-        // Assuming Covid-19 is integer code 0 based on your VaccineZkpProofResult.kt
+        // Valid vaccine code per snarkjs_wrapper is 1-14
+        val validVaccineCode = 1
+        val saltStr = "123456789012345"
+        val saltBigInt = java.math.BigInteger(saltStr)
+        
+        var generatedCommitment = ""
+
         val proofResult = withZkpService { zkp ->
+            // Pre-compute the correct Poseidon commitment hash that snarkjs expects
+            generatedCommitment = zkp.computePoseidonCommitment(
+                vaccinationId = 1L,
+                vaccineCode = validVaccineCode,
+                salt = saltBigInt
+            ).toString()
+
             try {
-                // Generating proof that the user took vaccine code '0'
-                zkp.generateVaccineProof(targetVaccine = 0)
+                // Generate proof that the user took vaccine code '1'
+                zkp.generateVaccineProof(
+                    vaccinationId = 1L,
+                    vaccineName = validVaccineCode,
+                    salt = saltStr,
+                    commitment = generatedCommitment,
+                    targetVaccine = validVaccineCode
+                )
             } catch (e: Exception) {
-                null
+                e.printStackTrace()
+                throw e
             }
         }
 
         assertNotNull("Proof result should not be null for valid vaccine inputs", proofResult)
 
         withZkpService { zkp ->
-            val isValid = zkp.verifyVaccineProof(
-                proofResult!!.pi_a,
-                proofResult.pi_b,
-                proofResult.pi_c,
-                proofResult.publicSignals
-            )
+            val isValid = zkp.verifyVaccineProof(proofResult!!, generatedCommitment, targetVaccine = validVaccineCode)
             assertTrue("A valid vaccine code must produce a verifiable proof", isValid)
         }
     }
