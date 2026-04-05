@@ -54,8 +54,8 @@ class ZkpSecurityValidationTest {
 
         // Verify the proof
         withZkpService { zkp ->
-            // Assume the verification date is during 2026 for the sake of the test
-            val isValid = zkp.verifyAgeProof(proofResult!!, 2026, 4, 4, 18)
+            val p = proofResult!!
+            val isValid = zkp.verifyAgeProof(p, p.currentYear, p.currentMonth, p.currentDay, 18)
             assertTrue("A valid age above threshold must produce a verifiable proof", isValid)
         }
     }
@@ -73,8 +73,8 @@ class ZkpSecurityValidationTest {
         // Technically, snarkjs WASM throws an error when Circom constraints fail
         if (result.isSuccess && result.getOrNull() != null) {
             withZkpService { zkp ->
-                val proofResult = result.getOrNull()!!
-                val isValid = zkp.verifyAgeProof(proofResult, 2026, 4, 4, 18)
+                val p = result.getOrNull()!!
+                val isValid = zkp.verifyAgeProof(p, p.currentYear, p.currentMonth, p.currentDay, 18)
                 assertFalse("Snarkjs must not verify a proof that violates the threshold constraint", isValid)
             }
         } else {
@@ -93,7 +93,8 @@ class ZkpSecurityValidationTest {
         // TC-ZKP-03: Attacker intercepts the proof and tries to reuse it for a higher threshold (minAge = 21)
         // Since the proof is generated for minAge = 18, verifying it for minAge = 21 must fail.
         withZkpService { zkp ->
-            val isValid = zkp.verifyAgeProof(proofResult!!, 2026, 4, 4, 21)
+            val p = proofResult!!
+            val isValid = zkp.verifyAgeProof(p, p.currentYear, p.currentMonth, p.currentDay, 21)
             assertFalse("Verification MUST fail if public inputs (minAge 21) do not match the proof (minAge 18)", isValid)
         }
     }
