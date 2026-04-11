@@ -107,6 +107,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
+        // Secret Demo Hub Trigger
+        val tvWelcome = findViewById<TextView>(R.id.tvWelcome)
+        tvWelcome.setOnLongClickListener {
+            startActivity(Intent(this, DemoHubActivity::class.java))
+            Toast.makeText(this, "Welcome to Developer Demo Mode", Toast.LENGTH_SHORT).show()
+            true
+        }
+        
         updateWalletButton()
     }
     
@@ -346,6 +354,11 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<CardView>(R.id.cardVaccinePassport).setOnClickListener {
             startActivity(Intent(this, VaccinePassportActivity::class.java))
+        }
+
+        findViewById<CardView>(R.id.cardDemoHub).setOnClickListener {
+            startActivity(Intent(this, DemoHubActivity::class.java))
+            Toast.makeText(this, "Entering Developer Demo Mode", Toast.LENGTH_SHORT).show()
         }
     }
 

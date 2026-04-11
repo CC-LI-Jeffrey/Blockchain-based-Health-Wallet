@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:gravity="center_horizontal"
+    android:background="#FAFAFA">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Data Integrity Demo"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="20dp"/>
+
+    <!-- Blockchain Anchor Section -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#E8F5E9"
+        android:padding="16dp"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔒 Blockchain Anchor (Truth)"
+            android:textStyle="bold"
+            android:textColor="#2E7D32"
+            android:textSize="16sp"/>
+            
+        <TextView
+            android:id="@+id/tvBlockchainHash"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="0x..."
+            android:textSize="12sp"
+            android:textColor="#333333"
+            android:layout_marginTop="8dp"/>
+    </LinearLayout>
+
+    <!-- Local App Data Section -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#E3F2FD"
+        android:padding="16dp"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📥 Downloaded IPFS Data"
+            android:textStyle="bold"
+            android:textColor="#1565C0"
+            android:textSize="16sp"/>
+
+        <TextView
+            android:id="@+id/tvDownloadedData"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="{}"
+            android:textStyle="italic"
+            android:textColor="#333333"
+            android:layout_marginTop="8dp"/>
+            
+        <TextView
+            android:id="@+id/tvLocalHash"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Local Hash: 0x..."
+            android:textSize="12sp"
+            android:textColor="#757575"
+            android:layout_marginTop="8dp"/>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvVerificationResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="24dp"/>
+
+    <Button
+        android:id="@+id/btnVerify"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Check Data Integrity (Hash)"
+        android:layout_marginBottom="12dp"
+        android:backgroundTint="#4CAF50"/>
+
+    <Button
+        android:id="@+id/btnSimulateTamper"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Simulate MITM Attack (Hack)"
+        android:layout_marginBottom="12dp"
+        android:backgroundTint="#F44336"/>
+        
+    <Button
+        android:id="@+id/btnReset"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Reset Demo"
+        android:backgroundTint="#9E9E9E"/>
+
+</LinearLayout>

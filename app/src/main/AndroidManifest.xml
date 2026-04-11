@@ -10,6 +10,7 @@
         tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Biometric authentication permission -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
@@ -184,10 +185,6 @@
         
         <!-- Partial Share Activities -->
         <activity
-            android:name=".ui.partialshare.PartialShareHubActivity"
-            android:exported="false"
-            android:label="Partial Share" />
-        <activity
             android:name=".ui.partialshare.PartialShareSelectorActivity"
             android:exported="false"
             android:label="Select Record to Share" />
@@ -247,6 +244,26 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <activity
+            android:name=".TamperDemoActivity"
+            android:exported="true"
+            android:label="Security Demo" />
+
+        <activity
+            android:name=".DemoHubActivity"
+            android:exported="true"
+            android:label="FYP Demo Hub" />
+
+        <activity
+            android:name=".ZkpDemoActivity"
+            android:exported="false"
+            android:label="ZKP Demo" />
+
+        <activity
+            android:name=".MerkleDemoActivity"
+            android:exported="false"
+            android:label="Merkle Demo" />
     </application>
 
 </manifest>

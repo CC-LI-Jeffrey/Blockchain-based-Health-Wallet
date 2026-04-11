@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="#FAFAFA">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="FYP Live Demo Menu"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:textColor="#333333"
+        android:layout_marginBottom="24dp"
+        android:layout_marginTop="16dp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Select a technical showcase:"
+        android:textSize="14sp"
+        android:textColor="#757575"
+        android:layout_marginBottom="16dp"/>
+
+    <Button
+        android:id="@+id/btnDemoTamperProof"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:text="1. Hash Integrity vs MITM Attack\n(Anti-Tamper Demo)"
+        android:backgroundTint="#4CAF50"
+        android:layout_marginBottom="16dp"/>
+
+    <Button
+        android:id="@+id/btnDemoZkp"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:text="2. Zero-Knowledge Proof (Age/Vaccine)\n(Privacy Demo)"
+        android:backgroundTint="#2196F3"
+        android:layout_marginBottom="16dp"/>
+
+    <Button
+        android:id="@+id/btnDemoPartialShare"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:text="3. Merkle Tree Partial Share\n(Selective Disclosure Demo)"
+        android:backgroundTint="#9C27B0"
+        android:layout_marginBottom="16dp"/>
+
+</LinearLayout>

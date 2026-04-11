@@ -322,7 +322,7 @@ class ViewVaccinationActivity : AppCompatActivity() {
                 }
                 in listOf("jpg", "jpeg", "png", "gif", "bmp") -> {
                     val intent = Intent(this, ImageViewerActivity::class.java)
-                    intent.putExtra("IMAGE_FILE_PATH", file.absolutePath)
+                    intent.putExtra("IMAGE_PATH", file.absolutePath)
                     startActivity(intent)
                 }
                 else -> {

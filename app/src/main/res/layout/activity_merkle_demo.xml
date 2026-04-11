@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#FAFAFA">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Merkle Test Cases (merkleSecurity.test.js)"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="12dp">
+        
+        <Button android:id="@+id/btnTest1" android:layout_width="match_parent" android:layout_height="48dp" android:text="1. valid proof verification" android:textSize="12sp" android:backgroundTint="#4CAF50" />
+        <Button android:id="@+id/btnTest2" android:layout_width="match_parent" android:layout_height="48dp" android:text="2. tampered merkle root detection" android:textSize="12sp" android:backgroundTint="#FF9800" />
+        <Button android:id="@+id/btnTest3" android:layout_width="match_parent" android:layout_height="48dp" android:text="3. invalid proof rejection (wrong pair)" android:textSize="12sp" android:backgroundTint="#F44336" />
+        <Button android:id="@+id/btnTest4" android:layout_width="match_parent" android:layout_height="48dp" android:text="4. proof tampering attempts rejected" android:textSize="12sp" android:backgroundTint="#2196F3" />
+    </LinearLayout>
+
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Live Execution Console:" android:textStyle="bold" android:layout_marginBottom="4dp" />
+
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:backgroundTint="#121212" android:layout_marginBottom="8dp">
+
+        <ScrollView android:id="@+id/svLogOutput" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="8dp">
+            <TextView android:id="@+id/tvLogOutput" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="> System Ready. Waiting for test execution...\n\n" android:textColor="#00FF00" android:textSize="11sp" android:typeface="monospace" />
+        </ScrollView>
+    </androidx.cardview.widget.CardView>
+
+    <Button android:id="@+id/btnClear" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Clear Console" android:backgroundTint="#757575"/>
+
+</LinearLayout>
