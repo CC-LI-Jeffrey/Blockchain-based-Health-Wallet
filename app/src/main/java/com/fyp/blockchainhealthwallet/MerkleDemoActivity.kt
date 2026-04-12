@@ -1,218 +1,148 @@
-﻿package com.fyp.blockchainhealthwallet
+package com.fyp.blockchainhealthwallet
 
+import android.graphics.Color
 import android.os.Bundle
 import android.widget.Button
-import android.widget.ScrollView
+import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.fyp.blockchainhealthwallet.blockchain.MerkleTreeHelper
 import com.fyp.blockchainhealthwallet.models.RecordSchemas
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 class MerkleDemoActivity : AppCompatActivity() {
 
-    private lateinit var tvLogOutput: TextView
-    private lateinit var svLogOutput: ScrollView
-
     private val merkleHelper = MerkleTreeHelper()
-    
-    // Mock Record (matching merkleSecurity.test.js)
-    private val fullRecord = mapOf(
-        "medicineName" to "Aspirin",
-        "dosage" to "100mg",
-        "frequency" to "Once daily",
-        "route" to "Oral",
-        "startDate" to "2026-01-01",
-        "endDate" to "2026-12-31",
-        "purpose" to "Pain relief",
-        "prescribedBy" to "Dr. Smith",
-        "pharmacy" to "Local Pharmacy",
-        "notes" to "After meal"
-    )
+    private val gson = Gson()
 
-    private val selectedAttributes = mapOf(
-        "medicineName" to fullRecord["medicineName"]!!,
-        "dosage" to fullRecord["dosage"]!!,
-        "frequency" to fullRecord["frequency"]!!
-    )
+    private lateinit var cbMedicine: CheckBox
+    private lateinit var etMedicine: EditText
+    private lateinit var cbDosage: CheckBox
+    private lateinit var etDosage: EditText
+    private lateinit var cbDoctor: CheckBox
+    private lateinit var etDoctor: EditText
 
-    private val recordType = RecordSchemas.RecordType.MEDICATION
+    private lateinit var btnGenerateMerkle: Button
+    private lateinit var etMerkleJson: EditText
+    private lateinit var btnVerifyMerkle: Button
+    private lateinit var tvVerifyResult: TextView
+
+    // We store the data class representation to deserialize back
+    data class PartialSharePayload(
+        val expectedRoot: String,
+        val attributesToShare: Map<String, String>,
+        val proofs: Map<String, List<MerkleTreeHelper.ProofNode>>
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_merkle_demo)
-        supportActionBar?.title = "Live Merkle Security Tests"
+        supportActionBar?.title = "Interactive Merkle Demo"
 
-        tvLogOutput = findViewById(R.id.tvLogOutput)
-        svLogOutput = findViewById(R.id.svLogOutput)
+        cbMedicine = findViewById(R.id.cbMedicine)
+        etMedicine = findViewById(R.id.etMedicine)
+        cbDosage = findViewById(R.id.cbDosage)
+        etDosage = findViewById(R.id.etDosage)
+        cbDoctor = findViewById(R.id.cbDoctor)
+        etDoctor = findViewById(R.id.etDoctor)
 
-        findViewById<Button>(R.id.btnTest1).setOnClickListener { runTest1() }
-        findViewById<Button>(R.id.btnTest2).setOnClickListener { runTest2() }
-        findViewById<Button>(R.id.btnTest3).setOnClickListener { runTest3() }
-        findViewById<Button>(R.id.btnTest4).setOnClickListener { runTest4() }
-        
-        findViewById<Button>(R.id.btnClear).setOnClickListener {
-            tvLogOutput.text = "> System Ready. Waiting for test execution...\n\n"
-        }
+        btnGenerateMerkle = findViewById(R.id.btnGenerateMerkle)
+        etMerkleJson = findViewById(R.id.etMerkleJson)
+        btnVerifyMerkle = findViewById(R.id.btnVerifyMerkle)
+        tvVerifyResult = findViewById(R.id.tvVerifyResult)
+
+        btnGenerateMerkle.setOnClickListener { generateProof() }
+        btnVerifyMerkle.setOnClickListener { verifyProof() }
     }
 
-    private fun log(msg: String) {
-        runOnUiThread {
-            tvLogOutput.append("$msg\n")
-            svLogOutput.post { svLogOutput.fullScroll(ScrollView.FOCUS_DOWN) }
-        }
-    }
+    private fun generateProof() {
+        try {
+            // Build the full record dictionary
+            val fullRecord = mutableMapOf(
+                "medicineName" to etMedicine.text.toString(),
+                "dosage" to etDosage.text.toString(),
+                "prescribedBy" to etDoctor.text.toString()
+            )
+            // Add some dummies to fill up schema
+            fullRecord["frequency"] = "Once daily"
+            fullRecord["route"] = "Oral"
+            fullRecord["startDate"] = "2026-01-01"
+            fullRecord["endDate"] = "2026-12-31"
+            fullRecord["purpose"] = "Pain relief"
+            fullRecord["pharmacy"] = "Local"
+            fullRecord["notes"] = "After meal"
 
-    // 1. valid proof verification
-    private fun runTest1() {
-        CoroutineScope(Dispatchers.Default).launch {
-            log("\n=============================")
-            log("[START] valid proof verification")
-            log("[INFO] Target: Build full tree, extract subset, and verify valid path")
-            
-            try {
-                log("> Building Merkle Tree from ${fullRecord.size} records...")
-                val tree = merkleHelper.buildMerkleTree(recordType, fullRecord)
-                log("   Tree Root: ${tree.root}")
-                delay(300)
-                
-                log("> Generating Proofs for selected subset (medicineName, dosage, frequency)...")
-                val proofs = mutableMapOf<String, List<MerkleTreeHelper.ProofNode>>()
-                for ((attr, value) in selectedAttributes) {
-                    proofs[attr] = merkleHelper.generateProof(tree, attr, value)
-                }
-                
-                log("> Starting Verification Simulation...")
-                delay(300)
-                
-                var allValid = true
-                for ((attr, value) in selectedAttributes) {
-                    log("\n--- Verifying '$attr' ---")
-                    
-                    // Call the step-by-step verifier for the UI!
-                    val result = merkleHelper.verifyProofWithSteps(attr, value, proofs[attr]!!, tree.root)
-                    
-                    for (step in result.steps) {
-                        log("   [${step.stepTitle}]: ${step.detail}")
-                        log("    -> ${step.hash}")
-                    }
-                    
-                    if (result.isValid) {
-                        log("   [✅] '$attr' PASSED")
-                    } else {
-                        log("   [❌] '$attr' FAILED")
-                        allValid = false
-                    }
-                }
-                
-                if (allValid) {
-                    log("\n[SUCCESS] Test Case 1: valid proof verification passed.")
-                }
-            } catch (e: Exception) {
-                log("[ERROR] Exception: ${e.message}")
+            // 1. Build Merkle Tree
+            val tree = merkleHelper.buildMerkleTree(RecordSchemas.RecordType.MEDICATION, fullRecord)
+
+            // 2. Select only what we want to share
+            val sharedAttributes = mutableMapOf<String, String>()
+            if (cbMedicine.isChecked) sharedAttributes["medicineName"] = fullRecord["medicineName"]!!
+            if (cbDosage.isChecked) sharedAttributes["dosage"] = fullRecord["dosage"]!!
+            if (cbDoctor.isChecked) sharedAttributes["prescribedBy"] = fullRecord["prescribedBy"]!!
+
+            if (sharedAttributes.isEmpty()) {
+                Toast.makeText(this, "Select at least 1 attribute to share", Toast.LENGTH_SHORT).show()
+                return
             }
+
+            // 3. Generate proofs
+            val proofs = merkleHelper.generateProofs(tree, sharedAttributes)
+
+            // 4. Bundle Payload
+            val payload = PartialSharePayload(
+                expectedRoot = tree.root,
+                attributesToShare = sharedAttributes,
+                proofs = proofs
+            )
+
+            // Show JSON
+            etMerkleJson.setText(gson.toJson(payload))
+            tvVerifyResult.text = "Partial Proof Generated! Try editing a shared value or root."
+            tvVerifyResult.setBackgroundColor(Color.parseColor("#EEEEEE"))
+            tvVerifyResult.setTextColor(Color.BLACK)
+
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    // 2. tampered merkle root detection
-    private fun runTest2() {
-        CoroutineScope(Dispatchers.Default).launch {
-            log("\n=============================")
-            log("[START] tampered merkle root detection")
-            log("[INFO] Target: Fake Blockchain Anchor (Compromised source)")
-            
-            try {
-                val tree = merkleHelper.buildMerkleTree(recordType, fullRecord)
-                val proofDosage = merkleHelper.generateProof(tree, "dosage", selectedAttributes["dosage"]!!)
-                
-                val tamperedRoot = tree.root.dropLast(1) + (if (tree.root.endsWith('0')) "1" else "0")
-                log("> Original Root: ${tree.root.take(20)}...")
-                log("> Tampered Root: ${tamperedRoot.take(20)}...")
-                
-                delay(500)
-                log("> Verifying 'dosage' against Tampered Root...")
-                val result = merkleHelper.verifyProofWithSteps("dosage", selectedAttributes["dosage"]!!, proofDosage, tamperedRoot)
-                
-                log("   Computed Root: ${result.computedRoot.take(20)}...")
-                log("   Expected Root: ${tamperedRoot.take(20)}...")
-                
-                if (!result.isValid) {
-                    log("[✅ SUCCESS] Tampered root correctly rejected.")
-                } else {
-                    log("[❌ FAIL] Tampered root was accepted! Cryptography broke!")
-                }
-            } catch (e: Exception) {
-                log("[ERROR] Exception: ${e.message}")
-            }
-        }
-    }
+    private fun verifyProof() {
+        val jsonStr = etMerkleJson.text.toString()
+        if (jsonStr.isEmpty()) return
 
-    // 3. invalid proof rejection (wrong attribute/value pairing)
-    private fun runTest3() {
-        CoroutineScope(Dispatchers.Default).launch {
-            log("\n=============================")
-            log("[START] invalid proof rejection (wrong pair)")
-            log("[INFO] Target: Supply proof of 'frequency' to verify 'dosage'")
-            
-            try {
-                val tree = merkleHelper.buildMerkleTree(recordType, fullRecord)
-                log("> Generating proof for 'frequency'...")
-                val proofFreq = merkleHelper.generateProof(tree, "frequency", selectedAttributes["frequency"]!!)
-                
-                delay(500)
-                log("> Attacker provides proof path of 'frequency' alongside value of 'dosage'...")
-                
-                val result = merkleHelper.verifyProof("dosage", selectedAttributes["dosage"]!!, proofFreq, tree.root)
-                
-                if (!result) {
-                    log("[✅ SUCCESS] Mismatched proof path rejected!")
-                    log("   The leaf index bindings locked the path to the correct attribute.")
-                } else {
-                    log("[❌ FAIL] Mismatched path accepted!")
-                }
-            } catch (e: Exception) {
-                log("[ERROR] Exception: ${e.message}")
-            }
-        }
-    }
+        try {
+            // 1. Parse potentially tampered JSON
+            val payloadType = object : TypeToken<PartialSharePayload>() {}.type
+            val payload: PartialSharePayload = gson.fromJson(jsonStr, payloadType)
 
-    // 4. proof tampering attempts are rejected
-    private fun runTest4() {
-        CoroutineScope(Dispatchers.Default).launch {
-            log("\n=============================")
-            log("[START] proof tampering attempts are rejected")
-            log("[INFO] Target: Intercept sibling hash in transit (MITM) and alter 1 bit")
-            
-            try {
-                val tree = merkleHelper.buildMerkleTree(recordType, fullRecord)
-                var proofMedName = merkleHelper.generateProof(tree, "medicineName", selectedAttributes["medicineName"]!!)
-                
-                val targetHash = proofMedName[0].hash
-                log("> Valid Sibling Hash: ${targetHash.take(15)}...")
-                
-                // Tamper first sibling
-                val tamperedHash = targetHash.dropLast(1) + (if (targetHash.endsWith('0')) "1" else "0")
-                log("> MITM Attack -> ${tamperedHash.take(15)}...")
-                
-                val tamperedProof = proofMedName.toMutableList()
-                tamperedProof[0] = MerkleTreeHelper.ProofNode(tamperedHash, tamperedProof[0].position)
-                
-                delay(500)
-                log("> Checking tampered structural integrity...")
-                val result = merkleHelper.verifyProof("medicineName", selectedAttributes["medicineName"]!!, tamperedProof, tree.root)
-                
-                if (!result) {
-                    log("[✅ SUCCESS] MITM Attack Prevented!")
-                    log("   Final computed root cascaded into a completely different hash.")
-                } else {
-                    log("[❌ FAIL] MITM Attack successful!")
-                }
-            } catch (e: Exception) {
-                log("[ERROR] Exception: ${e.message}")
+            // 2. Cryptographically Verify
+            val verificationResult = merkleHelper.verifyProofs(
+                attributes = payload.attributesToShare,
+                proofs = payload.proofs,
+                expectedRoot = payload.expectedRoot
+            )
+
+            // 3. Check if ALL passed
+            val allPassed = verificationResult.values.all { it }
+
+            if (allPassed) {
+                tvVerifyResult.text = "VERIFICATION SUCCESS: VALID PARTIAL PROOF"
+                tvVerifyResult.setBackgroundColor(Color.parseColor("#4CAF50"))
+                tvVerifyResult.setTextColor(Color.WHITE)
+            } else {
+                val failedAttrs = verificationResult.filter { !it.value }.keys.joinToString()
+                tvVerifyResult.text = "VERIFICATION FAILED FOR: $failedAttrs"
+                tvVerifyResult.setBackgroundColor(Color.parseColor("#F44336"))
+                tvVerifyResult.setTextColor(Color.WHITE)
             }
+        } catch (e: Exception) {
+            tvVerifyResult.text = "VERIFICATION FAILED: MALFORMED DATA"
+            tvVerifyResult.setBackgroundColor(Color.parseColor("#F44336"))
+            tvVerifyResult.setTextColor(Color.WHITE)
         }
     }
 }

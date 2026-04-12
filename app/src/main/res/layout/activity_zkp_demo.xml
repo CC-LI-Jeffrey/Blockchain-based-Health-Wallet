@@ -1,41 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
     android:background="#FAFAFA">
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="ZKP Test Cases (ZkpSecurityValidationTest)"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="12dp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginBottom="12dp">
-        
-        <Button android:id="@+id/btnTest1" android:layout_width="match_parent" android:layout_height="48dp" android:text="1. verifyValidAgeProof_succeeds" android:textSize="12sp" android:backgroundTint="#4CAF50" />
-        <Button android:id="@+id/btnTest2" android:layout_width="match_parent" android:layout_height="48dp" android:text="2. failsUnderThreshold (HACK)" android:textSize="12sp" android:backgroundTint="#FF9800" />
-        <Button android:id="@+id/btnTest3" android:layout_width="match_parent" android:layout_height="48dp" android:text="3. tamperedPublicInput (REPLAY)" android:textSize="12sp" android:backgroundTint="#F44336" />
-        <Button android:id="@+id/btnTest4" android:layout_width="match_parent" android:layout_height="48dp" android:text="4. verifyVaccineProof_succeeds" android:textSize="12sp" android:backgroundTint="#2196F3" />
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Dynamic Age ZKP Generation"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <EditText android:id="@+id/etYear" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="Year (e.g. 2000)" android:inputType="number"/>
+            <EditText android:id="@+id/etMonth" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="Month (1-12)" android:inputType="number"/>
+            <EditText android:id="@+id/etDay" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="Day (1-31)" android:inputType="number"/>
+        </LinearLayout>
+
+        <EditText android:id="@+id/etMinAge" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Threshold Age (e.g. 18)" android:inputType="number" android:layout_marginTop="4dp"/>
+
+        <Button android:id="@+id/btnGenerateZkp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="1. Generate ZKP Proof" android:backgroundTint="#4CAF50" android:layout_marginTop="8dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Generated Proof JSON (EDIT TO TAMPER!):"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="4dp"/>
+
+        <EditText android:id="@+id/etProofJson"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:gravity="top|start"
+            android:inputType="textMultiLine"
+            android:background="#EEEEEE"
+            android:padding="8dp"
+            android:textSize="12sp"
+            android:typeface="monospace"/>
+
+        <Button android:id="@+id/btnVerifyZkp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="2. Verify Tampered/Untampered Proof" android:backgroundTint="#2196F3" android:layout_marginTop="8dp"/>
+
+        <TextView android:id="@+id/tvVerifyResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Verification Result: Pending..."
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:padding="12dp"
+            android:background="#D3D3D3" />
+
     </LinearLayout>
-
-    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Live Execution Console:" android:textStyle="bold" android:layout_marginBottom="4dp" />
-
-    <androidx.cardview.widget.CardView
-        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:backgroundTint="#121212" android:layout_marginBottom="8dp">
-
-        <ScrollView android:id="@+id/svLogOutput" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="8dp">
-            <TextView android:id="@+id/tvLogOutput" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="> System Ready. Waiting for test execution...\n\n" android:textColor="#00FF00" android:textSize="12sp" android:typeface="monospace" />
-        </ScrollView>
-    </androidx.cardview.widget.CardView>
-
-    <Button android:id="@+id/btnClear" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Clear Console" android:backgroundTint="#757575"/>
-
-</LinearLayout>
+</ScrollView>

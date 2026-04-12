@@ -1,168 +1,130 @@
-﻿package com.fyp.blockchainhealthwallet
+package com.fyp.blockchainhealthwallet
 
+import android.graphics.Color
 import android.os.Bundle
 import android.widget.Button
-import android.widget.ScrollView
+import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.fyp.blockchainhealthwallet.zkp.ZkpProofResult
 import com.fyp.blockchainhealthwallet.zkp.ZkpService
-import kotlinx.coroutines.delay
+import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class ZkpDemoActivity : AppCompatActivity() {
 
     private lateinit var zkpService: ZkpService
-    private lateinit var tvLogOutput: TextView
-    private lateinit var svLogOutput: ScrollView
+    private val gson = Gson()
+
+    private lateinit var etYear: EditText
+    private lateinit var etMonth: EditText
+    private lateinit var etDay: EditText
+    private lateinit var etMinAge: EditText
+    private lateinit var btnGenerateZkp: Button
+    private lateinit var etProofJson: EditText
+    private lateinit var btnVerifyZkp: Button
+    private lateinit var tvVerifyResult: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_zkp_demo)
-        supportActionBar?.title = "Live ZKP Security Tests"
+        supportActionBar?.title = "Interactive Age ZKP Demo"
 
         zkpService = ZkpService(this)
-        tvLogOutput = findViewById(R.id.tvLogOutput)
-        svLogOutput = findViewById(R.id.svLogOutput)
 
-        findViewById<Button>(R.id.btnTest1).setOnClickListener { runTest1() }
-        findViewById<Button>(R.id.btnTest2).setOnClickListener { runTest2() }
-        findViewById<Button>(R.id.btnTest3).setOnClickListener { runTest3() }
-        findViewById<Button>(R.id.btnTest4).setOnClickListener { runTest4() }
-        
-        findViewById<Button>(R.id.btnClear).setOnClickListener {
-            tvLogOutput.text = "> System Ready. Waiting for test execution...\n\n"
+        etYear = findViewById(R.id.etYear)
+        etMonth = findViewById(R.id.etMonth)
+        etDay = findViewById(R.id.etDay)
+        etMinAge = findViewById(R.id.etMinAge)
+        btnGenerateZkp = findViewById(R.id.btnGenerateZkp)
+        etProofJson = findViewById(R.id.etProofJson)
+        btnVerifyZkp = findViewById(R.id.btnVerifyZkp)
+        tvVerifyResult = findViewById(R.id.tvVerifyResult)
+
+        // Set defaults
+        etYear.setText("2000")
+        etMonth.setText("1")
+        etDay.setText("1")
+        etMinAge.setText("18")
+
+        btnGenerateZkp.setOnClickListener { generateProof() }
+        btnVerifyZkp.setOnClickListener { verifyProof() }
+    }
+
+    private fun generateProof() {
+        val y = etYear.text.toString().toIntOrNull() ?: 2000
+        val m = etMonth.text.toString().toIntOrNull() ?: 1
+        val d = etDay.text.toString().toIntOrNull() ?: 1
+        val minAge = etMinAge.text.toString().toIntOrNull() ?: 18
+
+        btnGenerateZkp.text = "Generating... Please Wait"
+        btnGenerateZkp.isEnabled = false
+
+        lifecycleScope.launch {
+            try {
+                // Call actual Circom WASM proof generation!
+                val proof = zkpService.generateAgeProof(y, m, d, minAge)
+                val proofJson = gson.toJson(proof)
+                etProofJson.setText(proofJson)
+                
+                tvVerifyResult.text = "Proof Generated! Modify JSON to tamper."
+                tvVerifyResult.setBackgroundColor(Color.parseColor("#EEEEEE"))
+                tvVerifyResult.setTextColor(Color.BLACK)
+            } catch (e: Exception) {
+                Toast.makeText(this@ZkpDemoActivity, "Error generating: ${e.message}", Toast.LENGTH_LONG).show()
+                tvVerifyResult.text = "Error generating proof: ${e.message}"
+            } finally {
+                btnGenerateZkp.text = "1. Generate ZKP Proof"
+                btnGenerateZkp.isEnabled = true
+            }
         }
     }
 
-    private fun log(msg: String) {
-        tvLogOutput.append("$msg\n")
-        svLogOutput.post { svLogOutput.fullScroll(ScrollView.FOCUS_DOWN) }
-    }
+    private fun verifyProof() {
+        val jsonStr = etProofJson.text.toString()
+        if (jsonStr.isEmpty()) {
+            Toast.makeText(this, "No proof to verify!", Toast.LENGTH_SHORT).show()
+            return
+        }
 
-    // 1. verifyValidAgeProof_succeeds
-    private fun runTest1() {
+        btnVerifyZkp.text = "Verifying..."
+        btnVerifyZkp.isEnabled = false
+
         lifecycleScope.launch {
-            log("\n=============================")
-            log("[START] verifyValidAgeProof_succeeds")
-            log("[INFO] Target: Generate age proof for 25y/o against minAge 18")
-            log("> Initializing ZKP WASM Circuit...")
-            
             try {
-                // Generate Proof
-                log("> Sending Birth Data (2001-1-1) to local engine ONLY...")
-                val proof = zkpService.generateAgeProof(2001, 1, 1, 18)
-                
-                log("[SUCCESS] Proof Object Generated!")
-                log("   pi_a: [${proof.proofA.joinToString(", ").take(30)}...]")
-                log("   pi_b: [${proof.proofB.firstOrNull()?.joinToString(", ")?.take(30)}...]")
-                log("   Public Signals: ${proof.publicSignals}")
-                log("> Sending Proof to Verifier...")
-                
-                delay(500)
-                
-                // Verify Proof
-                val cal = Calendar.getInstance()
-                val isValid = zkpService.verifyAgeProof(
-                    proof, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH)+1, cal.get(Calendar.DAY_OF_MONTH), 18
-                )
-                
+                // Parse the possibly tampered JSON
+                val proofToVerify = gson.fromJson(jsonStr, ZkpProofResult::class.java)
+
+                // Extract the public signals exactly as the attacker altered them in the JSON!
+                // publicSignals: [isAdult(1), currentYear, currentMonth, currentDay, minAge]
+                val claimedYear = proofToVerify.publicSignals.getOrNull(1)?.toIntOrNull() ?: 2026
+                val claimedMonth = proofToVerify.publicSignals.getOrNull(2)?.toIntOrNull() ?: 1
+                val claimedDay = proofToVerify.publicSignals.getOrNull(3)?.toIntOrNull() ?: 1
+                val claimedMinAge = proofToVerify.publicSignals.getOrNull(4)?.toIntOrNull() ?: 18
+
+                // Call actual verification circuit!
+                // It will bind the Math of pi_a, pi_b, pi_c against the claimed public signals.
+                val isValid = zkpService.verifyAgeProof(proofToVerify, claimedYear, claimedMonth, claimedDay, claimedMinAge)
+
                 if (isValid) {
-                    log("[✅ RESULT] Verification PASSED. Cryptography checks out.")
+                    tvVerifyResult.text = "VERIFICATION SUCCESS: VALID PROOF"
+                    tvVerifyResult.setBackgroundColor(Color.parseColor("#4CAF50"))
+                    tvVerifyResult.setTextColor(Color.WHITE)
                 } else {
-                    log("[❌ RESULT] Verification FAILED.")
+                    tvVerifyResult.text = "VERIFICATION FAILED: TAMPERED OR INVALID"
+                    tvVerifyResult.setBackgroundColor(Color.parseColor("#F44336"))
+                    tvVerifyResult.setTextColor(Color.WHITE)
                 }
             } catch (e: Exception) {
-                log("[ERROR] Exception: ${e.message}")
-            }
-        }
-    }
-
-    // 2. generateAgeProof_failsUnderThreshold
-    private fun runTest2() {
-        lifecycleScope.launch {
-            log("\n=============================")
-            log("[START] generateAgeProof_failsUnderThreshold (HACK)")
-            log("[INFO] Target: 16y/o trying to generate proof for minAge 18")
-            log("> Attempting to trick WASM circuit with birth year 2010...")
-            
-            try {
-                val proof = zkpService.generateAgeProof(2010, 1, 1, 18)
-                log("[CRITICAL FAIL] Wait, the circuit generated a proof? This shouldn't happen!")
-            } catch (e: Exception) {
-                log("[✅ RESULT] ZKP Engine Rejected Inputs!")
-                log("> Error caught: Mathematical constraint failed in WebAssembly.")
-                log("> It is physically impossible to generate a valid zero-knowledge proof when conditions aren't met.")
-            }
-        }
-    }
-
-    // 3. tamperedPublicInput_proofFails
-    private fun runTest3() {
-        lifecycleScope.launch {
-            log("\n=============================")
-            log("[START] tamperedPublicInput_proofFails (REPLAY ATTACK)")
-            log("[INFO] Target: Change verifier threshold from 18 to 21 using an intercepted 18+ proof")
-            
-            try {
-                log("> 1. Generating valid 'Over 18' proof for a 25y/o...")
-                val proof = zkpService.generateAgeProof(2001, 1, 1, 18)
-                log("[SUCCESS] Valid proof intercepted.")
-                
-                log("> 2. Hacker resubmits exact same proof block...")
-                log("> 3. Hacker changes public variable [minAge] requirement to '21'...")
-                delay(500)
-                
-                val cal = Calendar.getInstance()
-                val isValid = zkpService.verifyAgeProof(
-                    proof, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH)+1, cal.get(Calendar.DAY_OF_MONTH), 21
-                )
-                
-                if (!isValid) {
-                    log("[✅ RESULT] Attack PREVENTED! Verification FAILED.")
-                    log("> Reason: Math binds the public input directly to the proof points.")
-                } else {
-                    log("[CRITICAL FAIL] Attack succeeded.")
-                }
-            } catch (e: Exception) {
-                log("[ERROR] Exception: ${e.message}")
-            }
-        }
-    }
-
-    // 4. verifyVaccineProof_succeeds
-    private fun runTest4() {
-        lifecycleScope.launch {
-            log("\n=============================")
-            log("[START] verifyVaccineProof_succeeds")
-            log("[INFO] Target: Prove vaccination ID=1 without revealing salt/ID")
-            
-            try {
-                log("> Generating simulated on-chain commitment...")
-                val saltStr = "123456789012345"
-                val saltBigInt = java.math.BigInteger(saltStr)
-                val commitment = zkpService.computePoseidonCommitment(1L, 1, saltBigInt).toString()
-                log("   Commitment (Blockchain): ${commitment.take(20)}...")
-                
-                log("> Generating vaccine ZK-Proof (Circuit computation)...")
-                val proof = zkpService.generateVaccineProof(
-                    vaccinationId = 1L, vaccineName = 1, salt = saltStr, commitment = commitment, targetVaccine = 1
-                )
-                
-                log("[SUCCESS] Vaccine Proof Generated")
-                log("> Verifying Proof against Blockchain commitment...")
-                delay(500)
-                
-                val isValid = zkpService.verifyVaccineProof(proof, commitment, targetVaccine = 1)
-                
-                if (isValid) {
-                    log("[✅ RESULT] Vaccine Verification PASSED.")
-                } else {
-                    log("[❌ RESULT] Vaccine Verification FAILED.")
-                }
-            } catch (e: Exception) {
-                log("[ERROR] Exception: ${e.message}")
+                tvVerifyResult.text = "VERIFICATION FAILED: MALFORMED DATA"
+                tvVerifyResult.setBackgroundColor(Color.parseColor("#F44336"))
+                tvVerifyResult.setTextColor(Color.WHITE)
+            } finally {
+                btnVerifyZkp.text = "2. Verify Tampered/Untampered Proof"
+                btnVerifyZkp.isEnabled = true
             }
         }
     }
